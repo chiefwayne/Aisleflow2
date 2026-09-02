@@ -190,6 +190,7 @@ export default function GuestPortalView({
   const [pledgeMessage, setPledgeMessage] = useState('');
   const [isPledging, setIsPledging] = useState(false);
   const [pledgeSuccess, setPledgeSuccess] = useState(false);
+  const [copiedZelle, setCopiedZelle] = useState(false);
 
   // Photo uploads
   const [photos, setPhotos] = useState(initialPhotos || []);
@@ -1822,11 +1823,15 @@ export default function GuestPortalView({
               </p>
 
               {pledgeSuccess ? (
-                <div className="rounded-xl bg-emerald-50 p-4 text-center text-emerald-800 text-xs font-semibold">
-                  🎉 Contribution recorded! Thank you for celebrating with us!
+                <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-5 text-center text-emerald-900 text-xs space-y-2">
+                  <div className="text-xl">🎉</div>
+                  <h4 className="font-serif text-base font-semibold">Gift Contribution Recorded!</h4>
+                  <p className="text-[11px] opacity-80 leading-relaxed">
+                    Thank you {pledgeName}! Your gift and warm message have been recorded for {event.couple_names}.
+                  </p>
                 </div>
               ) : (
-                <form onSubmit={handleCashFundPledge} className="space-y-3 text-xs">
+                <form onSubmit={handleCashFundPledge} className="space-y-4 text-xs">
                   <div>
                     <label className="block uppercase tracking-wider text-[10px] font-semibold mb-1 opacity-80">
                       Select Amount ($)
@@ -1859,6 +1864,111 @@ export default function GuestPortalView({
                     />
                   </div>
 
+                  {/* Direct Payment Handles (Option 1) */}
+                  {customSections.registry && (
+                    <div className="space-y-2 pt-2 border-t border-aisle-border/60">
+                      <label className="block uppercase tracking-wider text-[10px] font-semibold opacity-80">
+                        Send Directly To Couple (0% Fee)
+                      </label>
+
+                      <div className="space-y-1.5">
+                        {/* Venmo */}
+                        {customSections.registry.venmo_handle && (
+                          <a
+                            href={`https://venmo.com/${customSections.registry.venmo_handle.replace('@', '')}?txn=pay&amount=${pledgeAmount || '0'}&note=${encodeURIComponent(`Wedding Gift for ${event.couple_names}`)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-between p-2.5 rounded-xl border border-blue-200 bg-blue-50/60 text-blue-900 font-semibold hover:bg-blue-100/60 transition-colors shadow-xs"
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-xs">Venmo</span>
+                              <span className="text-[11px] font-normal opacity-80">
+                                @{customSections.registry.venmo_handle.replace('@', '')}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-bold text-blue-700 bg-white px-2 py-0.5 rounded-full border border-blue-200">
+                              Open Venmo ↗
+                            </span>
+                          </a>
+                        )}
+
+                        {/* Zelle */}
+                        {customSections.registry.zelle_info && (
+                          <div className="flex items-center justify-between p-2.5 rounded-xl border border-purple-200 bg-purple-50/60 text-purple-900 font-semibold shadow-xs">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-xs">Zelle</span>
+                              <span className="text-[11px] font-mono font-normal opacity-90">
+                                {customSections.registry.zelle_info}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(customSections.registry?.zelle_info || '');
+                                setCopiedZelle(true);
+                                setTimeout(() => setCopiedZelle(false), 2000);
+                              }}
+                              className="text-[10px] font-bold text-purple-800 bg-white px-2.5 py-0.5 rounded-full border border-purple-200 hover:bg-purple-50 cursor-pointer"
+                            >
+                              {copiedZelle ? 'Copied!' : 'Copy'}
+                            </button>
+                          </div>
+                        )}
+
+                        {/* CashApp */}
+                        {customSections.registry.cashapp_tag && (
+                          <a
+                            href={`https://cash.app/$${customSections.registry.cashapp_tag.replace('$', '')}/${pledgeAmount || ''}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-between p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/60 text-emerald-900 font-semibold hover:bg-emerald-100/60 transition-colors shadow-xs"
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-xs">Cash App</span>
+                              <span className="text-[11px] font-normal opacity-80">
+                                ${customSections.registry.cashapp_tag.replace('$', '')}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-bold text-emerald-700 bg-white px-2 py-0.5 rounded-full border border-emerald-200">
+                              Open Cash App ↗
+                            </span>
+                          </a>
+                        )}
+
+                        {/* PayPal */}
+                        {customSections.registry.paypal_handle && (
+                          <a
+                            href={
+                              customSections.registry.paypal_handle.startsWith('http')
+                                ? customSections.registry.paypal_handle
+                                : `https://paypal.me/${customSections.registry.paypal_handle.replace('https://paypal.me/', '')}/${pledgeAmount || ''}`
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-between p-2.5 rounded-xl border border-sky-200 bg-sky-50/60 text-sky-900 font-semibold hover:bg-sky-100/60 transition-colors shadow-xs"
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-xs">PayPal</span>
+                              <span className="text-[11px] font-normal opacity-80">
+                                {customSections.registry.paypal_handle}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-bold text-sky-700 bg-white px-2 py-0.5 rounded-full border border-sky-200">
+                              Open PayPal ↗
+                            </span>
+                          </a>
+                        )}
+
+                        {/* Custom Payout Note */}
+                        {customSections.registry.payout_note && (
+                          <p className="text-[11px] opacity-75 italic p-2 rounded-xl bg-black/5 leading-relaxed">
+                            "{customSections.registry.payout_note}"
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div>
                     <label className="block uppercase tracking-wider text-[10px] font-semibold mb-1 opacity-80">
                       Your Name
@@ -1875,7 +1985,7 @@ export default function GuestPortalView({
 
                   <div>
                     <label className="block uppercase tracking-wider text-[10px] font-semibold mb-1 opacity-80">
-                      Warm Wishes (Optional)
+                      Warm Wishes / Note for Couple
                     </label>
                     <textarea
                       rows={2}
@@ -1902,7 +2012,7 @@ export default function GuestPortalView({
                       className="flex-1 rounded-full py-2.5 text-xs font-semibold uppercase tracking-wider text-white shadow-sm hover:opacity-90 disabled:opacity-50 cursor-pointer"
                       style={{ backgroundColor: theme.accent_color }}
                     >
-                      {isPledging ? 'Recording...' : 'Send Gift'}
+                      {isPledging ? 'Recording...' : 'Record Gift in Ledger'}
                     </button>
                   </div>
                 </form>

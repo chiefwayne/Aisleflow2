@@ -222,6 +222,7 @@ export default function AdminDashboardView({
       local_recs: { enabled: true, items: [] },
       wedding_party: { enabled: true, members: [] },
       travel: { enabled: true, hotel_info: '', shuttle_info: '', airport_info: '' },
+      registry: { enabled: true, venmo_handle: '', zelle_info: '', cashapp_tag: '', paypal_handle: '', payout_note: '' },
     }
   );
 
@@ -3062,6 +3063,159 @@ export default function AdminDashboardView({
           {/* TAB 9: REGISTRY & CONTRIBUTIONS LEDGER */}
           {activeTab === 'registry' && (
             <div className="space-y-6">
+              {/* Direct Payout Methods (Venmo, Zelle, CashApp, PayPal) */}
+              <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-5">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-aisle-border/60 pb-4">
+                  <div>
+                    <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">
+                      Direct Cash Payout Methods (0% Fee)
+                    </h3>
+                    <p className="text-xs text-aisle-muted mt-0.5">
+                      Configure your direct payment handles so guests can send honeymoon & cash fund gifts directly to you with zero transaction fees.
+                    </p>
+                  </div>
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
+                    Direct Payouts Active
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                  {/* Venmo */}
+                  <div className="space-y-1.5 p-3.5 rounded-2xl border border-aisle-border bg-[#FAF7F2]/40">
+                    <label className="font-semibold text-aisle-charcoal flex items-center justify-between">
+                      <span>Venmo Username</span>
+                      <span className="text-[10px] text-blue-600 font-normal">One-tap app deep link</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-aisle-muted font-mono font-bold">@</span>
+                      <input
+                        type="text"
+                        placeholder="Sophia-Alexandre"
+                        value={customSections.registry?.venmo_handle || ''}
+                        onChange={(e) =>
+                          setCustomSections({
+                            ...customSections,
+                            registry: {
+                              ...customSections.registry,
+                              venmo_handle: e.target.value.replace('@', ''),
+                            },
+                          })
+                        }
+                        className="w-full rounded-xl border border-aisle-border pl-7 pr-3 py-2 bg-white focus:outline-none focus:border-aisle-terracotta"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Zelle */}
+                  <div className="space-y-1.5 p-3.5 rounded-2xl border border-aisle-border bg-[#FAF7F2]/40">
+                    <label className="font-semibold text-aisle-charcoal flex items-center justify-between">
+                      <span>Zelle Email or Phone</span>
+                      <span className="text-[10px] text-purple-700 font-normal">Instant bank transfer</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="sophia.como26@example.com or +14155550199"
+                      value={customSections.registry?.zelle_info || ''}
+                      onChange={(e) =>
+                        setCustomSections({
+                          ...customSections,
+                          registry: {
+                            ...customSections.registry,
+                            zelle_info: e.target.value,
+                          },
+                        })
+                      }
+                      className="w-full rounded-xl border border-aisle-border px-3 py-2 bg-white focus:outline-none focus:border-aisle-terracotta"
+                    />
+                  </div>
+
+                  {/* CashApp */}
+                  <div className="space-y-1.5 p-3.5 rounded-2xl border border-aisle-border bg-[#FAF7F2]/40">
+                    <label className="font-semibold text-aisle-charcoal flex items-center justify-between">
+                      <span>CashApp $cashtag</span>
+                      <span className="text-[10px] text-emerald-700 font-normal">Cash App pay</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-aisle-muted font-mono font-bold">$</span>
+                      <input
+                        type="text"
+                        placeholder="SophiaComo"
+                        value={customSections.registry?.cashapp_tag || ''}
+                        onChange={(e) =>
+                          setCustomSections({
+                            ...customSections,
+                            registry: {
+                              ...customSections.registry,
+                              cashapp_tag: e.target.value.replace('$', ''),
+                            },
+                          })
+                        }
+                        className="w-full rounded-xl border border-aisle-border pl-7 pr-3 py-2 bg-white focus:outline-none focus:border-aisle-terracotta"
+                      />
+                    </div>
+                  </div>
+
+                  {/* PayPal */}
+                  <div className="space-y-1.5 p-3.5 rounded-2xl border border-aisle-border bg-[#FAF7F2]/40">
+                    <label className="font-semibold text-aisle-charcoal flex items-center justify-between">
+                      <span>PayPal.me Username / Link</span>
+                      <span className="text-[10px] text-blue-800 font-normal">PayPal direct</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="sophiaalexandre or https://paypal.me/..."
+                      value={customSections.registry?.paypal_handle || ''}
+                      onChange={(e) =>
+                        setCustomSections({
+                          ...customSections,
+                          registry: {
+                            ...customSections.registry,
+                            paypal_handle: e.target.value,
+                          },
+                        })
+                      }
+                      className="w-full rounded-xl border border-aisle-border px-3 py-2 bg-white focus:outline-none focus:border-aisle-terracotta"
+                    />
+                  </div>
+                </div>
+
+                {/* Custom Payout Note */}
+                <div className="space-y-1.5 text-xs">
+                  <label className="font-semibold text-aisle-charcoal block">
+                    Custom Gift / Check Instructions
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="e.g. If sending via Venmo or Zelle, please include your name in the payment memo so we can properly thank you! Physical cards are also warmly welcome at the reception."
+                    value={customSections.registry?.payout_note || ''}
+                    onChange={(e) =>
+                      setCustomSections({
+                        ...customSections,
+                        registry: {
+                          ...customSections.registry,
+                          payout_note: e.target.value,
+                        },
+                      })
+                    }
+                    className="w-full rounded-xl border border-aisle-border p-2.5 bg-white focus:outline-none focus:border-aisle-terracotta"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-aisle-border/60">
+                  <p className="text-[11px] text-aisle-muted italic">
+                    These payment options will be presented to guests when contributing to any cash fund.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleSaveCustomSections}
+                    disabled={isProcessingAction}
+                    className="rounded-full bg-aisle-charcoal px-5 py-2 text-xs font-semibold uppercase tracking-wider text-white hover:bg-aisle-terracotta disabled:opacity-50 cursor-pointer shadow-sm transition-all"
+                  >
+                    {isProcessingAction ? 'Saving...' : 'Save Payout Handles'}
+                  </button>
+                </div>
+              </div>
+
               <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-5">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div>

@@ -8,6 +8,11 @@ export interface EventCustomSections {
     enabled?: boolean;
     url?: string;
     message?: string;
+    venmo_handle?: string;
+    zelle_info?: string;
+    cashapp_tag?: string;
+    paypal_handle?: string;
+    payout_note?: string;
   };
   travel?: {
     enabled?: boolean;

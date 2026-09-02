@@ -69,6 +69,13 @@ export async function ensureDemoEventSeeded(): Promise<EventRecord | null> {
               { title: 'Bar Il Molo', category: 'Drink', desc: 'Scenic waterfront spritzes in Varenna.' },
               { title: 'Ristorante La Punta', category: 'Dining', desc: 'Fresh lake fish with panoramic views of Lake Como.' }
             ]
+          },
+          registry: {
+            enabled: true,
+            venmo_handle: 'Sophia-Alexandre',
+            zelle_info: 'sophia.como26@example.com',
+            cashapp_tag: 'SophiaComo',
+            payout_note: 'If sending via Venmo or Zelle, please include your name so we can properly thank you!'
           }
         }
       })
