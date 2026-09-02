@@ -38,7 +38,14 @@ import {
   MessageSquare,
   Hotel,
   Compass,
-  AlertCircle
+  AlertCircle,
+  Type,
+  Layers,
+  Sliders,
+  ChevronUp,
+  ChevronDown,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import {
   EventRecord,
@@ -245,10 +252,18 @@ export default function AdminDashboardView({
   const [smsSimulatorMessage, setSmsSimulatorMessage] = useState('YES');
   const [smsSimulatorLog, setSmsSimulatorLog] = useState<{ sender: string; text: string; time: string }[]>([]);
 
-  // Builder Custom Theme State
-  const [customTheme, setCustomTheme] = useState<TemplateDesignRecord>(
-    BUILTIN_THEMES[event.theme_id] || BUILTIN_THEMES['royal-floral']
-  );
+  // Builder Custom Theme State (merge event.theme_config over base theme)
+  const [customTheme, setCustomTheme] = useState<TemplateDesignRecord>(() => {
+    const base = BUILTIN_THEMES[event.theme_id] || BUILTIN_THEMES['royal-floral'];
+    return {
+      ...base,
+      ...(event?.theme_config && typeof event.theme_config === 'object' ? event.theme_config : {}),
+    };
+  });
+
+  const [builderSubTab, setBuilderSubTab] = useState<
+    'presets' | 'palette' | 'typography' | 'reveal' | 'imagery' | 'sections'
+  >('presets');
 
   // Copy Link Helper
   const copyToClipboard = (text: string, label: string) => {
@@ -531,8 +546,11 @@ export default function AdminDashboardView({
     // 1. Optimistic local state update for live mockup
     setEvent((prev) => ({ ...prev, [slot]: val }));
     if (slot === 'theme_id') {
-      const thm = BUILTIN_THEMES[val] || BUILTIN_THEMES['royal-floral'];
-      setCustomTheme(thm);
+      const base = BUILTIN_THEMES[val] || BUILTIN_THEMES['royal-floral'];
+      setCustomTheme({
+        ...base,
+        ...(event?.theme_config && typeof event.theme_config === 'object' ? event.theme_config : {}),
+      });
     }
 
     // 2. Persist to Supabase
@@ -560,6 +578,47 @@ export default function AdminDashboardView({
     }
   };
 
+  // Update specific theme config key (color, font, opening style, floron, phrases, etc.)
+  const handleUpdateThemeConfig = async (key: string, val: any) => {
+    // 1. Optimistically update local React state
+    const updatedThemeConfig = {
+      ...(event.theme_config && typeof event.theme_config === 'object' ? event.theme_config : {}),
+      [key]: val,
+    };
+    setEvent((prev) => ({
+      ...prev,
+      theme_config: updatedThemeConfig,
+    }));
+    setCustomTheme((prev) => ({
+      ...prev,
+      [key]: val,
+    }));
+
+    // 2. Persist to Supabase
+    setIsProcessingAction(true);
+    setStatusMessage(`Updating ${key.replace(/_/g, ' ')}...`);
+    try {
+      const result = await updateEventDesignAction({
+        eventId: event.id,
+        adminToken: event.admin_token,
+        theme_config: { [key]: val },
+      });
+
+      if (result.success && result.event) {
+        setEvent(result.event as EventRecord);
+        setStatusMessage('✨ Custom styling synced live to guest view!');
+      } else {
+        setStatusMessage(`Error saving: ${result.error || 'Failed to save'}`);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setStatusMessage(`Failed to save: ${err?.message}`);
+    } finally {
+      setIsProcessingAction(false);
+      setTimeout(() => setStatusMessage(''), 3000);
+    }
+  };
+
   // Explicit manual save for all portal design & imagery slots
   const handleSaveAllDesign = async () => {
     setIsProcessingAction(true);
@@ -569,6 +628,7 @@ export default function AdminDashboardView({
         eventId: event.id,
         adminToken: event.admin_token,
         theme_id: event.theme_id,
+        theme_config: event.theme_config || {},
         cover_image_url: event.cover_image_url || '',
         story_image_url: event.story_image_url || '',
         venue_image_url: event.venue_image_url || '',
@@ -1975,94 +2035,472 @@ export default function AdminDashboardView({
               <div className="lg:col-span-6 space-y-6">
                 <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-5">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">Design & Content Slots</h3>
-                    <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/60 rounded-full px-2.5 py-0.5">
+                    <div>
+                      <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">Design & Content Slots</h3>
+                      <p className="text-[11px] text-aisle-muted mt-0.5">
+                        Customize visual styling, palettes, fonts, opening reveal, and section layout in real-time.
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/60 rounded-full px-2.5 py-0.5 shrink-0">
                       Auto-syncs live
                     </span>
                   </div>
 
-                  {/* Theme Presets */}
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-aisle-muted mb-2">
-                      Select Aesthetic Preset
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {Object.values(BUILTIN_THEMES).map((thm) => (
+                  {/* Builder Sub-Tabs Navigation */}
+                  <div className="flex items-center gap-1.5 p-1 bg-[#FAF7F2] rounded-2xl border border-aisle-border/70 overflow-x-auto">
+                    {[
+                      { id: 'presets', label: 'Presets', icon: Sparkles },
+                      { id: 'palette', label: 'Colors', icon: Palette },
+                      { id: 'typography', label: 'Typography', icon: Type },
+                      { id: 'reveal', label: 'Opening', icon: Layers },
+                      { id: 'imagery', label: 'Imagery', icon: Camera },
+                      { id: 'sections', label: 'Chapters', icon: Sliders },
+                    ].map((tab) => {
+                      const Icon = tab.icon;
+                      const isActive = builderSubTab === tab.id;
+                      return (
                         <button
-                          key={thm.id}
+                          key={tab.id}
                           type="button"
-                          onClick={() => handleUpdateDesignSlot('theme_id', thm.id)}
-                          className={`rounded-xl border p-3 text-left transition-all cursor-pointer ${
-                            customTheme.id === thm.id
-                              ? 'border-aisle-terracotta bg-aisle-sand/50 shadow-sm'
-                              : 'border-aisle-border hover:bg-aisle-sand/20'
+                          onClick={() => setBuilderSubTab(tab.id as any)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                            isActive
+                              ? 'bg-white text-aisle-charcoal shadow-sm border border-aisle-border/60'
+                              : 'text-aisle-muted hover:text-aisle-charcoal hover:bg-white/50'
                           }`}
                         >
-                          <span className="font-serif text-xs font-semibold text-aisle-charcoal block">{thm.name}</span>
-                          <span className="text-[10px] text-aisle-muted">{thm.taxonomy}</span>
+                          <Icon className={`h-3.5 w-3.5 ${isActive ? 'text-aisle-terracotta' : ''}`} />
+                          <span>{tab.label}</span>
                         </button>
-                      ))}
-                    </div>
+                      );
+                    })}
                   </div>
 
-                  {/* Designed Content Slots & Imagery */}
-                  <div className="space-y-4 pt-2 border-t border-aisle-border/70">
-                    <div>
-                      <h4 className="text-xs font-semibold uppercase tracking-wider text-aisle-charcoal">
-                        Website Imagery & Photo Uploads
-                      </h4>
-                      <p className="text-[11px] text-aisle-muted mt-0.5">
-                        Select files from your computer or pick from our curated high-res boutique wedding library.
-                      </p>
+                  {/* SUB-TAB 1: PRESETS */}
+                  {builderSubTab === 'presets' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-aisle-muted mb-2">
+                          Select Aesthetic Preset
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {Object.values(BUILTIN_THEMES).map((thm) => (
+                            <button
+                              key={thm.id}
+                              type="button"
+                              onClick={() => handleUpdateDesignSlot('theme_id', thm.id)}
+                              className={`rounded-xl border p-3 text-left transition-all cursor-pointer ${
+                                customTheme.id === thm.id
+                                  ? 'border-aisle-terracotta bg-aisle-sand/50 shadow-sm'
+                                  : 'border-aisle-border hover:bg-aisle-sand/20'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-serif text-xs font-semibold text-aisle-charcoal block">{thm.name}</span>
+                                {customTheme.id === thm.id && (
+                                  <span className="h-2 w-2 rounded-full bg-aisle-terracotta" />
+                                )}
+                              </div>
+                              <span className="text-[10px] text-aisle-muted block mt-0.5">{thm.taxonomy}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-aisle-border bg-[#FAF7F2]/50 p-3.5 text-xs text-aisle-muted space-y-1">
+                        <p className="font-semibold text-aisle-charcoal">{customTheme.name} · {customTheme.taxonomy}</p>
+                        <p className="leading-relaxed text-[11px]">{customTheme.description}</p>
+                      </div>
                     </div>
+                  )}
 
-                    <ImagePickerUploader
-                      label="Cover & Hero Photo"
-                      value={event.cover_image_url || ''}
-                      onChange={(url) => handleUpdateDesignSlot('cover_image_url', url)}
-                      eventId={event.id}
-                      adminToken={event.admin_token}
-                      category="cover"
-                      aspectRatio="landscape"
-                      helperText="Hero image at the top of your digital wedding invitation and guest portal."
-                    />
+                  {/* SUB-TAB 2: COLOR PALETTE */}
+                  {builderSubTab === 'palette' && (
+                    <div className="space-y-5 text-xs">
+                      {/* Accent Color */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="font-semibold text-aisle-charcoal">Primary Accent & Wax Tint</label>
+                          <span className="font-mono text-[11px] text-aisle-muted">{customTheme.accent_color || '#9E5A44'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={customTheme.accent_color || '#9E5A44'}
+                            onChange={(e) => handleUpdateThemeConfig('accent_color', e.target.value)}
+                            className="h-8 w-10 rounded-lg border border-aisle-border cursor-pointer p-0.5 bg-white"
+                          />
+                          <div className="flex flex-wrap gap-1.5 flex-1">
+                            {['#9E5A44', '#8C4A32', '#D4AF37', '#2B5329', '#1A1A1A', '#E67E22', '#2E86AB', '#B76E79'].map((hex) => (
+                              <button
+                                key={hex}
+                                type="button"
+                                onClick={() => handleUpdateThemeConfig('accent_color', hex)}
+                                className="h-6 w-6 rounded-full border border-black/10 shadow-xs cursor-pointer transition-transform hover:scale-110"
+                                style={{ backgroundColor: hex }}
+                                title={hex}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
 
-                    <ImagePickerUploader
-                      label="Our Story Couple Photo"
-                      value={event.story_image_url || ''}
-                      onChange={(url) => handleUpdateDesignSlot('story_image_url', url)}
-                      eventId={event.id}
-                      adminToken={event.admin_token}
-                      category="story"
-                      aspectRatio="landscape"
-                      helperText="Romantic photo showcasing your journey and couple narrative."
-                    />
+                      {/* Background Color */}
+                      <div className="space-y-2 pt-3 border-t border-aisle-border/60">
+                        <div className="flex items-center justify-between">
+                          <label className="font-semibold text-aisle-charcoal">Stationery Background Canvas</label>
+                          <span className="font-mono text-[11px] text-aisle-muted">{customTheme.bg_color || '#FAF7F2'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={customTheme.bg_color || '#FAF7F2'}
+                            onChange={(e) => handleUpdateThemeConfig('bg_color', e.target.value)}
+                            className="h-8 w-10 rounded-lg border border-aisle-border cursor-pointer p-0.5 bg-white"
+                          />
+                          <div className="flex flex-wrap gap-1.5 flex-1">
+                            {['#FAF7F2', '#F4F3F0', '#FBF7F0', '#0F141C', '#FDF6EC', '#F5F2EC', '#FFFFFF'].map((hex) => (
+                              <button
+                                key={hex}
+                                type="button"
+                                onClick={() => handleUpdateThemeConfig('bg_color', hex)}
+                                className="h-6 w-6 rounded-full border border-black/15 shadow-xs cursor-pointer transition-transform hover:scale-110"
+                                style={{ backgroundColor: hex }}
+                                title={hex}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
 
-                    <ImagePickerUploader
-                      label="Venue & Setting Photo"
-                      value={event.venue_image_url || ''}
-                      onChange={(url) => handleUpdateDesignSlot('venue_image_url', url)}
-                      eventId={event.id}
-                      adminToken={event.admin_token}
-                      category="venue"
-                      aspectRatio="landscape"
-                      helperText="Photo of the ceremony/reception villa, garden, or estate."
-                    />
+                      {/* Ink / Typography Color */}
+                      <div className="space-y-2 pt-3 border-t border-aisle-border/60">
+                        <div className="flex items-center justify-between">
+                          <label className="font-semibold text-aisle-charcoal">Typography Ink Color</label>
+                          <span className="font-mono text-[11px] text-aisle-muted">{customTheme.text_color || '#2C2523'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={customTheme.text_color || '#2C2523'}
+                            onChange={(e) => handleUpdateThemeConfig('text_color', e.target.value)}
+                            className="h-8 w-10 rounded-lg border border-aisle-border cursor-pointer p-0.5 bg-white"
+                          />
+                          <div className="flex flex-wrap gap-1.5 flex-1">
+                            {['#2C2523', '#1A1A1A', '#342820', '#1C2833', '#F2EFE9', '#4A4A4A'].map((hex) => (
+                              <button
+                                key={hex}
+                                type="button"
+                                onClick={() => handleUpdateThemeConfig('text_color', hex)}
+                                className="h-6 w-6 rounded-full border border-black/15 shadow-xs cursor-pointer transition-transform hover:scale-110"
+                                style={{ backgroundColor: hex }}
+                                title={hex}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
 
-                    {/* Manual Save Button for Design & Imagery */}
-                    <div className="pt-4 border-t border-aisle-border/70 flex items-center justify-between">
-                      <p className="text-[11px] text-aisle-muted italic">
-                        Changes sync live to your guest view.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={handleSaveAllDesign}
-                        disabled={isProcessingAction}
-                        className="rounded-full bg-aisle-charcoal px-5 py-2 text-xs font-semibold uppercase tracking-wider text-white hover:bg-aisle-terracotta disabled:opacity-50 cursor-pointer shadow-sm transition-all"
-                      >
-                        {isProcessingAction ? 'Saving Design...' : 'Save Design & Imagery'}
-                      </button>
+                      {/* Surface Card Color */}
+                      <div className="space-y-2 pt-3 border-t border-aisle-border/60">
+                        <div className="flex items-center justify-between">
+                          <label className="font-semibold text-aisle-charcoal">Card & Module Surface</label>
+                          <span className="font-mono text-[11px] text-aisle-muted">{customTheme.surface_color || '#FFFFFF'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={customTheme.surface_color || '#FFFFFF'}
+                            onChange={(e) => handleUpdateThemeConfig('surface_color', e.target.value)}
+                            className="h-8 w-10 rounded-lg border border-aisle-border cursor-pointer p-0.5 bg-white"
+                          />
+                          <div className="flex flex-wrap gap-1.5 flex-1">
+                            {['#FFFFFF', '#FAF6EF', '#161D27', '#F9F9F8', '#F5EFE6'].map((hex) => (
+                              <button
+                                key={hex}
+                                type="button"
+                                onClick={() => handleUpdateThemeConfig('surface_color', hex)}
+                                className="h-6 w-6 rounded-full border border-black/15 shadow-xs cursor-pointer transition-transform hover:scale-110"
+                                style={{ backgroundColor: hex }}
+                                title={hex}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Canvas Layout Width */}
+                      <div className="pt-3 border-t border-aisle-border/60 space-y-2">
+                        <label className="font-semibold text-aisle-charcoal block">Canvas Layout Width</label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { id: 'narrow', label: 'Narrow', desc: 'Mobile-first compact' },
+                            { id: 'medium', label: 'Balanced', desc: 'Stationery card' },
+                            { id: 'wide', label: 'Wide', desc: 'Editorial spacious' },
+                          ].map((w) => (
+                            <button
+                              key={w.id}
+                              type="button"
+                              onClick={() => handleUpdateThemeConfig('canvas_width', w.id)}
+                              className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                                (customTheme.canvas_width || 'medium') === w.id
+                                  ? 'border-aisle-terracotta bg-aisle-sand/50 shadow-xs'
+                                  : 'border-aisle-border hover:bg-aisle-sand/20'
+                              }`}
+                            >
+                              <span className="font-semibold text-xs text-aisle-charcoal block">{w.label}</span>
+                              <span className="text-[10px] text-aisle-muted">{w.desc}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
+                  )}
+
+                  {/* SUB-TAB 3: TYPOGRAPHY & PHRASING */}
+                  {builderSubTab === 'typography' && (
+                    <div className="space-y-4 text-xs">
+                      {/* Font Family Pairing */}
+                      <div className="space-y-2">
+                        <label className="font-semibold text-aisle-charcoal block">Typography Pairing</label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { id: 'classic-serif', label: 'Classic Serif', desc: 'Playfair & Cormorant' },
+                            { id: 'modern-sans', label: 'Modern Sans', desc: 'Inter & Helvetica' },
+                            { id: 'vintage-editorial', label: 'Vintage Editorial', desc: 'Italian Romance' },
+                          ].map((f) => (
+                            <button
+                              key={f.id}
+                              type="button"
+                              onClick={() => handleUpdateThemeConfig('font_family', f.id)}
+                              className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                                (customTheme.font_family || 'classic-serif') === f.id
+                                  ? 'border-aisle-terracotta bg-aisle-sand/50 shadow-xs'
+                                  : 'border-aisle-border hover:bg-aisle-sand/20'
+                              }`}
+                            >
+                              <span className="font-semibold text-xs text-aisle-charcoal block">{f.label}</span>
+                              <span className="text-[10px] text-aisle-muted">{f.desc}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Floron Glyphs */}
+                      <div className="space-y-2 pt-3 border-t border-aisle-border/60">
+                        <label className="font-semibold text-aisle-charcoal block">Ornamental Floron Symbol</label>
+                        <div className="flex flex-wrap gap-2">
+                          {['❦', '✦', '✧', '—', '❁', '⚜', '🪞', '🕊'].map((fl) => (
+                            <button
+                              key={fl}
+                              type="button"
+                              onClick={() => handleUpdateThemeConfig('floron', fl)}
+                              className={`h-9 w-9 rounded-xl border flex items-center justify-center text-sm transition-all cursor-pointer ${
+                                (customTheme.floron || '✦') === fl
+                                  ? 'border-aisle-terracotta bg-aisle-terracotta text-white shadow-xs'
+                                  : 'border-aisle-border bg-white text-aisle-charcoal hover:bg-aisle-sand'
+                              }`}
+                            >
+                              {fl}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Eyebrow Text */}
+                      <div className="space-y-1 pt-2 border-t border-aisle-border/60">
+                        <label className="font-semibold text-aisle-charcoal block">Decorative Eyebrow Headline</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Among the camellias & old oaks"
+                          value={customTheme.eyebrow_text || ''}
+                          onChange={(e) => handleUpdateThemeConfig('eyebrow_text', e.target.value)}
+                          className="w-full rounded-xl border border-aisle-border p-2.5 bg-white focus:outline-none focus:border-aisle-terracotta"
+                        />
+                      </div>
+
+                      {/* Poetic Line */}
+                      <div className="space-y-1">
+                        <label className="font-semibold text-aisle-charcoal block">Poetic Subtitle Line</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. A garden in bloom, a love in flower"
+                          value={customTheme.poetic_line || ''}
+                          onChange={(e) => handleUpdateThemeConfig('poetic_line', e.target.value)}
+                          className="w-full rounded-xl border border-aisle-border p-2.5 bg-white focus:outline-none focus:border-aisle-terracotta"
+                        />
+                      </div>
+
+                      {/* Formal Invitation Phrase */}
+                      <div className="space-y-1">
+                        <label className="font-semibold text-aisle-charcoal block">Formal Invitation Phrase</label>
+                        <textarea
+                          rows={2}
+                          placeholder="e.g. request the honour of your presence at the celebration of their marriage"
+                          value={customTheme.invitation_phrase || ''}
+                          onChange={(e) => handleUpdateThemeConfig('invitation_phrase', e.target.value)}
+                          className="w-full rounded-xl border border-aisle-border p-2.5 bg-white focus:outline-none focus:border-aisle-terracotta"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* SUB-TAB 4: TACTILE OPENING REVEAL */}
+                  {builderSubTab === 'reveal' && (
+                    <div className="space-y-3 text-xs">
+                      <label className="font-semibold text-aisle-charcoal block">Select Guest Opening Experience</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {[
+                          {
+                            id: 'wax-seal',
+                            title: 'Tactile Wax Seal',
+                            desc: 'Dimensional wax monogram stamp with pulsing ring and authentic crack animation.',
+                            badge: 'Classic Romance',
+                          },
+                          {
+                            id: 'envelope',
+                            title: 'Vintage Envelope Unfold',
+                            desc: 'Warm paper envelope letterhead that smoothly unfolds upon tapping.',
+                            badge: 'Editorial Formal',
+                          },
+                          {
+                            id: 'curtain',
+                            title: 'Velvet Midnight Curtain',
+                            desc: 'Dramatic midnight navy card reveal with shimmering gold starlight accents.',
+                            badge: 'Black-Tie Evening',
+                          },
+                          {
+                            id: 'minimal-fade',
+                            title: 'Modern Clean Fade',
+                            desc: 'Instant, airy typographic fade with architectural minimalist button.',
+                            badge: 'Contemporary',
+                          },
+                        ].map((rev) => (
+                          <button
+                            key={rev.id}
+                            type="button"
+                            onClick={() => handleUpdateThemeConfig('opening_style', rev.id)}
+                            className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all space-y-1.5 ${
+                              (customTheme.opening_style || 'wax-seal') === rev.id
+                                ? 'border-aisle-terracotta bg-aisle-sand/50 shadow-sm ring-1 ring-aisle-terracotta'
+                                : 'border-aisle-border hover:bg-aisle-sand/20'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-serif font-semibold text-aisle-charcoal">{rev.title}</span>
+                              <span className="text-[9px] uppercase tracking-wider font-semibold text-aisle-gold-deep bg-white px-2 py-0.5 rounded-full border border-aisle-border/60">
+                                {rev.badge}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-aisle-muted leading-relaxed">{rev.desc}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* SUB-TAB 5: IMAGERY & PHOTO SLOTS */}
+                  {builderSubTab === 'imagery' && (
+                    <div className="space-y-4">
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-aisle-charcoal">
+                          Website Imagery & Photo Uploads
+                        </h4>
+                        <p className="text-[11px] text-aisle-muted mt-0.5">
+                          Select files from your computer, curated high-res boutique library, or direct URL.
+                        </p>
+                      </div>
+
+                      <ImagePickerUploader
+                        label="Cover & Hero Photo"
+                        value={event.cover_image_url || ''}
+                        onChange={(url) => handleUpdateDesignSlot('cover_image_url', url)}
+                        eventId={event.id}
+                        adminToken={event.admin_token}
+                        category="cover"
+                        aspectRatio="landscape"
+                        helperText="Hero image at the top of your digital wedding invitation and guest portal."
+                      />
+
+                      <ImagePickerUploader
+                        label="Our Story Couple Photo"
+                        value={event.story_image_url || ''}
+                        onChange={(url) => handleUpdateDesignSlot('story_image_url', url)}
+                        eventId={event.id}
+                        adminToken={event.admin_token}
+                        category="story"
+                        aspectRatio="landscape"
+                        helperText="Romantic photo showcasing your journey and couple narrative."
+                      />
+
+                      <ImagePickerUploader
+                        label="Venue & Setting Photo"
+                        value={event.venue_image_url || ''}
+                        onChange={(url) => handleUpdateDesignSlot('venue_image_url', url)}
+                        eventId={event.id}
+                        adminToken={event.admin_token}
+                        category="venue"
+                        aspectRatio="landscape"
+                        helperText="Photo of the ceremony/reception villa, garden, or estate."
+                      />
+                    </div>
+                  )}
+
+                  {/* SUB-TAB 6: CHAPTERS & LAYOUT */}
+                  {builderSubTab === 'sections' && (
+                    <div className="space-y-4 text-xs">
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-aisle-charcoal">
+                          Portal Chapters & Section Flow
+                        </h4>
+                        <p className="text-[11px] text-aisle-muted mt-0.5">
+                          Toggle visibility and customize the chapter layout for your guests.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        {[
+                          { id: 'story', label: 'Chapter I: Our Story & Welcome', desc: 'Narrative & couple narrative photo' },
+                          { id: 'schedule', label: 'Chapter II: The Itinerary', desc: 'Timeline schedule & attire notes' },
+                          { id: 'venue', label: 'Chapter III: Venue & Setting', desc: 'Location address & one-tap map' },
+                          { id: 'travel', label: 'Chapter IV: Accommodations & Logistics', desc: 'Hotel room blocks & shuttles' },
+                          { id: 'rsvp', label: 'Chapter V: Zero-Login Interactive RSVP', desc: 'Household RSVP, meals & questions' },
+                          { id: 'photos', label: 'Chapter VI: Live Photo Stream', desc: 'Guest camera uploads & gallery' },
+                          { id: 'registry', label: 'Chapter VII: Gift Registry & Cash Funds', desc: 'Honeymoon fund & gift items' },
+                          { id: 'faq', label: 'Chapter VIII: FAQ Accordion', desc: 'Common questions & answers' },
+                          { id: 'local-recs', label: 'Chapter IX: Local Concierge', desc: 'Curated dining, drinks & stays' },
+                          { id: 'wedding-party', label: 'Chapter X: The Wedding Party', desc: 'Entourage bios & portraits' },
+                        ].map((sec) => (
+                          <div
+                            key={sec.id}
+                            className="flex items-center justify-between p-3 rounded-xl border border-aisle-border bg-[#FAF7F2]/40"
+                          >
+                            <div>
+                              <span className="font-semibold text-aisle-charcoal block">{sec.label}</span>
+                              <span className="text-[10px] text-aisle-muted">{sec.desc}</span>
+                            </div>
+                            <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                              Active
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Manual Save & Action Bar */}
+                  <div className="pt-4 border-t border-aisle-border/70 flex items-center justify-between">
+                    <p className="text-[11px] text-aisle-muted italic">
+                      Changes sync live to your guest view.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleSaveAllDesign}
+                      disabled={isProcessingAction}
+                      className="rounded-full bg-aisle-charcoal px-5 py-2 text-xs font-semibold uppercase tracking-wider text-white hover:bg-aisle-terracotta disabled:opacity-50 cursor-pointer shadow-sm transition-all"
+                    >
+                      {isProcessingAction ? 'Saving Design...' : 'Save All Portal Design'}
+                    </button>
                   </div>
                 </div>
               </div>

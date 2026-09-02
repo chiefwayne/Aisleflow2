@@ -32,11 +32,12 @@ export default function LandingPage() {
 
   // Event Creation Form State
   const [form, setForm] = useState({
-    couple_names: 'Charlotte & William',
-    admin_email: 'charlotte.william@example.com',
-    wedding_date: '2026-10-17',
-    venue_name: 'Château de Varennes',
-    venue_address: 'Bourgogne, France',
+    couple_names: '',
+    admin_email: '',
+    wedding_date: '',
+    venue_name: '',
+    venue_address: '',
+    theme_id: 'royal-floral',
   });
 
   const handleCreateEvent = async (e: React.FormEvent) => {
@@ -471,12 +472,27 @@ export default function LandingPage() {
                 <label className="block font-medium text-aisle-warm mb-1">Venue Address / Location</label>
                 <input
                   type="text"
-                  placeholder="Bourgogne, France"
+                  placeholder="e.g. Lenno, Lake Como, Italy"
                   value={form.venue_address}
                   onChange={(e) => setForm({ ...form, venue_address: e.target.value })}
                   required
                   className="w-full rounded-xl border border-aisle-border px-3 py-2.5 text-xs focus:outline-none focus:border-aisle-terracotta"
                 />
+              </div>
+
+              <div>
+                <label className="block font-medium text-aisle-warm mb-1">Aesthetic Invitation Preset</label>
+                <select
+                  value={form.theme_id}
+                  onChange={(e) => setForm({ ...form, theme_id: e.target.value })}
+                  className="w-full rounded-xl border border-aisle-border px-3 py-2.5 text-xs bg-white focus:outline-none focus:border-aisle-terracotta"
+                >
+                  {Object.values(BUILTIN_THEMES).map((thm) => (
+                    <option key={thm.id} value={thm.id}>
+                      {thm.name} — {thm.taxonomy}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="pt-3">

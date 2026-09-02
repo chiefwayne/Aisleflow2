@@ -1360,10 +1360,18 @@ export async function updateEventDesignAction(input: FormData | Record<string, a
       updatePayload.theme_id = formData.get('theme_id') as string;
     }
     if (formData.has('theme_config')) {
-      const themeConfigJson = formData.get('theme_config') as string;
-      updatePayload.theme_config = themeConfigJson
-        ? (typeof themeConfigJson === 'string' ? JSON.parse(themeConfigJson) : themeConfigJson)
-        : {};
+      const themeConfigInput = formData.get('theme_config') as string;
+      const parsedConfig = typeof themeConfigInput === 'string' ? JSON.parse(themeConfigInput) : themeConfigInput;
+
+      // Fetch existing theme_config to merge gracefully
+      const { data: existingEvent } = await supabaseAdmin
+        .from('events')
+        .select('theme_config')
+        .eq('id', eventId)
+        .maybeSingle();
+
+      const existingConfig = (existingEvent?.theme_config && typeof existingEvent.theme_config === 'object') ? existingEvent.theme_config : {};
+      updatePayload.theme_config = { ...existingConfig, ...parsedConfig };
     }
     if (formData.has('cover_image_url')) {
       updatePayload.cover_image_url = formData.get('cover_image_url') as string;

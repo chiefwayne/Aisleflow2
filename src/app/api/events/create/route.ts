@@ -5,11 +5,13 @@ import { createGuestAccessToken } from '@/lib/guest-access-token';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { couple_names, admin_email, wedding_date, venue_name, venue_address } = body;
+    const { couple_names, admin_email, wedding_date, venue_name, venue_address, theme_id } = body;
 
     if (!couple_names || !admin_email || !wedding_date || !venue_name || !venue_address) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
+
+    const selectedThemeId = theme_id || 'royal-floral';
 
     const slug =
       couple_names.toLowerCase().replace(/[^a-z0-9]+/g, '-') +
@@ -36,7 +38,7 @@ export async function POST(request: Request) {
         rsvp_deadline: rsvpDeadlineDate,
         venue_name,
         venue_address,
-        theme_id: 'royal-floral',
+        theme_id: selectedThemeId,
         welcome_message: `We are so excited to celebrate our wedding with you at ${venue_name}!`,
         our_story: 'Thank you for being an essential part of our lives and journey together.',
         cover_image_url:

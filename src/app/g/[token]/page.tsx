@@ -11,6 +11,8 @@ import {
   PhotoRecord
 } from '@/lib/types';
 
+import { ensureDemoEventSeeded, DEMO_GUEST_TOKEN } from '@/lib/demo-seeder';
+
 interface PageProps {
   params: Promise<{ token: string }>;
 }
@@ -21,7 +23,12 @@ export default async function GuestPortalPage({ params }: PageProps) {
   let primaryGuest: GuestRecord | null = null;
   let event: EventRecord | null = null;
 
-  // 1. Try finding Guest by access_token
+  // 1. If demo guest token on fresh DB, ensure demo event is seeded first
+  if (token === DEMO_GUEST_TOKEN || token === 'guest_elena_vance') {
+    await ensureDemoEventSeeded();
+  }
+
+  // 2. Try finding Guest by access_token
   const { data: foundGuest } = await supabase
     .from('guests')
     .select('*')
@@ -38,7 +45,7 @@ export default async function GuestPortalPage({ params }: PageProps) {
     event = foundEvent as EventRecord | null;
   }
 
-  // 2. If not found by guest access_token, check if token is an admin_token or event slug
+  // 3. If not found by guest access_token, check if token is an admin_token or event slug
   if (!event) {
     const { data: eventByAdminOrSlug } = await supabase
       .from('events')
@@ -62,28 +69,17 @@ export default async function GuestPortalPage({ params }: PageProps) {
     }
   }
 
-  // 3. Fallback for sample/demo links (e.g. 'guest_elena_vance', 'preview', 'sample')
+  // 4. Fallback for sample/demo links (e.g. 'guest_elena_vance', 'preview', 'sample')
   if (!event && (token === 'guest_elena_vance' || token.startsWith('demo') || token.startsWith('sample') || token === 'preview')) {
-    const { data: latestEvent } = await supabase
-      .from('events')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (latestEvent) {
-      event = latestEvent as EventRecord;
-      const { data: firstGuest } = await supabase
-        .from('guests')
+    event = (await ensureDemoEventSeeded()) as any;
+    if (!event) {
+      const { data: latestEvent } = await supabase
+        .from('events')
         .select('*')
-        .eq('event_id', event.id)
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-
-      if (firstGuest) {
-        primaryGuest = firstGuest as GuestRecord;
-      }
+      if (latestEvent) event = latestEvent as EventRecord;
     }
   }
 

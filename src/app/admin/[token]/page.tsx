@@ -16,6 +16,8 @@ import {
   CommunicationCampaignRecord
 } from '@/lib/types';
 
+import { ensureDemoEventSeeded, DEMO_ADMIN_TOKEN } from '@/lib/demo-seeder';
+
 interface PageProps {
   params: Promise<{ token: string }>;
 }
@@ -24,13 +26,17 @@ export default async function AdminDashboardPage({ params }: PageProps) {
   const { token } = await params;
 
   // 1. Fetch Event by admin_token
-  const { data: event, error: eventErr } = await supabase
+  let { data: event, error: eventErr } = await supabase
     .from('events')
     .select('*')
     .eq('admin_token', token)
     .single();
 
-  if (eventErr || !event) {
+  if ((eventErr || !event) && (token === DEMO_ADMIN_TOKEN || token.startsWith('admin_sophia_demo'))) {
+    event = (await ensureDemoEventSeeded()) as any;
+  }
+
+  if (!event) {
     return (
       <div className="min-h-screen bg-[#FAF7F2] flex items-center justify-center p-6 text-center">
         <div className="max-w-md rounded-3xl border border-aisle-border bg-white p-8 shadow-sm space-y-4">

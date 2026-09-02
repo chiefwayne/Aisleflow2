@@ -79,10 +79,15 @@ export default function GuestPortalView({
   customTheme,
   previewMode = false,
 }: GuestPortalViewProps) {
-  const theme =
+  const baseTheme =
     customTheme ||
     (event?.theme_id ? BUILTIN_THEMES[event.theme_id] : null) ||
     BUILTIN_THEMES['royal-floral'];
+
+  const theme: TemplateDesignRecord = {
+    ...baseTheme,
+    ...(event?.theme_config && typeof event.theme_config === 'object' ? event.theme_config : {}),
+  };
 
   const fallbackGuest: GuestRecord = {
     id: 'preview-guest-id',
@@ -444,13 +449,27 @@ export default function GuestPortalView({
   const weddingPartyList = customSections.wedding_party?.members || [];
   const travelInfo = customSections.travel || {};
 
+  const fontClass =
+    theme.font_family === 'modern-sans'
+      ? 'font-sans'
+      : theme.font_family === 'vintage-editorial'
+      ? 'font-editorial'
+      : 'font-serif';
+
+  const canvasMaxWidthClass =
+    theme.canvas_width === 'narrow'
+      ? 'max-w-md'
+      : theme.canvas_width === 'wide'
+      ? 'max-w-2xl'
+      : 'max-w-xl';
+
   return (
     <div
       style={{
         backgroundColor: theme.bg_color || '#FAF7F2',
         color: theme.text_color || '#2C2523',
       }}
-      className={`min-h-screen selection:bg-aisle-terracotta selection:text-white pb-28 font-serif transition-colors duration-500`}
+      className={`min-h-screen selection:bg-aisle-terracotta selection:text-white pb-28 ${fontClass} transition-colors duration-500`}
     >
       {/* 1. Tactile Wax-Seal / Envelope Opening Reveal */}
       {!hasOpened && (
@@ -463,7 +482,7 @@ export default function GuestPortalView({
       )}
 
       {/* Main Flowing Stationery Canvas */}
-      <main className="mx-auto max-w-xl px-5 sm:px-8 py-10 sm:py-16 space-y-16 sm:space-y-24">
+      <main className={`mx-auto ${canvasMaxWidthClass} px-5 sm:px-8 py-10 sm:py-16 space-y-16 sm:space-y-24`}>
         
         {/* 1. EDITORIAL HERO & INVITATION */}
         <header className="text-center space-y-6 pt-4">
@@ -740,6 +759,28 @@ export default function GuestPortalView({
           <div className="space-y-2">
             <h3 className="font-serif text-xl font-semibold">{event.venue_name}</h3>
             <p className="text-xs font-sans opacity-75">{event.venue_address}</p>
+
+            {event.venue_address && (
+              <div className="pt-1.5 flex justify-center">
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                    `${event.venue_name ? event.venue_name + ', ' : ''}${event.venue_address}`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-4 py-1.5 rounded-full border transition-all shadow-sm hover:opacity-80 cursor-pointer"
+                  style={{
+                    borderColor: theme.border_color || '#E8E0D7',
+                    backgroundColor: theme.surface_color || '#FFFFFF',
+                    color: theme.accent_color || '#9E5A44',
+                  }}
+                >
+                  <MapPin className="h-3 w-3" />
+                  <span>Get Directions & Map</span>
+                  <ExternalLink className="h-3 w-3 opacity-60" />
+                </a>
+              </div>
+            )}
 
             {event.travel_info && (
               <p
