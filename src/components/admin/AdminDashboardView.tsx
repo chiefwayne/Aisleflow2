@@ -43,9 +43,11 @@ import {
   Layers,
   Sliders,
   ChevronUp,
-  ChevronDown,
   Eye,
-  EyeOff
+  EyeOff,
+  UserPlus,
+  Edit2,
+  X
 } from 'lucide-react';
 import {
   EventRecord,
@@ -401,17 +403,62 @@ export default function AdminDashboardView({
     }
   };
 
-  // Group Selected Guests into Party (Server Action)
-  const handleGroupParty = async () => {
+  // Party Grouping & Management Modals
+  const [groupModalOpen, setGroupModalOpen] = useState(false);
+  const [groupPartyName, setGroupPartyName] = useState('');
+  const [groupTargetPartyId, setGroupTargetPartyId] = useState<'new' | string>('new');
+  const [managePartyModalOpen, setManagePartyModalOpen] = useState(false);
+  const [activePartyId, setActivePartyId] = useState<string | null>(null);
+  const [activePartyName, setActivePartyName] = useState('');
+  const [addGuestToPartySelectedId, setAddGuestToPartySelectedId] = useState('');
+
+  // Extract all unique parties
+  const existingParties = React.useMemo(() => {
+    const partyMap: Record<string, { id: string; name: string; members: GuestRecord[] }> = {};
+    guests.forEach((g) => {
+      const pid = g.party_id || (g as any).household_id;
+      if (pid) {
+        if (!partyMap[pid]) {
+          partyMap[pid] = {
+            id: pid,
+            name: g.party_name || `The ${g.last_name || 'Party'} Group`,
+            members: [],
+          };
+        }
+        partyMap[pid].members.push(g);
+      }
+    });
+    return Object.values(partyMap);
+  }, [guests]);
+
+  // Open Group Modal when 2+ guests selected
+  const handleOpenGroupModal = () => {
     if (selectedGuestIds.length < 2) return;
-    const defaultName = `The ${guests.find((g) => g.id === selectedGuestIds[0])?.last_name || 'Party'} Group`;
+    const firstGuest = guests.find((g) => g.id === selectedGuestIds[0]);
+    const defaultName = firstGuest?.last_name
+      ? `The ${firstGuest.last_name} Family`
+      : `${firstGuest?.first_name || 'Household'} Party`;
+    setGroupPartyName(defaultName);
+    setGroupTargetPartyId('new');
+    setGroupModalOpen(true);
+  };
+
+  // Submit Grouping from Modal
+  const handleConfirmGrouping = async () => {
+    if (selectedGuestIds.length < 2 && groupTargetPartyId === 'new') return;
+    setIsProcessingAction(true);
     try {
+      const targetParty = groupTargetPartyId === 'new' ? null : existingParties.find((p) => p.id === groupTargetPartyId);
+      const partyName = groupTargetPartyId === 'new' ? groupPartyName.trim() || 'Household Party' : targetParty?.name || 'Household Party';
+      const partyId = groupTargetPartyId === 'new' ? undefined : groupTargetPartyId;
+
       const result = await managePartyAction({
         partyAction: 'group',
         eventId: event.id,
         adminToken: event.admin_token,
         guestIds: selectedGuestIds,
-        partyName: defaultName,
+        partyName,
+        partyId,
       });
 
       if (result.success) {
@@ -423,17 +470,97 @@ export default function AdminDashboardView({
 
         if (updatedGuests) setGuests(updatedGuests as GuestRecord[]);
         setSelectedGuestIds([]);
-        setStatusMessage(`👥 Grouped ${selectedGuestIds.length} guests into "${defaultName}".`);
+        setGroupModalOpen(false);
+        setStatusMessage(`👥 Grouped ${selectedGuestIds.length} guests into "${partyName}".`);
+      } else {
+        setStatusMessage(`Error grouping party: ${result.error}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setStatusMessage(`Error: ${err?.message}`);
     } finally {
+      setIsProcessingAction(false);
       setTimeout(() => setStatusMessage(''), 3500);
     }
   };
 
-  // Unlink a Guest from Party (Server Action)
-  const handleUnlinkParty = async (guestId: string) => {
+  // Open Manage Party Modal for specific party
+  const handleOpenManageParty = (partyId: string) => {
+    const party = existingParties.find((p) => p.id === partyId);
+    if (!party) return;
+    setActivePartyId(partyId);
+    setActivePartyName(party.name);
+    setAddGuestToPartySelectedId('');
+    setManagePartyModalOpen(true);
+  };
+
+  // Rename Party
+  const handleRenameParty = async () => {
+    if (!activePartyId || !activePartyName.trim()) return;
+    setIsProcessingAction(true);
+    try {
+      const result = await managePartyAction({
+        partyAction: 'rename',
+        eventId: event.id,
+        adminToken: event.admin_token,
+        partyId: activePartyId,
+        partyName: activePartyName.trim(),
+      });
+
+      if (result.success) {
+        setGuests((prev) =>
+          prev.map((g) =>
+            (g.party_id === activePartyId || (g as any).household_id === activePartyId)
+              ? { ...g, party_name: activePartyName.trim() }
+              : g
+          )
+        );
+        setStatusMessage(`Party renamed to "${activePartyName.trim()}".`);
+      }
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setIsProcessingAction(false);
+      setTimeout(() => setStatusMessage(''), 3000);
+    }
+  };
+
+  // Add guest to active party
+  const handleAddGuestToActiveParty = async (guestIdToAdd: string) => {
+    if (!activePartyId || !guestIdToAdd) return;
+    setIsProcessingAction(true);
+    try {
+      const result = await managePartyAction({
+        partyAction: 'add_members',
+        eventId: event.id,
+        adminToken: event.admin_token,
+        partyId: activePartyId,
+        partyName: activePartyName,
+        guestIds: [guestIdToAdd],
+      });
+
+      if (result.success) {
+        const { data: updatedGuests } = await supabase
+          .from('guests')
+          .select('*')
+          .eq('event_id', event.id)
+          .order('created_at', { ascending: true });
+
+        if (updatedGuests) setGuests(updatedGuests as GuestRecord[]);
+        setAddGuestToPartySelectedId('');
+        setStatusMessage('Guest added to party.');
+      }
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setIsProcessingAction(false);
+      setTimeout(() => setStatusMessage(''), 3000);
+    }
+  };
+
+  // Remove guest from active party
+  const handleRemoveGuestFromParty = async (guestId: string) => {
+    setIsProcessingAction(true);
     try {
       const result = await managePartyAction({
         partyAction: 'unlink',
@@ -441,16 +568,52 @@ export default function AdminDashboardView({
         adminToken: event.admin_token,
         guestIds: [guestId],
       });
+
       if (result.success) {
         setGuests((prev) =>
-          prev.map((g) => (g.id === guestId ? { ...g, party_id: null, party_name: null } : g))
+          prev.map((g) =>
+            g.id === guestId ? { ...g, party_id: null, party_name: null, household_id: null } : g
+          )
         );
-        setStatusMessage('Guest unlinked from household party.');
+        setStatusMessage('Guest removed from party.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
     } finally {
-      setTimeout(() => setStatusMessage(''), 2500);
+      setIsProcessingAction(false);
+      setTimeout(() => setStatusMessage(''), 3000);
+    }
+  };
+
+  // Dissolve active party completely
+  const handleDissolveParty = async () => {
+    if (!activePartyId) return;
+    if (!confirm(`Are you sure you want to dissolve "${activePartyName}" and unlink all its members?`)) return;
+    setIsProcessingAction(true);
+    try {
+      const result = await managePartyAction({
+        partyAction: 'dissolve',
+        eventId: event.id,
+        adminToken: event.admin_token,
+        partyId: activePartyId,
+      });
+
+      if (result.success) {
+        setGuests((prev) =>
+          prev.map((g) =>
+            (g.party_id === activePartyId || (g as any).household_id === activePartyId)
+              ? { ...g, party_id: null, party_name: null, household_id: null }
+              : g
+          )
+        );
+        setManagePartyModalOpen(false);
+        setStatusMessage('Party dissolved.');
+      }
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setIsProcessingAction(false);
+      setTimeout(() => setStatusMessage(''), 3000);
     }
   };
 
@@ -1678,12 +1841,14 @@ export default function AdminDashboardView({
                   <option value="declined">Declined</option>
                   <option value="pending">Pending</option>
                   <option value="vip">VIP Guests</option>
+                  <option value="party">Grouped in Party ({existingParties.length} parties)</option>
+                  <option value="unassigned">Individual (Ungrouped)</option>
                 </select>
 
                 {selectedGuestIds.length >= 2 && (
                   <button
-                    onClick={handleGroupParty}
-                    className="rounded-xl bg-aisle-gold px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-aisle-gold-deep cursor-pointer flex items-center gap-1.5"
+                    onClick={handleOpenGroupModal}
+                    className="rounded-xl bg-aisle-gold px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-aisle-gold-deep cursor-pointer flex items-center gap-1.5 transition-all"
                   >
                     <UserCheck className="h-3.5 w-3.5" />
                     <span>Group into Party ({selectedGuestIds.length})</span>
@@ -1720,6 +1885,8 @@ export default function AdminDashboardView({
                         if (guestFilterStatus === 'declined') return g.rsvp_status === 'declined';
                         if (guestFilterStatus === 'pending') return g.rsvp_status === 'pending';
                         if (guestFilterStatus === 'vip') return g.is_vip;
+                        if (guestFilterStatus === 'party') return Boolean(g.party_id || (g as any).household_id);
+                        if (guestFilterStatus === 'unassigned') return !g.party_id && !(g as any).household_id;
                         return true;
                       })
                       .filter((g) => {
@@ -1733,6 +1900,8 @@ export default function AdminDashboardView({
                       })
                       .map((guest) => {
                         const isSelected = selectedGuestIds.includes(guest.id);
+                        const partyId = guest.party_id || (guest as any).household_id;
+                        const matchingParty = existingParties.find((p) => p.id === partyId);
                         return (
                           <tr key={guest.id} className="hover:bg-[#FAF7F2]/40 transition-colors">
                             <td className="p-3">
@@ -1758,13 +1927,24 @@ export default function AdminDashboardView({
                                   </span>
                                 )}
                               </div>
-                              {guest.party_name && (
-                                <div className="flex items-center gap-1.5 mt-0.5">
-                                  <span className="text-[10px] text-aisle-muted">
-                                    {guest.party_name}
-                                  </span>
+                              {partyId && (
+                                <div className="flex items-center gap-1.5 mt-1">
                                   <button
-                                    onClick={() => handleUnlinkParty(guest.id)}
+                                    type="button"
+                                    onClick={() => handleOpenManageParty(partyId)}
+                                    title="Click to manage this household party"
+                                    className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-900 border border-amber-200/80 hover:bg-amber-100/80 transition-colors cursor-pointer group shadow-xs"
+                                  >
+                                    <Users className="h-2.5 w-2.5 text-amber-700" />
+                                    <span>{guest.party_name || matchingParty?.name || 'Household Party'}</span>
+                                    <span className="text-[9px] text-amber-700 font-bold ml-0.5">
+                                      ({matchingParty?.members.length || 2})
+                                    </span>
+                                    <Edit2 className="h-2 w-2 opacity-50 group-hover:opacity-100 ml-0.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveGuestFromParty(guest.id)}
                                     title="Unlink from household party"
                                     className="text-[9px] text-rose-600 hover:underline cursor-pointer"
                                   >
@@ -4396,6 +4576,305 @@ export default function AdminDashboardView({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* GROUP INTO PARTY MODAL */}
+      {groupModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 text-xs font-sans">
+          <div className="w-full max-w-md rounded-3xl border border-aisle-border bg-white p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
+            <div className="flex items-start justify-between border-b border-aisle-border/60 pb-3">
+              <div>
+                <h3 className="font-serif text-lg font-semibold text-aisle-charcoal">
+                  Group Guests into Household Party
+                </h3>
+                <p className="text-[11px] text-aisle-muted mt-0.5">
+                  Party members will share a linked invitation & can RSVP together.
+                </p>
+              </div>
+              <button
+                onClick={() => setGroupModalOpen(false)}
+                className="text-aisle-muted hover:text-aisle-charcoal cursor-pointer p-1"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Selected Guests preview */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted block">
+                Selected Guests ({selectedGuestIds.length})
+              </label>
+              <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 rounded-xl bg-[#FAF7F2] border border-aisle-border/60">
+                {selectedGuestIds.map((id) => {
+                  const g = guests.find((item) => item.id === id);
+                  return (
+                    <span
+                      key={id}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white border border-aisle-border text-[11px] font-medium text-aisle-charcoal shadow-2xs"
+                    >
+                      <span>{g?.first_name} {g?.last_name || ''}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Grouping Mode: Create New vs Add to Existing */}
+            <div className="space-y-3">
+              <label className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted block">
+                Destination Party
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setGroupTargetPartyId('new')}
+                  className={`p-2.5 rounded-xl border text-xs font-semibold text-left transition-all cursor-pointer ${
+                    groupTargetPartyId === 'new'
+                      ? 'bg-aisle-charcoal text-white border-aisle-charcoal shadow-xs'
+                      : 'bg-white border-aisle-border text-aisle-charcoal hover:bg-aisle-sand/30'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Create New Party</span>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  disabled={existingParties.length === 0}
+                  onClick={() => {
+                    if (existingParties.length > 0) setGroupTargetPartyId(existingParties[0].id);
+                  }}
+                  className={`p-2.5 rounded-xl border text-xs font-semibold text-left transition-all cursor-pointer disabled:opacity-40 ${
+                    groupTargetPartyId !== 'new'
+                      ? 'bg-aisle-charcoal text-white border-aisle-charcoal shadow-xs'
+                      : 'bg-white border-aisle-border text-aisle-charcoal hover:bg-aisle-sand/30'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Users className="h-3.5 w-3.5" />
+                    <span>Add to Existing ({existingParties.length})</span>
+                  </div>
+                </button>
+              </div>
+
+              {groupTargetPartyId === 'new' ? (
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-aisle-charcoal block">
+                    Household Party Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. The Beaufort-Thorne Family"
+                    value={groupPartyName}
+                    onChange={(e) => setGroupPartyName(e.target.value)}
+                    className="w-full rounded-xl border border-aisle-border p-2.5 bg-white text-aisle-charcoal focus:outline-none focus:border-aisle-terracotta"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-aisle-charcoal block">
+                    Select Existing Party
+                  </label>
+                  <select
+                    value={groupTargetPartyId}
+                    onChange={(e) => setGroupTargetPartyId(e.target.value)}
+                    className="w-full rounded-xl border border-aisle-border p-2.5 bg-white text-aisle-charcoal focus:outline-none focus:border-aisle-terracotta"
+                  >
+                    {existingParties.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.members.length} members)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-aisle-border/60">
+              <button
+                type="button"
+                onClick={() => setGroupModalOpen(false)}
+                className="rounded-full border border-aisle-border px-4 py-2 text-xs font-semibold text-aisle-muted hover:text-aisle-charcoal cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmGrouping}
+                disabled={isProcessingAction || (groupTargetPartyId === 'new' && !groupPartyName.trim())}
+                className="rounded-full bg-aisle-charcoal px-5 py-2 text-xs font-semibold text-white hover:bg-aisle-terracotta disabled:opacity-50 cursor-pointer shadow-sm transition-all"
+              >
+                {isProcessingAction ? 'Grouping...' : 'Group Guests'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MANAGE PARTY MODAL */}
+      {managePartyModalOpen && activePartyId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 text-xs font-sans">
+          <div className="w-full max-w-lg rounded-3xl border border-aisle-border bg-white p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
+            <div className="flex items-start justify-between border-b border-aisle-border/60 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-full bg-amber-100 text-amber-900">
+                    <Users className="h-4 w-4" />
+                  </span>
+                  <h3 className="font-serif text-lg font-semibold text-aisle-charcoal">
+                    Manage Household Party
+                  </h3>
+                </div>
+                <p className="text-[11px] text-aisle-muted mt-0.5">
+                  Edit party name, add or remove members, or dissolve the group.
+                </p>
+              </div>
+              <button
+                onClick={() => setManagePartyModalOpen(false)}
+                className="text-aisle-muted hover:text-aisle-charcoal cursor-pointer p-1"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* 1. Rename Party */}
+            <div className="space-y-1.5 p-3.5 rounded-2xl bg-[#FAF7F2] border border-aisle-border">
+              <label className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted block">
+                Party / Household Name
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={activePartyName}
+                  onChange={(e) => setActivePartyName(e.target.value)}
+                  className="flex-1 rounded-xl border border-aisle-border px-3 py-2 bg-white text-xs text-aisle-charcoal focus:outline-none focus:border-aisle-terracotta font-medium"
+                />
+                <button
+                  type="button"
+                  onClick={handleRenameParty}
+                  disabled={isProcessingAction || !activePartyName.trim()}
+                  className="rounded-xl bg-aisle-charcoal px-4 py-2 text-xs font-semibold text-white hover:bg-aisle-terracotta disabled:opacity-50 cursor-pointer"
+                >
+                  Save Name
+                </button>
+              </div>
+            </div>
+
+            {/* 2. Current Members List */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted">
+                  Current Members (
+                  {existingParties.find((p) => p.id === activePartyId)?.members.length || 0}
+                  )
+                </label>
+                <span className="text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold border border-emerald-200">
+                  Shared RSVP Link Active
+                </span>
+              </div>
+
+              <div className="space-y-2 max-h-48 overflow-y-auto divide-y divide-aisle-border/40 border border-aisle-border/60 rounded-2xl p-2 bg-white">
+                {existingParties
+                  .find((p) => p.id === activePartyId)
+                  ?.members.map((member) => (
+                    <div
+                      key={member.id}
+                      className="flex items-center justify-between p-2 hover:bg-[#FAF7F2]/50 rounded-xl transition-colors"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="font-semibold text-aisle-charcoal flex items-center gap-1.5">
+                          <span>{member.first_name} {member.last_name || ''}</span>
+                          {member.is_vip && (
+                            <span className="rounded-full bg-aisle-gold/20 px-1.5 py-0.2 text-[8px] font-bold text-aisle-gold-deep">
+                              VIP
+                            </span>
+                          )}
+                          <span
+                            className={`text-[9px] px-1.5 py-0.2 rounded-full font-medium ${
+                              member.rsvp_status === 'attending'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : member.rsvp_status === 'declined'
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-aisle-sand text-aisle-charcoal'
+                            }`}
+                          >
+                            {member.rsvp_status}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-aisle-muted">
+                          {member.email || member.phone || 'No direct contact'}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveGuestFromParty(member.id)}
+                        disabled={isProcessingAction}
+                        title="Remove member from party"
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2 py-1 rounded-lg border border-rose-200 cursor-pointer"
+                      >
+                        <UserMinus className="h-3 w-3" />
+                        <span>Remove</span>
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            {/* 3. Add Guest to Party */}
+            <div className="space-y-1.5 p-3.5 rounded-2xl bg-[#FAF7F2] border border-aisle-border">
+              <label className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted block">
+                Add Another Guest to This Party
+              </label>
+              <div className="flex gap-2">
+                <select
+                  value={addGuestToPartySelectedId}
+                  onChange={(e) => setAddGuestToPartySelectedId(e.target.value)}
+                  className="flex-1 rounded-xl border border-aisle-border px-3 py-2 bg-white text-xs text-aisle-charcoal focus:outline-none focus:border-aisle-terracotta"
+                >
+                  <option value="">-- Choose guest to add --</option>
+                  {guests
+                    .filter((g) => g.party_id !== activePartyId && (g as any).household_id !== activePartyId)
+                    .map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.first_name} {g.last_name || ''} {g.party_name ? `(currently in ${g.party_name})` : ''}
+                      </option>
+                    ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => handleAddGuestToActiveParty(addGuestToPartySelectedId)}
+                  disabled={isProcessingAction || !addGuestToPartySelectedId}
+                  className="rounded-xl bg-aisle-charcoal px-3.5 py-2 text-xs font-semibold text-white hover:bg-aisle-terracotta disabled:opacity-50 cursor-pointer inline-flex items-center gap-1"
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  <span>Add</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 4. Danger Zone: Dissolve Party */}
+            <div className="flex items-center justify-between pt-3 border-t border-aisle-border/60">
+              <button
+                type="button"
+                onClick={handleDissolveParty}
+                disabled={isProcessingAction}
+                className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer inline-flex items-center gap-1"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Dissolve Entire Party</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setManagePartyModalOpen(false)}
+                className="rounded-full bg-aisle-charcoal px-5 py-2 text-xs font-semibold text-white hover:bg-aisle-terracotta cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
           </div>
         </div>
       )}

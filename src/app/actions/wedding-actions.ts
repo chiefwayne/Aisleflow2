@@ -882,28 +882,49 @@ export async function managePartyAction(input: FormData | Record<string, any>) {
     const eventId = formData.get('eventId') as string;
     const adminToken = formData.get('adminToken') as string;
     const guestIdsJson = formData.get('guestIds') as string;
-    const action = formData.get('partyAction') as 'group' | 'unlink';
+    const action = (formData.get('partyAction') as string) || 'group';
     const partyName = (formData.get('partyName') as string) || 'Party Group';
+    const existingPartyId = formData.get('partyId') as string | null;
 
     requireAdminAccess(eventId, adminToken);
-    const guestIds: string[] = typeof guestIdsJson === 'string' ? JSON.parse(guestIdsJson || '[]') : guestIdsJson;
-
-    if (!guestIds || guestIds.length === 0) return { error: 'No guests selected.' };
+    const guestIds: string[] = typeof guestIdsJson === 'string' ? JSON.parse(guestIdsJson || '[]') : (guestIdsJson || []);
 
     if (action === 'group') {
-      const partyId = 'p_' + Math.random().toString(36).substring(2, 10);
+      if (!guestIds || guestIds.length === 0) return { error: 'No guests selected.' };
+      const partyId = existingPartyId || ('p_' + Math.random().toString(36).substring(2, 10));
       await supabaseAdmin
         .from('guests')
-        .update({ party_id: partyId, party_name: partyName })
+        .update({ party_id: partyId, party_name: partyName, household_id: partyId })
         .in('id', guestIds);
-    } else {
+    } else if (action === 'add_members') {
+      if (!existingPartyId) return { error: 'Party ID is required.' };
+      if (!guestIds || guestIds.length === 0) return { error: 'No guests selected to add.' };
       await supabaseAdmin
         .from('guests')
-        .update({ party_id: null, party_name: null })
+        .update({ party_id: existingPartyId, party_name: partyName, household_id: existingPartyId })
         .in('id', guestIds);
+    } else if (action === 'rename') {
+      if (!existingPartyId) return { error: 'Party ID is required.' };
+      await supabaseAdmin
+        .from('guests')
+        .update({ party_name: partyName })
+        .or(`party_id.eq.${existingPartyId},household_id.eq.${existingPartyId}`);
+    } else if (action === 'unlink') {
+      if (!guestIds || guestIds.length === 0) return { error: 'No guests specified to unlink.' };
+      await supabaseAdmin
+        .from('guests')
+        .update({ party_id: null, party_name: null, household_id: null })
+        .in('id', guestIds);
+    } else if (action === 'dissolve') {
+      if (!existingPartyId) return { error: 'Party ID is required to dissolve.' };
+      await supabaseAdmin
+        .from('guests')
+        .update({ party_id: null, party_name: null, household_id: null })
+        .or(`party_id.eq.${existingPartyId},household_id.eq.${existingPartyId}`);
     }
 
     revalidatePath(`/admin/${adminToken}`);
+    revalidatePath('/g/[token]', 'page');
     return { success: true };
   } catch (err: any) {
     console.error('managePartyAction error:', err);
