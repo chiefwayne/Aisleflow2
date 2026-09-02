@@ -1505,3 +1505,91 @@ export async function uploadWebsiteImageAction(input: FormData | Record<string, 
     return { error: err.message || 'Failed to upload image.' };
   }
 }
+
+// ============================================================================
+// 14. COMMUNICATION TEMPLATES MANAGEMENT
+// ============================================================================
+export async function updateCommunicationTemplateAction(input: FormData | Record<string, any>) {
+  try {
+    const formData = toFormData(input);
+    const eventId = formData.get('eventId') as string;
+    const adminToken = formData.get('adminToken') as string;
+    const templateId = formData.get('templateId') as string;
+    const name = formData.get('name') as string;
+    const subject = formData.get('subject') as string;
+    const emailBody = formData.get('emailBody') as string;
+    const smsBody = formData.get('smsBody') as string;
+    const channel = (formData.get('channel') as string) || 'both';
+    const lifecycleType = (formData.get('lifecycleType') as string) || 'invitation';
+
+    requireAdminAccess(eventId, adminToken);
+
+    if (templateId && templateId !== 'new') {
+      const { data: updated, error } = await supabaseAdmin
+        .from('communication_templates')
+        .update({
+          name,
+          subject,
+          email_body: emailBody,
+          sms_body: smsBody,
+          channel,
+          lifecycle_type: lifecycleType,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', templateId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      revalidatePath(`/admin/${adminToken}`);
+      return { success: true, template: updated };
+    } else {
+      const templateKey = name.toLowerCase().replace(/[^a-z0-9]+/g, '_') + '_' + Math.random().toString(36).substring(2, 6);
+      const { data: created, error } = await supabaseAdmin
+        .from('communication_templates')
+        .insert({
+          event_id: eventId,
+          template_key: templateKey,
+          name,
+          lifecycle_type: lifecycleType,
+          channel,
+          subject,
+          email_body: emailBody,
+          sms_body: smsBody,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      revalidatePath(`/admin/${adminToken}`);
+      return { success: true, template: created };
+    }
+  } catch (err: any) {
+    console.error('updateCommunicationTemplateAction error:', err);
+    return { error: err.message || 'Failed to update template.' };
+  }
+}
+
+export async function deleteCommunicationTemplateAction(input: FormData | Record<string, any>) {
+  try {
+    const formData = toFormData(input);
+    const eventId = formData.get('eventId') as string;
+    const adminToken = formData.get('adminToken') as string;
+    const templateId = formData.get('templateId') as string;
+
+    requireAdminAccess(eventId, adminToken);
+
+    const { error } = await supabaseAdmin
+      .from('communication_templates')
+      .delete()
+      .eq('id', templateId)
+      .eq('event_id', eventId);
+
+    if (error) throw error;
+    revalidatePath(`/admin/${adminToken}`);
+    return { success: true };
+  } catch (err: any) {
+    console.error('deleteCommunicationTemplateAction error:', err);
+    return { error: err.message || 'Failed to delete template.' };
+  }
+}

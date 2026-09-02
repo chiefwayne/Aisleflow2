@@ -91,7 +91,9 @@ import {
   updateEventSetupAction,
   updateEventCustomSectionsAction,
   updateEventThemeAction,
-  updateEventDesignAction
+  updateEventDesignAction,
+  updateCommunicationTemplateAction,
+  deleteCommunicationTemplateAction
 } from '@/app/actions/wedding-actions';
 
 interface AdminDashboardViewProps {
@@ -136,13 +138,54 @@ export default function AdminDashboardView({
   const [contributions, setContributions] = useState<RegistryContributionRecord[]>(initialContributions);
   const [photos, setPhotos] = useState<PhotoRecord[]>(initialPhotos);
   const [tasks, setTasks] = useState<PlanningTaskRecord[]>(initialTasks);
-  const [templates, setTemplates] = useState<CommunicationTemplateRecord[]>(initialTemplates);
+  const defaultTemplates: CommunicationTemplateRecord[] = [
+    {
+      id: 'default-invite',
+      event_id: initialEvent.id,
+      template_key: 'formal_invitation',
+      name: 'Formal Digital Invitation',
+      lifecycle_type: 'invitation',
+      channel: 'both',
+      subject: `Formal Wedding Invitation: ${initialEvent.couple_names}`,
+      sms_body: `{coupleNames} invite you to celebrate their wedding on {eventDate} at {venueName}. Open your personalized portal to RSVP: {link}`,
+      email_body: `Dear {name},\n\nWe request the honour of your presence at the celebration of our marriage on {eventDate} at {venueName}.\n\nPlease open your personalized portal to RSVP:\n{link}\n\nWith love,\n{coupleNames}`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+    {
+      id: 'default-reminder',
+      event_id: initialEvent.id,
+      template_key: 'friendly_reminder',
+      name: 'Friendly RSVP Reminder',
+      lifecycle_type: 'reminder',
+      channel: 'both',
+      subject: `Friendly Reminder: RSVP for ${initialEvent.couple_names}'s Wedding`,
+      sms_body: `Hi {name}! Gentle reminder to confirm your RSVP for {coupleNames}'s wedding by {rsvpDeadline}. View your details here: {link}`,
+      email_body: `Dear {name},\n\nThis is a gentle reminder to please confirm your attendance for our wedding by {rsvpDeadline}.\n\nYou can view event details and RSVP in seconds at:\n{link}\n\nWarmly,\n{coupleNames}`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+  ];
+
+  const [templates, setTemplates] = useState<CommunicationTemplateRecord[]>(
+    initialTemplates && initialTemplates.length > 0 ? initialTemplates : defaultTemplates
+  );
   const [campaigns, setCampaigns] = useState<CommunicationCampaignRecord[]>(initialCampaigns);
 
   // Modal & Form States
   const [newGuestModalOpen, setNewGuestModalOpen] = useState(false);
   const [csvImportModalOpen, setCsvImportModalOpen] = useState(false);
   const [newCampaignModalOpen, setNewCampaignModalOpen] = useState(false);
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<CommunicationTemplateRecord | null>(null);
+  const [templateForm, setTemplateForm] = useState({
+    name: '',
+    lifecycle_type: 'invitation' as 'invitation' | 'save_the_date' | 'reminder' | 'update',
+    channel: 'both' as 'both' | 'sms' | 'email',
+    subject: '',
+    sms_body: '',
+    email_body: '',
+  });
   const [newRegistryModalOpen, setNewRegistryModalOpen] = useState(false);
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [editingScheduleItem, setEditingScheduleItem] = useState<ScheduleItemRecord | null>(null);
@@ -635,6 +678,100 @@ export default function AdminDashboardView({
     } finally {
       setTimeout(() => setStatusMessage(''), 2500);
     }
+  };
+
+  // Open Edit Template Modal
+  const handleOpenEditTemplate = (tpl: CommunicationTemplateRecord) => {
+    setEditingTemplate(tpl);
+    setTemplateForm({
+      name: tpl.name || '',
+      lifecycle_type: (tpl.lifecycle_type as any) || 'invitation',
+      channel: (tpl.channel as any) || 'both',
+      subject: tpl.subject || '',
+      sms_body: tpl.sms_body || '',
+      email_body: tpl.email_body || '',
+    });
+    setTemplateModalOpen(true);
+  };
+
+  // Open Create Template Modal
+  const handleOpenNewTemplate = () => {
+    setEditingTemplate(null);
+    setTemplateForm({
+      name: 'Custom Announcement Template',
+      lifecycle_type: 'update',
+      channel: 'both',
+      subject: `Update from ${event.couple_names}`,
+      sms_body: `Hi {name}! We have an update regarding {coupleNames}'s wedding. View details: {link}`,
+      email_body: `Dear {name},\n\nHere is an update regarding our wedding.\n\nView details at: {link}\n\nWith love,\n{coupleNames}`,
+    });
+    setTemplateModalOpen(true);
+  };
+
+  // Save Communication Template Action
+  const handleSaveTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsProcessingAction(true);
+    try {
+      const isDefault = editingTemplate?.id.startsWith('default-');
+      const result = await updateCommunicationTemplateAction({
+        eventId: event.id,
+        adminToken: event.admin_token,
+        templateId: isDefault ? 'new' : (editingTemplate?.id || 'new'),
+        name: templateForm.name,
+        subject: templateForm.subject,
+        smsBody: templateForm.sms_body,
+        emailBody: templateForm.email_body,
+        channel: templateForm.channel,
+        lifecycleType: templateForm.lifecycle_type,
+      });
+
+      if (result.success && result.template) {
+        const savedTpl = result.template as CommunicationTemplateRecord;
+        setTemplates((prev) => {
+          const exists = prev.some((t) => t.id === editingTemplate?.id || t.id === savedTpl.id);
+          if (exists) {
+            return prev.map((t) => (t.id === editingTemplate?.id ? savedTpl : t));
+          } else {
+            return [...prev, savedTpl];
+          }
+        });
+        setTemplateModalOpen(false);
+        setStatusMessage('✨ Template updated & saved successfully!');
+      } else {
+        setStatusMessage(`Error saving template: ${result.error || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setStatusMessage(`Error: ${err?.message}`);
+    } finally {
+      setIsProcessingAction(false);
+      setTimeout(() => setStatusMessage(''), 3500);
+    }
+  };
+
+  // Quick helper to insert variable chips into form
+  const handleInsertVariable = (field: 'sms_body' | 'email_body' | 'subject', variableTag: string) => {
+    setTemplateForm((prev) => ({
+      ...prev,
+      [field]: prev[field] ? `${prev[field]} ${variableTag}` : variableTag,
+    }));
+  };
+
+  // Pre-fill Broadcast Composer from a template
+  const handleUseTemplateInBroadcast = (tpl: CommunicationTemplateRecord) => {
+    setNewCampaignForm({
+      name: `${tpl.name} Broadcast`,
+      lifecycle_type: tpl.lifecycle_type || 'invitation',
+      target_audience: tpl.lifecycle_type === 'reminder' ? 'pending' : 'all',
+      channel: tpl.channel === 'sms' ? 'sms' : tpl.channel === 'email' ? 'email' : 'sms',
+      subject: tpl.subject || `Formal Wedding Invitation: ${event.couple_names}`,
+      email_body: tpl.email_body || '',
+      sms_body: tpl.sms_body || '',
+      scheduled_for: '',
+      dispatch_mode: 'send_now',
+    });
+    setNewCampaignModalOpen(true);
   };
 
   // CSV Import Handler (Server Action)
@@ -2050,20 +2187,67 @@ export default function AdminDashboardView({
                 </div>
 
                 {/* Templates Selector */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {templates.map((tpl) => (
-                    <div key={tpl.id} className="rounded-2xl border border-aisle-border bg-[#FAF7F2]/50 p-4 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-xs text-aisle-charcoal">{tpl.name}</span>
-                        <span className="rounded-full bg-aisle-sand px-2 py-0.5 text-[10px] uppercase font-bold text-aisle-muted">
-                          {tpl.lifecycle_type}
-                        </span>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted">
+                      Standard Communication Templates ({templates.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleOpenNewTemplate}
+                      className="text-[11px] font-semibold text-aisle-terracotta hover:underline cursor-pointer inline-flex items-center gap-1"
+                    >
+                      <Plus className="h-3 w-3" />
+                      <span>Add Custom Template</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {templates.map((tpl) => (
+                      <div
+                        key={tpl.id}
+                        className="rounded-2xl border border-aisle-border bg-[#FAF7F2]/50 p-4 space-y-3 flex flex-col justify-between hover:border-aisle-charcoal/40 transition-colors shadow-2xs"
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-semibold text-xs text-aisle-charcoal flex items-center gap-1.5">
+                              <span>{tpl.name}</span>
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="rounded-full bg-aisle-sand px-2 py-0.5 text-[9px] uppercase font-bold text-aisle-muted">
+                                {tpl.lifecycle_type}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditTemplate(tpl)}
+                                title="Edit this communication template"
+                                className="inline-flex items-center gap-1 rounded-lg border border-aisle-border bg-white px-2 py-1 text-[10px] font-semibold text-aisle-charcoal hover:bg-aisle-sand hover:text-aisle-terracotta cursor-pointer transition-colors shadow-2xs"
+                              >
+                                <Edit2 className="h-2.5 w-2.5 text-aisle-terracotta" />
+                                <span>Edit</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          <p className="text-xs text-aisle-muted line-clamp-3 leading-relaxed bg-white/80 p-2.5 rounded-xl border border-aisle-border/60 font-mono text-[11px]">
+                            {tpl.sms_body || tpl.email_body}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1 border-t border-aisle-border/40 text-[10px] text-aisle-muted">
+                          <span className="capitalize">{tpl.channel} channel</span>
+                          <button
+                            type="button"
+                            onClick={() => handleUseTemplateInBroadcast(tpl)}
+                            className="font-semibold text-aisle-charcoal hover:text-aisle-terracotta hover:underline cursor-pointer inline-flex items-center gap-1"
+                          >
+                            <span>Use in Broadcast</span>
+                            <ArrowRight className="h-2.5 w-2.5" />
+                          </button>
+                        </div>
                       </div>
-                      <p className="text-xs text-aisle-muted line-clamp-2">
-                        {tpl.sms_body || tpl.email_body}
-                      </p>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
 
                 {/* Broadcast Campaigns Ledger (Drafts, Scheduled & Dispatched) */}
@@ -4875,6 +5059,155 @@ export default function AdminDashboardView({
                 Done
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT / CREATE COMMUNICATION TEMPLATE MODAL */}
+      {templateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 text-xs font-sans">
+          <div className="w-full max-w-lg rounded-3xl border border-aisle-border bg-white p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-start justify-between border-b border-aisle-border/60 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-full bg-aisle-charcoal text-white">
+                    <Edit3 className="h-4 w-4" />
+                  </span>
+                  <h3 className="font-serif text-lg font-semibold text-aisle-charcoal">
+                    {editingTemplate ? `Edit "${editingTemplate.name}"` : 'Create Custom Template'}
+                  </h3>
+                </div>
+                <p className="text-[11px] text-aisle-muted mt-0.5">
+                  Customize the SMS copy, email wording, and dynamic smart tags.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTemplateModalOpen(false)}
+                className="text-aisle-muted hover:text-aisle-charcoal cursor-pointer p-1"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Helper: Dynamic Variable Tags */}
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3 space-y-1.5">
+              <span className="text-[10px] uppercase font-bold text-amber-900 tracking-wider block">
+                ✨ Dynamic Smart Tags (Click to Insert into SMS)
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { label: 'Couple Names', tag: '{coupleNames}' },
+                  { label: 'Guest Name', tag: '{name}' },
+                  { label: 'Wedding Date', tag: '{eventDate}' },
+                  { label: 'Venue', tag: '{venueName}' },
+                  { label: 'RSVP Deadline', tag: '{rsvpDeadline}' },
+                  { label: 'Private Link', tag: '{link}' },
+                ].map((v) => (
+                  <button
+                    key={v.tag}
+                    type="button"
+                    onClick={() => handleInsertVariable('sms_body', v.tag)}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-amber-300 text-[10px] font-mono text-amber-900 hover:bg-amber-100 cursor-pointer shadow-2xs"
+                  >
+                    <span>+ {v.tag}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveTemplate} className="space-y-3.5">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] uppercase font-bold tracking-wider text-aisle-muted mb-1">
+                    Template Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={templateForm.name}
+                    onChange={(e) => setTemplateForm({ ...templateForm, name: e.target.value })}
+                    className="w-full rounded-xl border border-aisle-border p-2.5 bg-[#FAF7F2] text-xs font-semibold text-aisle-charcoal focus:outline-none focus:border-aisle-terracotta"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase font-bold tracking-wider text-aisle-muted mb-1">
+                    Channel Format
+                  </label>
+                  <select
+                    value={templateForm.channel}
+                    onChange={(e) => setTemplateForm({ ...templateForm, channel: e.target.value as any })}
+                    className="w-full rounded-xl border border-aisle-border p-2.5 bg-[#FAF7F2] text-xs text-aisle-charcoal focus:outline-none focus:border-aisle-terracotta"
+                  >
+                    <option value="both">Both SMS & Email</option>
+                    <option value="sms">SMS Text Message Only</option>
+                    <option value="email">Email Only</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase font-bold tracking-wider text-aisle-muted mb-1">
+                  Email Subject Line
+                </label>
+                <input
+                  type="text"
+                  value={templateForm.subject}
+                  onChange={(e) => setTemplateForm({ ...templateForm, subject: e.target.value })}
+                  placeholder="e.g. Formal Wedding Invitation: {coupleNames}"
+                  className="w-full rounded-xl border border-aisle-border p-2.5 bg-[#FAF7F2] text-xs text-aisle-charcoal focus:outline-none focus:border-aisle-terracotta"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted">
+                    SMS Text Body (Twilio)
+                  </label>
+                  <span className="text-[10px] font-mono text-aisle-muted">
+                    {templateForm.sms_body.length} chars (~{Math.ceil((templateForm.sms_body.length || 1) / 160)} SMS)
+                  </span>
+                </div>
+                <textarea
+                  rows={3}
+                  required
+                  value={templateForm.sms_body}
+                  onChange={(e) => setTemplateForm({ ...templateForm, sms_body: e.target.value })}
+                  placeholder="{coupleNames} invite you to celebrate..."
+                  className="w-full rounded-xl border border-aisle-border p-2.5 bg-[#FAF7F2] text-xs text-aisle-charcoal focus:outline-none focus:border-aisle-terracotta leading-relaxed"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase font-bold tracking-wider text-aisle-muted mb-1">
+                  Email Message Body (Optional Markdown/Text)
+                </label>
+                <textarea
+                  rows={4}
+                  value={templateForm.email_body}
+                  onChange={(e) => setTemplateForm({ ...templateForm, email_body: e.target.value })}
+                  placeholder="Dear {name},\n\nWe request the honour of your presence..."
+                  className="w-full rounded-xl border border-aisle-border p-2.5 bg-[#FAF7F2] text-xs text-aisle-charcoal focus:outline-none focus:border-aisle-terracotta leading-relaxed font-sans"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-aisle-border/60">
+                <button
+                  type="button"
+                  onClick={() => setTemplateModalOpen(false)}
+                  className="flex-1 rounded-full border border-aisle-border py-2.5 text-xs font-semibold text-aisle-muted hover:text-aisle-charcoal cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isProcessingAction}
+                  className="flex-1 rounded-full bg-aisle-charcoal py-2.5 text-xs font-semibold uppercase tracking-wider text-white hover:bg-aisle-terracotta disabled:opacity-50 cursor-pointer shadow-sm transition-all"
+                >
+                  {isProcessingAction ? 'Saving...' : 'Save Template'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -261,6 +261,30 @@ export async function ensureDemoEventSeeded(): Promise<EventRecord | null> {
       },
     ]);
 
+    // 9. Insert Demo Communication Templates
+    await supabaseAdmin.from('communication_templates').insert([
+      {
+        event_id: eventId,
+        template_key: 'formal_invitation',
+        name: 'Formal Digital Invitation',
+        lifecycle_type: 'invitation',
+        channel: 'both',
+        subject: "Formal Wedding Invitation: Sophia & Alexandre",
+        email_body: "Dear {name},\n\nWe request the honour of your presence at the celebration of our marriage on {eventDate} at {venueName}.\n\nPlease open your personalized portal to RSVP:\n{link}\n\nWith love,\n{coupleNames}",
+        sms_body: "{coupleNames} invite you to celebrate their wedding on {eventDate} at {venueName}. Open your personalized portal to RSVP: {link}",
+      },
+      {
+        event_id: eventId,
+        template_key: 'friendly_reminder',
+        name: 'Friendly RSVP Reminder',
+        lifecycle_type: 'reminder',
+        channel: 'both',
+        subject: "Friendly Reminder: RSVP for Sophia & Alexandre's Wedding",
+        email_body: "Dear {name},\n\nThis is a gentle reminder to please confirm your attendance for our wedding by {rsvpDeadline}.\n\nYou can view event details and RSVP in seconds at:\n{link}\n\nWarmly,\n{coupleNames}",
+        sms_body: "Hi {name}! Gentle reminder to confirm your RSVP for {coupleNames}'s wedding by {rsvpDeadline}. View your details here: {link}",
+      },
+    ]);
+
     return newEvent as EventRecord;
   } catch (err) {
     console.error('ensureDemoEventSeeded error:', err);
