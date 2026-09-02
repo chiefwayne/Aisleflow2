@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { createGuestAccessToken } from '@/lib/guest-access-token';
 
 export async function POST(request: Request) {
   try {
@@ -125,6 +126,20 @@ export async function POST(request: Request) {
         sms_body: `{coupleNames} invite you to celebrate their wedding on {eventDate} at {venueName}. Open your personalized portal to RSVP: {link}`,
       },
     ]);
+
+    // 5. Create Initial Sample VIP Guest
+    const sampleGuestToken = createGuestAccessToken();
+    await supabase.from('guests').insert({
+      event_id: event.id,
+      first_name: 'Elena',
+      last_name: 'Vance',
+      relationship: 'Honored Guest',
+      is_vip: true,
+      access_token: sampleGuestToken,
+      rsvp_status: 'pending',
+      plus_one_allowed: true,
+      tags: ['vip', 'sample'],
+    });
 
     return NextResponse.json({
       success: true,

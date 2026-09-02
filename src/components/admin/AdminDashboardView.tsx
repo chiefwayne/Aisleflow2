@@ -266,7 +266,7 @@ export default function AdminDashboardView({
 
   // Open Printable Table Card
   const handleOpenTableCard = async () => {
-    const url = `${window.location.origin}/g/${guests[0]?.access_token || 'guest_elena_vance'}`;
+    const url = `${window.location.origin}/g/${guests[0]?.access_token || event.admin_token}`;
     const qrData = await generateQrDataUrl(url);
     setTableCardModal(qrData);
   };
@@ -1215,7 +1215,7 @@ export default function AdminDashboardView({
               <span>Print Table QR Cards</span>
             </button>
             <Link
-              href={`/g/${guests[0]?.access_token || 'guest_elena_vance'}`}
+              href={`/g/${guests[0]?.access_token || event.admin_token}`}
               target="_blank"
               className="inline-flex items-center gap-1.5 rounded-full bg-aisle-charcoal px-4 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-aisle-terracotta transition-colors"
             >
