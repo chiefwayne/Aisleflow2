@@ -1639,9 +1639,18 @@ export default function AdminDashboardView({
         {/* Content Area */}
         <div className="flex-1 min-w-0 space-y-6">
           {statusMessage && (
-            <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-4 text-xs font-semibold text-emerald-800 flex items-center justify-between">
+            <div
+              className={`rounded-2xl p-4 text-xs font-semibold flex items-center justify-between transition-all ${
+                statusMessage.toLowerCase().includes('error') || statusMessage.toLowerCase().includes('failed')
+                  ? 'bg-rose-50 border border-rose-200 text-rose-800'
+                  : 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+              }`}
+            >
               <span>{statusMessage}</span>
-              <button onClick={() => setStatusMessage('')} className="text-emerald-600 hover:text-emerald-900">
+              <button
+                onClick={() => setStatusMessage('')}
+                className="opacity-70 hover:opacity-100 cursor-pointer ml-3"
+              >
                 ✕
               </button>
             </div>

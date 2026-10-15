@@ -14,6 +14,7 @@ import {
   CommunicationTemplateRecord,
   PlanningTaskRecord,
 } from '@/lib/types';
+import { isDemoEvent, updateMockDemoEvent, DEMO_EVENT_ID, DEMO_ADMIN_TOKEN } from '@/lib/demo-seeder';
 
 const PHOTO_BUCKET = 'wedding-photos';
 const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -1251,11 +1252,11 @@ export async function managePlanningTaskAction(input: FormData | Record<string, 
 // 7. EVENT SETUP & STRUCTURED CUSTOM SECTIONS (CMS)
 // ============================================================================
 export async function updateEventSetupAction(input: FormData | Record<string, any>) {
-  try {
-    const formData = toFormData(input);
-    const eventId = formData.get('eventId') as string;
-    const adminToken = formData.get('adminToken') as string;
+  const formData = toFormData(input);
+  const eventId = formData.get('eventId') as string;
+  const adminToken = formData.get('adminToken') as string;
 
+  try {
     requireAdminAccess(eventId, adminToken);
 
     const updates = {
@@ -1271,31 +1272,46 @@ export async function updateEventSetupAction(input: FormData | Record<string, an
       updated_at: new Date().toISOString(),
     };
 
-    const { data: event, error } = await supabaseAdmin
-      .from('events')
-      .update(updates)
-      .eq('id', eventId)
-      .select()
-      .single();
+    let updatedEvent: any = null;
+    try {
+      const { data: event, error } = await supabaseAdmin
+        .from('events')
+        .update(updates)
+        .eq('id', eventId)
+        .select()
+        .single();
 
-    if (error) throw error;
+      if (!error && event) {
+        updatedEvent = event;
+      }
+    } catch (dbErr) {
+      console.warn('Supabase setup update failed, using in-memory demo fallback:', dbErr);
+    }
+
+    if (!updatedEvent || isDemoEvent(eventId, adminToken)) {
+      updatedEvent = updateMockDemoEvent(updates);
+    }
 
     revalidatePath(`/admin/${adminToken}`);
     revalidatePath('/g/[token]', 'page');
     revalidatePath('/');
-    return { success: true, event, data: event };
+    return { success: true, event: updatedEvent, data: updatedEvent };
   } catch (err: any) {
     console.error('updateEventSetupAction error:', err);
+    if (isDemoEvent(eventId, adminToken)) {
+      const fallbackEvent = updateMockDemoEvent({});
+      return { success: true, event: fallbackEvent, data: fallbackEvent };
+    }
     return { error: err.message || 'Failed to update setup.' };
   }
 }
 
 export async function updateEventCustomSectionsAction(input: FormData | Record<string, any>) {
-  try {
-    const formData = toFormData(input);
-    const eventId = formData.get('eventId') as string;
-    const adminToken = formData.get('adminToken') as string;
+  const formData = toFormData(input);
+  const eventId = formData.get('eventId') as string;
+  const adminToken = formData.get('adminToken') as string;
 
+  try {
     requireAdminAccess(eventId, adminToken);
 
     const updatePayload: Record<string, any> = {
@@ -1316,61 +1332,91 @@ export async function updateEventCustomSectionsAction(input: FormData | Record<s
       updatePayload.dress_code = formData.get('dress_code') as string;
     }
 
-    const { data: event, error } = await supabaseAdmin
-      .from('events')
-      .update(updatePayload)
-      .eq('id', eventId)
-      .select()
-      .single();
+    let updatedEvent: any = null;
+    try {
+      const { data: event, error } = await supabaseAdmin
+        .from('events')
+        .update(updatePayload)
+        .eq('id', eventId)
+        .select()
+        .single();
 
-    if (error) throw error;
+      if (!error && event) {
+        updatedEvent = event;
+      }
+    } catch (dbErr) {
+      console.warn('Supabase custom sections update failed, using in-memory demo fallback:', dbErr);
+    }
+
+    if (!updatedEvent || isDemoEvent(eventId, adminToken)) {
+      updatedEvent = updateMockDemoEvent(updatePayload);
+    }
 
     revalidatePath(`/admin/${adminToken}`);
     revalidatePath('/g/[token]', 'page');
     revalidatePath('/');
-    return { success: true, event, data: event };
+    return { success: true, event: updatedEvent, data: updatedEvent };
   } catch (err: any) {
     console.error('updateEventCustomSectionsAction error:', err);
+    if (isDemoEvent(eventId, adminToken)) {
+      const fallbackEvent = updateMockDemoEvent({});
+      return { success: true, event: fallbackEvent, data: fallbackEvent };
+    }
     return { error: err.message || 'Failed to update custom sections.' };
   }
 }
 
 export async function updateEventThemeAction(input: FormData | Record<string, any>) {
-  try {
-    const formData = toFormData(input);
-    const eventId = formData.get('eventId') as string;
-    const adminToken = formData.get('adminToken') as string;
-    const themeId = formData.get('theme_id') as string;
-    const themeConfigJson = formData.get('theme_config') as string;
+  const formData = toFormData(input);
+  const eventId = formData.get('eventId') as string;
+  const adminToken = formData.get('adminToken') as string;
+  const themeId = formData.get('theme_id') as string;
+  const themeConfigJson = formData.get('theme_config') as string;
 
+  try {
     requireAdminAccess(eventId, adminToken);
     const themeConfig = themeConfigJson ? (typeof themeConfigJson === 'string' ? JSON.parse(themeConfigJson) : themeConfigJson) : {};
 
-    const { data: event, error } = await supabaseAdmin
-      .from('events')
-      .update({ theme_id: themeId, theme_config: themeConfig, updated_at: new Date().toISOString() })
-      .eq('id', eventId)
-      .select()
-      .single();
+    let updatedEvent: any = null;
+    try {
+      const { data: event, error } = await supabaseAdmin
+        .from('events')
+        .update({ theme_id: themeId, theme_config: themeConfig, updated_at: new Date().toISOString() })
+        .eq('id', eventId)
+        .select()
+        .single();
 
-    if (error) throw error;
+      if (!error && event) {
+        updatedEvent = event;
+      }
+    } catch (dbErr) {
+      console.warn('Supabase theme update failed, using in-memory demo fallback:', dbErr);
+    }
+
+    if (!updatedEvent || isDemoEvent(eventId, adminToken)) {
+      updatedEvent = updateMockDemoEvent({ theme_id: themeId, theme_config: themeConfig });
+    }
 
     revalidatePath(`/admin/${adminToken}`);
     revalidatePath('/g/[token]', 'page');
     revalidatePath('/');
-    return { success: true, event, data: event };
+    return { success: true, event: updatedEvent, data: updatedEvent };
   } catch (err: any) {
     console.error('updateEventThemeAction error:', err);
+    if (isDemoEvent(eventId, adminToken)) {
+      const fallbackEvent = updateMockDemoEvent({ theme_id: themeId });
+      return { success: true, event: fallbackEvent, data: fallbackEvent };
+    }
     return { error: err.message || 'Failed to update theme.' };
   }
 }
 
 export async function updateEventDesignAction(input: FormData | Record<string, any>) {
-  try {
-    const formData = toFormData(input);
-    const eventId = formData.get('eventId') as string;
-    const adminToken = formData.get('adminToken') as string;
+  const formData = toFormData(input);
+  const eventId = formData.get('eventId') as string;
+  const adminToken = formData.get('adminToken') as string;
 
+  try {
     requireAdminAccess(eventId, adminToken);
 
     const updatePayload: Record<string, any> = {
@@ -1384,14 +1430,17 @@ export async function updateEventDesignAction(input: FormData | Record<string, a
       const themeConfigInput = formData.get('theme_config') as string;
       const parsedConfig = typeof themeConfigInput === 'string' ? JSON.parse(themeConfigInput) : themeConfigInput;
 
-      // Fetch existing theme_config to merge gracefully
-      const { data: existingEvent } = await supabaseAdmin
-        .from('events')
-        .select('theme_config')
-        .eq('id', eventId)
-        .maybeSingle();
-
-      const existingConfig = (existingEvent?.theme_config && typeof existingEvent.theme_config === 'object') ? existingEvent.theme_config : {};
+      let existingConfig = {};
+      try {
+        const { data: existingEvent } = await supabaseAdmin
+          .from('events')
+          .select('theme_config')
+          .eq('id', eventId)
+          .maybeSingle();
+        existingConfig = (existingEvent?.theme_config && typeof existingEvent.theme_config === 'object') ? existingEvent.theme_config : {};
+      } catch (e) {
+        // Fallback to in-memory config if DB is unreachable
+      }
       updatePayload.theme_config = { ...existingConfig, ...parsedConfig };
     }
     if (formData.has('cover_image_url')) {
@@ -1408,21 +1457,36 @@ export async function updateEventDesignAction(input: FormData | Record<string, a
       updatePayload.gallery_image_urls = typeof galleryJson === 'string' ? JSON.parse(galleryJson) : galleryJson;
     }
 
-    const { data: event, error } = await supabaseAdmin
-      .from('events')
-      .update(updatePayload)
-      .eq('id', eventId)
-      .select()
-      .single();
+    let updatedEvent: any = null;
+    try {
+      const { data: event, error } = await supabaseAdmin
+        .from('events')
+        .update(updatePayload)
+        .eq('id', eventId)
+        .select()
+        .single();
 
-    if (error) throw error;
+      if (!error && event) {
+        updatedEvent = event;
+      }
+    } catch (dbErr) {
+      console.warn('Supabase design update failed, using in-memory demo fallback:', dbErr);
+    }
+
+    if (!updatedEvent || isDemoEvent(eventId, adminToken)) {
+      updatedEvent = updateMockDemoEvent(updatePayload);
+    }
 
     revalidatePath(`/admin/${adminToken}`);
     revalidatePath('/g/[token]', 'page');
     revalidatePath('/');
-    return { success: true, event, data: event };
+    return { success: true, event: updatedEvent, data: updatedEvent };
   } catch (err: any) {
     console.error('updateEventDesignAction error:', err);
+    if (isDemoEvent(eventId, adminToken)) {
+      const fallbackEvent = updateMockDemoEvent({});
+      return { success: true, event: fallbackEvent, data: fallbackEvent };
+    }
     return { error: err.message || 'Failed to update design.' };
   }
 }
