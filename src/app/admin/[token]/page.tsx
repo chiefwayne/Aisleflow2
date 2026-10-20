@@ -26,23 +26,6 @@ export default async function AdminDashboardPage({ params }: PageProps) {
   const mockData = getMockDemoData();
 
   const isDemoToken = token === DEMO_ADMIN_TOKEN || token.startsWith('admin_sophia_demo') || token === 'admin_demo';
-  if (isDemoToken) {
-    return (
-      <AdminDashboardView
-        initialEvent={mockData.event}
-        initialGuests={mockData.guests}
-        initialSchedule={mockData.schedule}
-        initialQuestions={mockData.questions}
-        initialResponses={mockData.responses}
-        initialRegistry={mockData.registry}
-        initialContributions={mockData.contributions}
-        initialPhotos={mockData.photos}
-        initialTasks={mockData.tasks}
-        initialTemplates={mockData.templates}
-        initialCampaigns={mockData.campaigns}
-      />
-    );
-  }
 
   // 1. Fetch Event by admin_token
   let event: EventRecord | null = null;
@@ -55,6 +38,10 @@ export default async function AdminDashboardPage({ params }: PageProps) {
     event = dbEvent as EventRecord | null;
   } catch (err) {
     console.warn('Supabase fetch event failed:', err);
+  }
+
+  if (!event && isDemoToken) {
+    event = mockData.event;
   }
 
   if (!event) {

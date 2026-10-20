@@ -33,27 +33,6 @@ export default async function GuestPortalPage({ params }: PageProps) {
     token.startsWith('sample') ||
     token === 'preview';
 
-  if (isDemoGuestToken) {
-    const matchedGuest = mockData.guests.find((g) => g.access_token === token) || mockData.guests[0];
-    const partyMembers = matchedGuest.party_id
-      ? mockData.guests.filter((g) => g.party_id === matchedGuest.party_id && g.id !== matchedGuest.id)
-      : [];
-    return (
-      <GuestPortalView
-        event={mockData.event}
-        primaryGuest={matchedGuest}
-        partyMembers={partyMembers}
-        scheduleItems={mockData.schedule}
-        customQuestions={mockData.questions}
-        registryItems={mockData.registry}
-        initialPhotos={mockData.photos}
-        initialResponses={mockData.responses.filter((r) => r.guest_id === matchedGuest.id)}
-        initialScheduleRsvps={[]}
-        previewMode={false}
-      />
-    );
-  }
-
   // 1. Try finding Guest by access_token in DB
   try {
     const { data: foundGuest } = await supabase
