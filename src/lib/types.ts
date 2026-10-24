@@ -89,6 +89,7 @@ export interface EventRecord {
   rsvp_locked?: boolean;
   album_token?: string | null;
   invitation_mode?: 'save_the_date' | 'invitation';
+  language?: string | null;
   plan?: 'free' | 'essentials' | 'premium';
   plan_activated_at?: string | null;
   setup_completed?: boolean;

@@ -86,6 +86,7 @@ import { featureError, hasFeature } from '@/lib/plans';
 import { isStudioDesign } from '@/lib/portal-design';
 import { getMenuOptions, MenuOption } from '@/lib/menu';
 import { whatsappShareUrl } from '@/lib/share';
+import { PORTAL_LANGUAGES } from '@/lib/portal-i18n';
 import { generateTrackingToken, renderTemplateVariables } from '@/lib/communications';
 import {
   addGuestAction,
@@ -442,6 +443,7 @@ export default function AdminDashboardView({
         rsvp_deadline: setupForm.rsvp_deadline,
         allow_late_rsvp: setupForm.allow_late_rsvp,
         rsvp_locked: !!setupForm.rsvp_locked,
+        language: setupForm.language || 'en',
         venue_name: setupForm.venue_name,
         venue_address: setupForm.venue_address,
         launch_notes: setupForm.launch_notes,
@@ -2129,6 +2131,21 @@ export default function AdminDashboardView({
                   <label htmlFor="allow_late" className="font-medium text-aisle-warm">
                     Allow late RSVP changes after the deadline has passed
                   </label>
+                </div>
+
+                <div>
+                  <label htmlFor="language" className="block font-medium text-aisle-warm mb-1">Invitation language</label>
+                  <select
+                    id="language"
+                    value={setupForm.language || 'en'}
+                    onChange={(e) => setSetupForm({ ...setupForm, language: e.target.value })}
+                    className="w-full sm:w-64 rounded-xl border border-aisle-border px-3 py-2.5 text-xs focus:outline-none focus:border-aisle-terracotta"
+                  >
+                    {Object.entries(PORTAL_LANGUAGES).map(([code, lang]) => (
+                      <option key={code} value={code}>{lang.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-aisle-muted mt-1">Buttons, headings and the RSVP steps guests see. Text you write yourself is shown as you wrote it.</p>
                 </div>
 
                 <div className="flex items-center gap-3">

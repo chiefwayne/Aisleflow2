@@ -3,12 +3,15 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, Sparkles, MailOpen } from 'lucide-react';
+import { portalStrings, PortalStrings } from '@/lib/portal-i18n';
 
 interface WaxSealOpeningProps {
   coupleNames: string;
   openingStyle?: string;
   onOpen: () => void;
   guestName?: string;
+  /** Wording in the invitation's language; English when not given. */
+  strings?: PortalStrings;
 }
 
 export default function WaxSealOpening({
@@ -16,7 +19,9 @@ export default function WaxSealOpening({
   openingStyle = 'wax-seal',
   onOpen,
   guestName,
+  strings = portalStrings('en'),
 }: WaxSealOpeningProps) {
+  const tr = strings;
   const [isCracking, setIsCracking] = useState(false);
 
   const handleCrack = () => {
@@ -67,7 +72,7 @@ export default function WaxSealOpening({
               isDarkCurtain ? 'text-[#D4AF37]' : 'text-aisle-gold-deep'
             }`}
           >
-            {isEnvelope ? 'Sealed Envelope' : isDarkCurtain ? 'Evening Invitation' : 'Private Invitation'}
+            {isEnvelope ? tr.sealedEnvelope : isDarkCurtain ? tr.eveningInvitation : tr.privateInvitation}
           </span>
           <span className="h-px w-10 bg-gradient-to-l from-transparent to-aisle-gold" />
         </div>
@@ -78,7 +83,7 @@ export default function WaxSealOpening({
               isDarkCurtain ? 'text-[#D4AF37]' : 'text-aisle-terracotta'
             }`}
           >
-            For {guestName}
+            {tr.forGuest} {guestName}
           </p>
         )}
 
@@ -88,12 +93,12 @@ export default function WaxSealOpening({
 
         <p className="mt-3 text-xs sm:text-sm opacity-75 max-w-xs mx-auto leading-relaxed">
           {isEnvelope
-            ? 'Your personalized invitation has arrived. Tap below to unfold.'
+            ? tr.openingEnvelope
             : isDarkCurtain
-            ? 'Request the honour of your presence beneath the candlelight sky.'
+            ? tr.openingCurtain
             : isMinimal
-            ? 'You are warmly invited. Tap to view event details & RSVP.'
-            : 'Request the pleasure of your company. Tap the seal to open your private guest portal.'}
+            ? tr.openingMinimal
+            : tr.openingSeal}
         </p>
 
         {/* Action Trigger Button */}
@@ -106,7 +111,7 @@ export default function WaxSealOpening({
               disabled={isCracking}
               className="rounded-full bg-stone-900 px-8 py-3.5 text-xs font-semibold uppercase tracking-widest text-white hover:bg-stone-800 cursor-pointer shadow-md"
             >
-              {isCracking ? 'Opening Portal...' : 'Open Invitation →'}
+              {isCracking ? tr.openingPortal : tr.openInvitation}
             </motion.button>
           ) : isEnvelope ? (
             <motion.button
@@ -117,7 +122,7 @@ export default function WaxSealOpening({
               className="flex items-center gap-2 rounded-full border border-amber-900/20 bg-[#F4EDE2] px-7 py-3.5 text-xs font-serif font-semibold text-amber-950 hover:bg-[#EDE3D4] cursor-pointer shadow-md"
             >
               <MailOpen className="h-4 w-4 text-amber-800" />
-              <span>{isCracking ? 'Unfolding...' : 'Unfold Invitation'}</span>
+              <span>{isCracking ? tr.unfolding : tr.unfoldInvitation}</span>
             </motion.button>
           ) : isDarkCurtain ? (
             <motion.button
@@ -128,7 +133,7 @@ export default function WaxSealOpening({
               className="flex items-center gap-2 rounded-full border border-[#D4AF37]/40 bg-gradient-to-r from-[#D4AF37]/20 via-[#D4AF37]/30 to-[#D4AF37]/20 px-8 py-3.5 text-xs font-serif uppercase tracking-widest text-[#D4AF37] hover:border-[#D4AF37] cursor-pointer shadow-lg"
             >
               <Sparkles className="h-4 w-4 text-[#D4AF37]" />
-              <span>{isCracking ? 'Entering...' : 'Enter Evening'}</span>
+              <span>{isCracking ? tr.entering : tr.enterEvening}</span>
             </motion.button>
           ) : (
             <motion.button
@@ -145,7 +150,7 @@ export default function WaxSealOpening({
               >
                 <Heart className="h-7 w-7 fill-white/30 text-white stroke-[1.5]" />
                 <span className="mt-1 font-display text-[9px] uppercase tracking-widest font-bold">
-                  {isCracking ? 'Opening...' : 'Open'}
+                  {isCracking ? tr.opening : tr.open}
                 </span>
               </motion.div>
               <span className="absolute inset-0 rounded-full border-2 border-white/30 animate-ping opacity-25" />
@@ -154,7 +159,7 @@ export default function WaxSealOpening({
         </div>
 
         <p className="text-[11px] uppercase tracking-[0.18em] opacity-60">
-          Personalized · No Account Required
+          {tr.personalNoAccount}
         </p>
       </motion.div>
     </motion.div>

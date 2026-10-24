@@ -17,6 +17,7 @@ import {
 import { getEventReadiness, missingRequired } from '@/lib/event-readiness';
 import { assertChannelAllowed, featureError, hasFeature } from '@/lib/plans';
 import { stripStudioLayout } from '@/lib/portal-design';
+import { portalLanguageOf } from '@/lib/portal-i18n';
 import { getMenuOptions, isMealOnMenu } from '@/lib/menu';
 import { scopeRsvpPayload } from '@/lib/rsvp-scope';
 import { isDemoEvent, isDemoGuestToken, updateMockDemoEvent, DEMO_EVENT_ID, DEMO_ADMIN_TOKEN } from '@/lib/demo-seeder';
@@ -1393,6 +1394,7 @@ export async function updateEventSetupAction(input: FormData | Record<string, an
       rsvp_deadline: formData.get('rsvp_deadline') as string,
       allow_late_rsvp: formData.get('allow_late_rsvp') === 'true',
       rsvp_locked: formData.get('rsvp_locked') === 'true',
+      language: portalLanguageOf(formData.get('language') as string),
       venue_name: formData.get('venue_name') as string,
       venue_address: formData.get('venue_address') as string,
       launch_notes: (formData.get('launch_notes') as string) || null,
