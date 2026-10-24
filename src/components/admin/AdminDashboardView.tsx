@@ -71,6 +71,7 @@ import PhoneMockup from '@/components/PhoneMockup';
 import GuestPortalView from '@/components/guest/GuestPortalView';
 import { ImagePickerUploader } from '@/components/common/ImagePickerUploader';
 import PublishReadinessPanel from '@/components/admin/PublishReadinessPanel';
+import { isStudioDesign } from '@/lib/portal-design';
 import { generateTrackingToken, renderTemplateVariables } from '@/lib/communications';
 import {
   addGuestAction,
@@ -110,6 +111,7 @@ interface AdminDashboardViewProps {
   initialTasks: PlanningTaskRecord[];
   initialTemplates: CommunicationTemplateRecord[];
   initialCampaigns: CommunicationCampaignRecord[];
+  studioDesigns?: TemplateDesignRecord[];
 }
 
 export default function AdminDashboardView({
@@ -124,6 +126,7 @@ export default function AdminDashboardView({
   initialTasks,
   initialTemplates,
   initialCampaigns,
+  studioDesigns = [],
 }: AdminDashboardViewProps) {
   // Navigation Tabs
   const [activeTab, setActiveTab] = useState<
@@ -838,6 +841,40 @@ export default function AdminDashboardView({
       setIsProcessingAction(false);
       setTimeout(() => setStatusMessage(''), 3500);
     }
+  };
+
+  // Replace the whole theme. Studio designs are copied into theme_config, so later Studio edits
+  // don't change an invitation the couple has already chosen.
+  const handleApplyTheme = async (themeId: string, themeConfig: Record<string, any>) => {
+    const base = BUILTIN_THEMES[themeId] || BUILTIN_THEMES['royal-floral'];
+    setCustomTheme({ ...base, ...themeConfig });
+    setIsProcessingAction(true);
+    setStatusMessage('Applying design...');
+    try {
+      const result = await updateEventThemeAction({
+        eventId: event.id,
+        adminToken: event.admin_token,
+        theme_id: themeId,
+        theme_config: themeConfig,
+      });
+      if (result.success && result.event) {
+        setEvent(result.event as EventRecord);
+        setStatusMessage('✨ Design applied to your guest view!');
+      } else {
+        setStatusMessage(`Error applying design: ${result.error || 'Failed to save'}`);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setStatusMessage(`Failed to apply design: ${err?.message}`);
+    } finally {
+      setIsProcessingAction(false);
+      setTimeout(() => setStatusMessage(''), 3500);
+    }
+  };
+
+  const handleApplyStudioDesign = (design: TemplateDesignRecord) => {
+    const { created_at, updated_at, status, ...snapshot } = design;
+    handleApplyTheme(design.slug || design.id, snapshot);
   };
 
   // Update Design Slot (Theme Preset or Image Slot) and persist immediately to Supabase
@@ -2412,7 +2449,11 @@ export default function AdminDashboardView({
                             <button
                               key={thm.id}
                               type="button"
-                              onClick={() => handleUpdateDesignSlot('theme_id', thm.id)}
+                              onClick={() =>
+                                isStudioDesign(customTheme)
+                                  ? handleApplyTheme(thm.id, {})
+                                  : handleUpdateDesignSlot('theme_id', thm.id)
+                              }
                               className={`rounded-xl border p-3 text-left transition-all cursor-pointer ${
                                 customTheme.id === thm.id
                                   ? 'border-aisle-terracotta bg-aisle-sand/50 shadow-sm'
@@ -2430,6 +2471,40 @@ export default function AdminDashboardView({
                           ))}
                         </div>
                       </div>
+
+                      {studioDesigns.length > 0 && (
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wider text-aisle-muted mb-2">
+                            Studio Designs
+                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            {studioDesigns.map((design) => (
+                              <button
+                                key={design.id}
+                                type="button"
+                                onClick={() => handleApplyStudioDesign(design)}
+                                className={`rounded-xl border p-3 text-left transition-all cursor-pointer ${
+                                  customTheme.id === design.id
+                                    ? 'border-aisle-terracotta bg-aisle-sand/50 shadow-sm'
+                                    : 'border-aisle-border hover:bg-aisle-sand/20'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-serif text-xs font-semibold text-aisle-charcoal block">{design.name}</span>
+                                  {customTheme.id === design.id && (
+                                    <span className="h-2 w-2 rounded-full bg-aisle-terracotta" />
+                                  )}
+                                </div>
+                                <span className="flex items-center gap-1 mt-1">
+                                  <span className="h-3 w-3 rounded-full border border-aisle-border" style={{ backgroundColor: design.bg_color }} />
+                                  <span className="h-3 w-3 rounded-full border border-aisle-border" style={{ backgroundColor: design.accent_color }} />
+                                  <span className="text-xs text-aisle-muted ml-1">{design.taxonomy}</span>
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       <div className="rounded-2xl border border-aisle-border bg-[#FAF7F2]/50 p-3.5 text-xs text-aisle-muted space-y-1">
                         <p className="font-semibold text-aisle-charcoal">{customTheme.name} · {customTheme.taxonomy}</p>

@@ -2,6 +2,7 @@ import React from 'react';
 // Server-only: row-level security blocks the public key, so read with the service role.
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import AdminDashboardView from '@/components/admin/AdminDashboardView';
+import { fetchTemplateDesignRows } from '@/app/actions/template-design-actions';
 import {
   EventRecord,
   GuestRecord,
@@ -197,6 +198,9 @@ export default async function AdminDashboardPage({ params }: PageProps) {
     campaigns = mockData.campaigns;
   }
 
+  // Published Studio designs, offered in the Builder next to the built-in themes.
+  const studioDesigns = await fetchTemplateDesignRows();
+
   return (
     <AdminDashboardView
       initialEvent={event as EventRecord}
@@ -210,6 +214,7 @@ export default async function AdminDashboardPage({ params }: PageProps) {
       initialTasks={tasks}
       initialTemplates={templates}
       initialCampaigns={campaigns}
+      studioDesigns={studioDesigns}
     />
   );
 }

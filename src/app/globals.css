@@ -101,3 +101,11 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #B8B0A5;
 }
+
+/* Guest portal chapter labels, numbered in the order sections render (counter reset on <main>) */
+.chapter-label {
+  counter-increment: chapter;
+}
+.chapter-label::before {
+  content: 'Chapter ' counter(chapter, upper-roman);
+}

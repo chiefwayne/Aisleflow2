@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -35,7 +35,14 @@ import {
 } from 'lucide-react';
 import WaxSealOpening from '@/components/WaxSeal';
 import { BotanicalCorner, GoldHairlineDivider } from '@/components/MotifDecorations';
-import { uploadTemplateMediaAssetAction } from '@/app/actions/template-design-actions';
+import {
+  deleteTemplateDesignAction,
+  fetchTemplateDesignRows,
+  fetchTemplateMediaAssets,
+  saveTemplateDesignAction,
+  uploadTemplateMediaAssetAction,
+} from '@/app/actions/template-design-actions';
+import { ALL_GUEST_SECTIONS, computeSectionStyle, containerInlineStyle } from '@/lib/portal-design';
 import { CURATED_WEDDING_MEDIA } from '@/lib/curated-media';
 import {
   GuestPortalSectionId,
@@ -133,17 +140,6 @@ export interface TemplateDesignRow {
   updated_at?: string;
 }
 
-export const ALL_GUEST_SECTIONS: GuestPortalSectionId[] = [
-  'our-story',
-  'schedule',
-  'travel',
-  'rsvp',
-  'registry',
-  'photos',
-  'wedding-party',
-  'local-recs',
-  'faq',
-];
 
 // Authentic Curated AisleFlow System Designs
 export const SYSTEM_DESIGNS: TemplateDesignRow[] = [
@@ -507,6 +503,31 @@ export default function TemplateDesignStudio({
     setTimeout(() => setStatusMessage(null), 3500);
   };
 
+  // Load saved designs and uploaded media from the database
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [designs, assets] = await Promise.all([fetchTemplateDesignRows(ownerToken), fetchTemplateMediaAssets()]);
+      if (cancelled) return;
+      setOwnerDesigns(designs as unknown as TemplateDesignRow[]);
+      if (assets.length > 0) {
+        setMediaAssets([
+          ...assets.map((asset) => ({
+            id: asset.id,
+            title: asset.title,
+            category: (asset.category.charAt(0).toUpperCase() + asset.category.slice(1)) as TemplateMediaAsset['category'],
+            image_url: asset.image_url,
+            created_at: asset.created_at,
+          })),
+          ...INITIAL_MEDIA_ASSETS,
+        ]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ownerToken]);
+
   // Upload New Media Asset via File Picker
   const handleSelectUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -616,12 +637,22 @@ export default function TemplateDesignStudio({
   };
 
   // Delete Template
-  const handleDeleteDesign = (id: string) => {
-    if (confirm(`Are you sure you want to delete template "${currentDesign.name}"?`)) {
-      setOwnerDesigns((prev) => prev.filter((d) => d.id !== id));
-      setCurrentDesign(SYSTEM_DESIGNS[0]);
-      showToast('Template deleted successfully.');
+  const handleDeleteDesign = async (id: string) => {
+    if (!confirm(`Are you sure you want to delete template "${currentDesign.name}"?`)) return;
+    // Drafts that were never saved exist only in this browser.
+    if (!id.startsWith('owner_')) {
+      const formData = new FormData();
+      formData.append('ownerToken', ownerToken);
+      formData.append('designId', id);
+      const result = await deleteTemplateDesignAction(formData);
+      if (!result.success) {
+        showToast(result.error || 'Failed to delete template.', 'error');
+        return;
+      }
     }
+    setOwnerDesigns((prev) => prev.filter((d) => d.id !== id));
+    setCurrentDesign(SYSTEM_DESIGNS[0]);
+    showToast('Template deleted successfully.');
   };
 
   // Open Save Details Modal
@@ -639,14 +670,14 @@ export default function TemplateDesignStudio({
   };
 
   // Confirm Save Details
-  const handleConfirmSaveDetails = (e: React.FormEvent) => {
+  const handleConfirmSaveDetails = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!saveModalForm.name.trim()) {
       setSaveModalError('Template name is required.');
       return;
     }
 
-    const updated: TemplateDesignRow = {
+    const draft: TemplateDesignRow = {
       ...currentDesign,
       name: saveModalForm.name,
       slug: saveModalForm.slug || saveModalForm.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
@@ -654,20 +685,29 @@ export default function TemplateDesignStudio({
       description: saveModalForm.description,
       best_for: saveModalForm.best_for,
       status: saveModalForm.status,
-      updated_at: new Date().toISOString(),
     };
 
-    setCurrentDesign(updated);
+    const formData = new FormData();
+    formData.append('ownerToken', ownerToken);
+    formData.append('design', JSON.stringify(draft));
+    const result = await saveTemplateDesignAction(formData);
+    if (!result.success || !result.design) {
+      setSaveModalError(result.error || 'Failed to save template.');
+      return;
+    }
+
+    const saved = { ...draft, ...(result.design as Partial<TemplateDesignRow>) } as TemplateDesignRow;
+    setCurrentDesign(saved);
     setOwnerDesigns((prev) => {
-      const exists = prev.some((d) => d.id === updated.id);
+      const exists = prev.some((d) => d.id === currentDesign.id);
       if (exists) {
-        return prev.map((d) => (d.id === updated.id ? updated : d));
+        return prev.map((d) => (d.id === currentDesign.id ? saved : d));
       }
-      return [updated, ...prev];
+      return [saved, ...prev];
     });
 
     setSaveDetailsOpen(false);
-    showToast(`Template "${updated.name}" saved successfully!`);
+    showToast(`Template "${saved.name}" saved successfully!`);
   };
 
   // Field Setters
@@ -1968,7 +2008,7 @@ function LiveGuestInvitePreview({
         selected={selectedElement === 'hero'}
         onSelect={() => onSelectElement('hero')}
         className="relative text-center space-y-5 p-6 sm:p-8 rounded-3xl border transition"
-        style={containerInlineStyle(heroStyle, design)}
+        style={containerInlineStyle(heroStyle)}
       >
         {/* Botanical Motif Corners if Botanical / Floral */}
         {(design.motif === 'floral' || design.motif === 'botanical') && (
@@ -2090,7 +2130,7 @@ function LiveGuestInvitePreview({
               selected={isSelected}
               onSelect={() => onSelectElement('story')}
               className="p-6 rounded-3xl border transition space-y-5 text-center"
-              style={containerInlineStyle(secStyle, design)}
+              style={containerInlineStyle(secStyle)}
             >
               <div className="space-y-1">
                 <span className="text-[10px] uppercase tracking-[0.3em] font-semibold block" style={{ color: design.accent_color }}>
@@ -2124,7 +2164,7 @@ function LiveGuestInvitePreview({
               selected={isSelected}
               onSelect={() => onSelectElement('schedule')}
               className="p-6 rounded-3xl border transition space-y-6"
-              style={containerInlineStyle(secStyle, design)}
+              style={containerInlineStyle(secStyle)}
             >
               <div className="text-center space-y-1">
                 <span className="text-[10px] uppercase tracking-[0.3em] font-semibold block" style={{ color: design.accent_color }}>
@@ -2186,7 +2226,7 @@ function LiveGuestInvitePreview({
               selected={isSelected}
               onSelect={() => onSelectElement('travel')}
               className="p-6 rounded-3xl border transition space-y-4 text-center"
-              style={containerInlineStyle(secStyle, design)}
+              style={containerInlineStyle(secStyle)}
             >
               <div className="space-y-1">
                 <span className="text-[10px] uppercase tracking-[0.3em] font-semibold block" style={{ color: design.accent_color }}>
@@ -2233,7 +2273,7 @@ function LiveGuestInvitePreview({
               selected={isSelected}
               onSelect={() => onSelectElement('rsvp')}
               className="p-6 rounded-3xl border transition space-y-5"
-              style={containerInlineStyle(secStyle, design)}
+              style={containerInlineStyle(secStyle)}
             >
               <div className="text-center space-y-1">
                 <span className="text-[10px] uppercase tracking-[0.3em] font-semibold block" style={{ color: design.accent_color }}>
@@ -2292,7 +2332,7 @@ function LiveGuestInvitePreview({
               selected={isSelected}
               onSelect={() => onSelectElement('registry')}
               className="p-6 rounded-3xl border transition space-y-4 text-center"
-              style={containerInlineStyle(secStyle, design)}
+              style={containerInlineStyle(secStyle)}
             >
               <div className="space-y-1">
                 <span className="text-[10px] uppercase tracking-[0.3em] font-semibold block" style={{ color: design.accent_color }}>
@@ -2344,7 +2384,7 @@ function LiveGuestInvitePreview({
               selected={isSelected}
               onSelect={() => onSelectElement('photos')}
               className="p-6 rounded-3xl border transition space-y-4 text-center"
-              style={containerInlineStyle(secStyle, design)}
+              style={containerInlineStyle(secStyle)}
             >
               <div className="space-y-1">
                 <span className="text-[10px] uppercase tracking-[0.3em] font-semibold block" style={{ color: design.accent_color }}>
@@ -2379,7 +2419,7 @@ function LiveGuestInvitePreview({
               selected={isSelected}
               onSelect={() => onSelectElement('wedding-party')}
               className="p-6 rounded-3xl border transition space-y-4 text-center"
-              style={containerInlineStyle(secStyle, design)}
+              style={containerInlineStyle(secStyle)}
             >
               <div className="space-y-1">
                 <span className="text-[10px] uppercase tracking-[0.3em] font-semibold block" style={{ color: design.accent_color }}>
@@ -2429,7 +2469,7 @@ function LiveGuestInvitePreview({
               selected={isSelected}
               onSelect={() => onSelectElement('local')}
               className="p-6 rounded-3xl border transition space-y-4 text-center"
-              style={containerInlineStyle(secStyle, design)}
+              style={containerInlineStyle(secStyle)}
             >
               <div className="space-y-1">
                 <span className="text-[10px] uppercase tracking-[0.3em] font-semibold block" style={{ color: design.accent_color }}>
@@ -2451,7 +2491,7 @@ function LiveGuestInvitePreview({
             selected={isSelected}
             onSelect={() => onSelectElement('faq')}
             className="p-6 rounded-3xl border transition space-y-4 text-center"
-            style={containerInlineStyle(secStyle, design)}
+            style={containerInlineStyle(secStyle)}
           >
             <div className="space-y-1">
               <span className="text-[10px] uppercase tracking-[0.3em] font-semibold block" style={{ color: design.accent_color }}>
@@ -2484,60 +2524,6 @@ function LiveGuestInvitePreview({
 // -------------------------------------------------------------------------
 // STYLING COMPUTATION & HELPERS
 // -------------------------------------------------------------------------
-
-function computeSectionStyle(
-  design: TemplateDesignRow,
-  target: GuestPortalSectionStyleTarget
-): GuestPortalSectionStyle {
-  const styles = design.section_styles || {};
-  const style = styles[target] || {};
-
-  if (!style.useCustomStyle) {
-    return {
-      containerLayout: design.container_layout || 'card',
-      containerPadding: design.container_padding || 'balanced',
-      containerSurface: design.container_surface_color || design.surface_color || '#FFFFFF',
-      containerBorder: design.container_border_color || design.border_color || '#E8E0D7',
-      containerShadow: design.container_shadow_color || design.shadow_color || 'rgba(44, 37, 35, 0.06)',
-      containerRadius: design.container_radius ?? 28,
-      containerBorderWidth: design.container_border_width ?? 1,
-      textFrameStyle: design.text_frame_style || 'glass',
-      textFrameRadius: design.text_frame_radius ?? 20,
-      textFrameBorderWidth: design.text_frame_border_width ?? 1,
-      backgroundMode: 'none',
-      backgroundImageUrl: '',
-    };
-  }
-
-  return {
-    useCustomStyle: true,
-    containerLayout: style.containerLayout || design.container_layout || 'card',
-    containerPadding: style.containerPadding || design.container_padding || 'balanced',
-    containerSurface: style.containerSurface || design.container_surface_color || design.surface_color || '#FFFFFF',
-    containerBorder: style.containerBorder || design.container_border_color || design.border_color || '#E8E0D7',
-    containerShadow: style.containerShadow || design.container_shadow_color || design.shadow_color || 'rgba(44, 37, 35, 0.06)',
-    containerRadius: style.containerRadius ?? design.container_radius ?? 28,
-    containerBorderWidth: style.containerBorderWidth ?? design.container_border_width ?? 1,
-    backgroundMode: style.backgroundMode || 'none',
-    backgroundImageUrl: style.backgroundImageUrl || '',
-    contentImageUrl: style.contentImageUrl,
-    textFrameStyle: style.textFrameStyle || design.text_frame_style || 'glass',
-    textFrameRadius: style.textFrameRadius ?? design.text_frame_radius ?? 20,
-    textFrameBorderWidth: style.textFrameBorderWidth ?? design.text_frame_border_width ?? 1,
-  };
-}
-
-function containerInlineStyle(style: GuestPortalSectionStyle, design: TemplateDesignRow): React.CSSProperties {
-  const isBorderless = style.containerLayout === 'borderless';
-
-  return {
-    backgroundColor: isBorderless ? 'transparent' : style.containerSurface,
-    borderColor: isBorderless ? 'transparent' : style.containerBorder,
-    borderRadius: isBorderless ? 0 : `${style.containerRadius}px`,
-    borderWidth: isBorderless ? 0 : `${style.containerBorderWidth}px`,
-    boxShadow: isBorderless ? 'none' : `0 12px 36px ${style.containerShadow}`,
-  };
-}
 
 function PreviewClickable({
   children,
