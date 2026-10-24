@@ -72,6 +72,9 @@ export async function submitRsvpAction(input: FormData | Record<string, any>) {
     }
 
     const event = primaryGuest.events as EventRecord;
+    if (event.rsvp_locked) {
+      return { error: 'RSVPs are closed. Please contact the couple directly.' };
+    }
     const isPastDeadline = new Date() > new Date(event.rsvp_deadline);
     if (isPastDeadline && event.allow_late_rsvp === false) {
       return { error: 'The RSVP deadline for this event has passed. Please contact the couple directly.' };
@@ -288,13 +291,14 @@ export async function deletePhotoAction(input: FormData | Record<string, any>) {
       .from('photos')
       .select('*')
       .eq('id', photoId)
+      .eq('event_id', eventId)
       .single();
 
     if (photo?.storage_path) {
       await supabaseAdmin.storage.from(PHOTO_BUCKET).remove([photo.storage_path]);
     }
 
-    await supabaseAdmin.from('photos').delete().eq('id', photoId);
+    await supabaseAdmin.from('photos').delete().eq('id', photoId).eq('event_id', eventId);
 
     revalidatePath(`/admin/${adminToken}`);
     return { success: true };
@@ -862,6 +866,7 @@ export async function updateGuestAction(input: FormData | Record<string, any>) {
       .from('guests')
       .update(updates)
       .eq('id', guestId)
+      .eq('event_id', eventId)
       .select()
       .single();
 
@@ -1037,7 +1042,7 @@ export async function manageRegistryItemAction(input: FormData | Record<string, 
     await requireAdminAccess(eventId, adminToken);
 
     if (action === 'delete') {
-      await supabaseAdmin.from('registry_items').delete().eq('id', itemId);
+      await supabaseAdmin.from('registry_items').delete().eq('id', itemId).eq('event_id', eventId);
       revalidatePath(`/admin/${adminToken}`);
       return { success: true };
     }
@@ -1052,7 +1057,8 @@ export async function manageRegistryItemAction(input: FormData | Record<string, 
       await supabaseAdmin
         .from('registry_items')
         .update({ title, description, external_url: externalUrl, is_cash_fund: isCashFund, target_amount: targetAmount })
-        .eq('id', itemId);
+        .eq('id', itemId)
+        .eq('event_id', eventId);
     } else {
       await supabaseAdmin
         .from('registry_items')
@@ -1170,34 +1176,43 @@ export async function contributeToRegistryAction(input: FormData | Record<string
       return { error: 'Please specify a valid contribution amount.' };
     }
 
-    // Lookup guest if token available
-    let guestId: string | null = null;
-    if (token) {
-      const { data: guest } = await supabaseAdmin.from('guests').select('id').eq('access_token', token).single();
-      if (guest) guestId = guest.id;
+    if (amount > 1_000_000) {
+      return { error: 'Please specify a valid contribution amount.' };
     }
+    if (isDemoGuestToken(token)) {
+      return { success: true, newAmount: amount };
+    }
+
+    // A pledge needs a real guest link, and only counts toward that guest's own event.
+    const { data: guest } = token
+      ? await supabaseAdmin.from('guests').select('id, event_id').eq('access_token', token).maybeSingle()
+      : { data: null };
+    if (!guest) return { error: 'Invitation not found.' };
+
+    const { data: item } = await supabaseAdmin
+      .from('registry_items')
+      .select('current_amount')
+      .eq('id', registryItemId)
+      .eq('event_id', guest.event_id)
+      .maybeSingle();
+    if (!item) return { error: 'Gift not found.' };
 
     // Insert Contribution
     await supabaseAdmin.from('registry_contributions').insert({
       registry_item_id: registryItemId,
-      guest_id: guestId,
+      guest_id: guest.id,
       contributor_name: contributorName || 'Anonymous Friend',
       amount,
       message,
     });
 
     // Increment Item Current Amount
-    const { data: item } = await supabaseAdmin
-      .from('registry_items')
-      .select('current_amount')
-      .eq('id', registryItemId)
-      .single();
-
     const newAmount = (Number(item?.current_amount) || 0) + amount;
     await supabaseAdmin
       .from('registry_items')
       .update({ current_amount: newAmount })
-      .eq('id', registryItemId);
+      .eq('id', registryItemId)
+      .eq('event_id', guest.event_id);
 
     if (token) revalidatePath(`/g/${token}`);
     return { success: true, newAmount };
@@ -1224,7 +1239,7 @@ export async function manageCustomQuestionAction(input: FormData | Record<string
     await requireAdminAccess(eventId, adminToken);
 
     if (action === 'delete') {
-      await supabaseAdmin.from('custom_rsvp_questions').delete().eq('id', questionId);
+      await supabaseAdmin.from('custom_rsvp_questions').delete().eq('id', questionId).eq('event_id', eventId);
       revalidatePath(`/admin/${adminToken}`);
       return { success: true };
     }
@@ -1239,7 +1254,8 @@ export async function manageCustomQuestionAction(input: FormData | Record<string
       await supabaseAdmin
         .from('custom_rsvp_questions')
         .update({ prompt, question_type: questionType, options, is_required: isRequired })
-        .eq('id', questionId);
+        .eq('id', questionId)
+        .eq('event_id', eventId);
     } else {
       await supabaseAdmin
         .from('custom_rsvp_questions')
@@ -1369,31 +1385,29 @@ export async function updateEventSetupAction(input: FormData | Record<string, an
       wedding_date: formData.get('wedding_date') as string,
       rsvp_deadline: formData.get('rsvp_deadline') as string,
       allow_late_rsvp: formData.get('allow_late_rsvp') === 'true',
+      rsvp_locked: formData.get('rsvp_locked') === 'true',
       venue_name: formData.get('venue_name') as string,
       venue_address: formData.get('venue_address') as string,
-      admin_email: formData.get('admin_email') as string,
       launch_notes: (formData.get('launch_notes') as string) || null,
       updated_at: new Date().toISOString(),
-    };
+    } as Record<string, any>;
+    // Leave the admin email unchanged when the form doesn't send one (it's required on the event).
+    const adminEmail = (formData.get('admin_email') as string | null)?.trim();
+    if (adminEmail) updates.admin_email = adminEmail;
 
+    // Only the in-memory demo event may fall back; a real event reports its error instead of a fake success.
     let updatedEvent: any = null;
-    try {
+    if (isDemoEvent(eventId, adminToken)) {
+      updatedEvent = updateMockDemoEvent(updates);
+    } else {
       const { data: event, error } = await supabaseAdmin
         .from('events')
         .update(updates)
         .eq('id', eventId)
         .select()
         .single();
-
-      if (!error && event) {
-        updatedEvent = event;
-      }
-    } catch (dbErr) {
-      console.warn('Supabase setup update failed, using in-memory demo fallback:', dbErr);
-    }
-
-    if (!updatedEvent || isDemoEvent(eventId, adminToken)) {
-      updatedEvent = updateMockDemoEvent(updates);
+      if (error || !event) throw error || new Error('Failed to update setup.');
+      updatedEvent = event;
     }
 
     revalidatePath(`/admin/${adminToken}`);
@@ -1887,5 +1901,80 @@ export async function setGuestRsvpStatusAction(
     return { success: !error };
   } catch {
     return { success: false };
+  }
+}
+
+/** Lets the couple allow or remove a guest's plus-one after the guest was added. */
+export async function setGuestPlusOneAction(
+  eventId: string,
+  adminToken: string,
+  guestId: string,
+  allowed: boolean
+): Promise<{ success: boolean }> {
+  try {
+    await requireAdminAccess(eventId, adminToken);
+    const { error } = await supabaseAdmin
+      .from('guests')
+      .update({ plus_one_allowed: allowed, updated_at: new Date().toISOString() })
+      .eq('id', guestId)
+      .eq('event_id', eventId);
+    return { success: !error };
+  } catch {
+    return { success: false };
+  }
+}
+
+const ALLOWED_MUSIC_TYPES = ['audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/x-m4a', 'audio/aac', 'audio/ogg', 'audio/wav', 'audio/x-wav'];
+const MAX_MUSIC_UPLOAD_SIZE_BYTES = 15 * 1024 * 1024; // 15MB
+
+/** Uploads the song that plays when guests open the invitation, or removes it (remove=true). */
+export async function setEventMusicAction(input: FormData | Record<string, any>) {
+  const formData = toFormData(input);
+  const eventId = formData.get('eventId') as string;
+  const adminToken = formData.get('adminToken') as string;
+  const file = formData.get('file') as File | null;
+  const remove = formData.get('remove') === 'true';
+
+  try {
+    await requireAdminAccess(eventId, adminToken);
+
+    let music: { url: string; title: string } | null = null;
+    if (!remove) {
+      if (!file) return { error: 'No audio file provided.' };
+      if (!ALLOWED_MUSIC_TYPES.includes(file.type.toLowerCase())) {
+        return { error: 'Please choose an MP3, M4A, AAC, OGG or WAV file.' };
+      }
+      if (file.size > MAX_MUSIC_UPLOAD_SIZE_BYTES) {
+        return { error: 'Audio file exceeds the 15MB limit.' };
+      }
+      const fileExt = (file.name.split('.').pop() || 'mp3').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const storagePath = `music/${eventId}/${Date.now()}.${fileExt}`;
+      const { error: uploadErr } = await supabaseAdmin.storage
+        .from('template-media')
+        .upload(storagePath, Buffer.from(await file.arrayBuffer()), { contentType: file.type, upsert: false });
+      if (uploadErr) throw uploadErr;
+      const { data } = supabaseAdmin.storage.from('template-media').getPublicUrl(storagePath);
+      music = { url: data.publicUrl, title: file.name.replace(/\.[^/.]+$/, '') };
+    }
+
+    const { data: current } = await supabaseAdmin.from('events').select('custom_sections').eq('id', eventId).single();
+    const customSections = { ...((current?.custom_sections as Record<string, any>) || {}) };
+    if (music) customSections.music = music;
+    else delete customSections.music;
+
+    const { data: event, error } = await supabaseAdmin
+      .from('events')
+      .update({ custom_sections: customSections, updated_at: new Date().toISOString() })
+      .eq('id', eventId)
+      .select()
+      .single();
+    if (error) throw error;
+
+    revalidatePath(`/admin/${adminToken}`);
+    revalidatePath('/g/[token]', 'page');
+    return { success: true, event };
+  } catch (err: any) {
+    console.error('setEventMusicAction error:', err);
+    return { error: err.message || 'Failed to update music.' };
   }
 }

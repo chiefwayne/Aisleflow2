@@ -1,5 +1,6 @@
 import React from 'react';
 import { notFound } from 'next/navigation';
+import { headers } from 'next/headers';
 // Server-only: row-level security blocks the public key, so read with the service role.
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import GuestPortalView from '@/components/guest/GuestPortalView';
@@ -16,10 +17,15 @@ import { ensureDemoEventSeeded, DEMO_GUEST_TOKEN, getMockDemoData } from '@/lib/
 
 interface PageProps {
   params: Promise<{ token: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
-export default async function GuestPortalPage({ params }: PageProps) {
+export default async function GuestPortalPage({ params, searchParams }: PageProps) {
   const { token } = await params;
+  // Count a view only for a guest's full page load: the couple's own "Open Portal" links add ?preview=1,
+  // and in-app refreshes (after an RSVP is saved) are RSC requests carrying the `rsc` header.
+  const isCouplePreview = (await searchParams).preview === '1';
+  const isRscRefresh = (await headers()).get('rsc') === '1';
   const mockData = getMockDemoData();
 
   let primaryGuest: GuestRecord | null = null;
@@ -45,6 +51,17 @@ export default async function GuestPortalPage({ params }: PageProps) {
 
     if (foundGuest) {
       primaryGuest = foundGuest as GuestRecord;
+      if (!isCouplePreview && !isRscRefresh) {
+        const now = new Date().toISOString();
+        await supabase
+          .from('guests')
+          .update({
+            first_viewed_at: foundGuest.first_viewed_at || now,
+            last_viewed_at: now,
+            view_count: (foundGuest.view_count || 0) + 1,
+          })
+          .eq('id', foundGuest.id);
+      }
       const { data: foundEvent } = await supabase
         .from('events')
         .select('*')

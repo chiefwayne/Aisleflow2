@@ -44,6 +44,7 @@ import {
   Sliders,
   ChevronUp,
   Eye,
+  MessageCircle,
   EyeOff,
   UserPlus,
   Edit2,
@@ -73,6 +74,7 @@ import { ImagePickerUploader } from '@/components/common/ImagePickerUploader';
 import PublishReadinessPanel from '@/components/admin/PublishReadinessPanel';
 import { isStudioDesign } from '@/lib/portal-design';
 import { getMenuOptions, MenuOption } from '@/lib/menu';
+import { whatsappShareUrl } from '@/lib/share';
 import { generateTrackingToken, renderTemplateVariables } from '@/lib/communications';
 import {
   addGuestAction,
@@ -97,7 +99,9 @@ import {
   updateCommunicationTemplateAction,
   deleteCommunicationTemplateAction,
   listEventRowsAction,
-  setGuestRsvpStatusAction
+  setGuestRsvpStatusAction,
+  setGuestPlusOneAction,
+  setEventMusicAction,
 } from '@/app/actions/wedding-actions';
 
 interface AdminDashboardViewProps {
@@ -264,7 +268,12 @@ export default function AdminDashboardView({
   });
 
   // Setup Form State
-  const [setupForm, setSetupForm] = useState({ ...event });
+  // Dates are stored as timestamps; the date inputs need YYYY-MM-DD.
+  const [setupForm, setSetupForm] = useState({
+    ...event,
+    wedding_date: (event.wedding_date || '').slice(0, 10),
+    rsvp_deadline: (event.rsvp_deadline || '').slice(0, 10),
+  });
 
   // Custom Sections CMS State
   const [customSections, setCustomSections] = useState<EventCustomSections>(
@@ -367,9 +376,11 @@ export default function AdminDashboardView({
         eventId: event.id,
         adminToken: event.admin_token,
         couple_names: setupForm.couple_names,
+        admin_email: setupForm.admin_email,
         wedding_date: setupForm.wedding_date,
         rsvp_deadline: setupForm.rsvp_deadline,
         allow_late_rsvp: setupForm.allow_late_rsvp,
+        rsvp_locked: !!setupForm.rsvp_locked,
         venue_name: setupForm.venue_name,
         venue_address: setupForm.venue_address,
         launch_notes: setupForm.launch_notes,
@@ -844,6 +855,44 @@ export default function AdminDashboardView({
     }
   };
 
+  const handleTogglePlusOne = async (guest: GuestRecord) => {
+    const allowed = !guest.plus_one_allowed;
+    setGuests((prev) => prev.map((g) => (g.id === guest.id ? { ...g, plus_one_allowed: allowed } : g)));
+    const result = await setGuestPlusOneAction(event.id, event.admin_token, guest.id, allowed);
+    if (!result.success) {
+      setGuests((prev) => prev.map((g) => (g.id === guest.id ? { ...g, plus_one_allowed: !allowed } : g)));
+      setStatusMessage('Could not update the plus-one. Please try again.');
+      setTimeout(() => setStatusMessage(''), 3500);
+    }
+  };
+
+  // Upload (file) or remove (null) the song played when guests open the invitation
+  const handleSetMusic = async (file: File | null) => {
+    setIsProcessingAction(true);
+    setStatusMessage(file ? 'Uploading song...' : 'Removing song...');
+    try {
+      const formData = new FormData();
+      formData.append('eventId', event.id);
+      formData.append('adminToken', event.admin_token);
+      if (file) formData.append('file', file);
+      else formData.append('remove', 'true');
+      const result = await setEventMusicAction(formData);
+      if (result.success && result.event) {
+        const saved = (result.event as EventRecord).custom_sections as EventCustomSections;
+        setEvent((prev) => ({ ...prev, custom_sections: saved }));
+        setCustomSections((prev) => ({ ...prev, music: saved?.music }));
+        setStatusMessage(file ? '🎵 Song added. It plays when guests open the invitation.' : 'Song removed.');
+      } else {
+        setStatusMessage(`Error: ${result.error || 'Failed to update music'}`);
+      }
+    } catch (err: any) {
+      setStatusMessage(`Failed to update music: ${err?.message}`);
+    } finally {
+      setIsProcessingAction(false);
+      setTimeout(() => setStatusMessage(''), 4000);
+    }
+  };
+
   // Meal options (stored in custom_sections.menu)
   const [menuDraft, setMenuDraft] = useState<MenuOption[]>(() => getMenuOptions(event));
   const mealCounts = guests
@@ -1161,7 +1210,7 @@ export default function AdminDashboardView({
       const result = await broadcastSmsAction({
         eventId: event.id,
         adminToken: event.admin_token,
-        message: `Friendly reminder from ${event.couple_names}: Please let us know if you can celebrate with us by ${new Date(event.rsvp_deadline).toLocaleDateString()} at {{portal_link}}`,
+        message: `Friendly reminder from ${event.couple_names}: Please let us know if you can celebrate with us by ${new Date(event.rsvp_deadline).toLocaleDateString('en-US', { timeZone: 'UTC' })} at {{portal_link}}`,
       });
 
       if (result.success) {
@@ -1588,6 +1637,42 @@ export default function AdminDashboardView({
     a.click();
   };
 
+  // Caterer list: one row per attending person, plus-ones included
+  const handleExportCatererCsv = () => {
+    const rows = guests
+      .filter((g) => g.rsvp_status === 'attending')
+      .flatMap((g) => {
+        const guestRow = {
+          Name: `${g.first_name} ${g.last_name || ''}`.trim(),
+          Party: g.party_name || '',
+          Meal: g.meal_choice || '',
+          'Dietary Tags': (g.dietary_tags || []).join(', '),
+          'Dietary Notes': g.dietary_notes || '',
+          'Guest Of': '',
+        };
+        if (!g.plus_one_name) return [guestRow];
+        return [
+          guestRow,
+          {
+            Name: g.plus_one_name,
+            Party: g.party_name || '',
+            Meal: g.plus_one_meal || '',
+            'Dietary Tags': '',
+            'Dietary Notes': '',
+            'Guest Of': guestRow.Name,
+          },
+        ];
+      });
+
+    const csv = Papa.unparse(rows);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `AisleFlow_Caterer_${event.slug}.csv`;
+    a.click();
+  };
+
   // Two-Way SMS Inbound Simulator
   const handleSimulateInboundSms = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1650,7 +1735,7 @@ export default function AdminDashboardView({
               <span>Print Table QR Cards</span>
             </button>
             <Link
-              href={`/g/${guests[0]?.access_token || event.admin_token}`}
+              href={`/g/${guests[0]?.access_token || event.admin_token}?preview=1`}
               target="_blank"
               className="inline-flex items-center gap-1.5 rounded-full bg-aisle-charcoal px-4 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-aisle-terracotta transition-colors"
             >
@@ -1818,7 +1903,7 @@ export default function AdminDashboardView({
                           {copiedLink === g.id ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
                         </button>
                         <Link
-                          href={`/g/${g.access_token}`}
+                          href={`/g/${g.access_token}?preview=1`}
                           target="_blank"
                           className="rounded-lg bg-aisle-charcoal px-3 py-1.5 text-white font-medium hover:bg-aisle-terracotta text-xs"
                         >
@@ -1928,6 +2013,19 @@ export default function AdminDashboardView({
                   />
                   <label htmlFor="allow_late" className="font-medium text-aisle-warm">
                     Allow late RSVP changes after the deadline has passed
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="rsvp_locked"
+                    checked={!!setupForm.rsvp_locked}
+                    onChange={(e) => setSetupForm({ ...setupForm, rsvp_locked: e.target.checked })}
+                    className="h-4 w-4 rounded border-aisle-border text-aisle-terracotta focus:ring-0"
+                  />
+                  <label htmlFor="rsvp_locked" className="font-medium text-aisle-warm">
+                    Close RSVPs now (guests can still view the invitation but can't reply or change their answer)
                   </label>
                 </div>
 
@@ -2095,6 +2193,19 @@ export default function AdminDashboardView({
                                     VIP
                                   </span>
                                 )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleTogglePlusOne(guest)}
+                                  title={guest.plus_one_allowed ? 'Remove plus-one' : 'Allow a plus-one'}
+                                  aria-pressed={!!guest.plus_one_allowed}
+                                  className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold border cursor-pointer ${
+                                    guest.plus_one_allowed
+                                      ? 'border-aisle-terracotta bg-aisle-terracotta/10 text-aisle-terracotta'
+                                      : 'border-dashed border-aisle-border text-aisle-muted hover:text-aisle-charcoal'
+                                  }`}
+                                >
+                                  +1
+                                </button>
                               </div>
                               {partyId && (
                                 <div className="flex items-center gap-1.5 mt-1">
@@ -2138,6 +2249,12 @@ export default function AdminDashboardView({
                               >
                                 {guest.rsvp_status}
                               </span>
+                              <span
+                                className="block mt-1 text-xs text-aisle-muted"
+                                title={guest.last_viewed_at ? `Last opened ${new Date(guest.last_viewed_at).toLocaleString()}` : undefined}
+                              >
+                                {guest.view_count ? `Opened ${guest.view_count}×` : 'Not opened'}
+                              </span>
                             </td>
                             <td className="p-3 text-aisle-warm">
                               <div>{guest.meal_choice || '—'}</div>
@@ -2154,6 +2271,16 @@ export default function AdminDashboardView({
                                 >
                                   <QrCode className="h-3.5 w-3.5 text-aisle-charcoal" />
                                 </button>
+                                <a
+                                  href={whatsappShareUrl(guest, event, `${window.location.origin}/g/${guest.access_token}`)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title="Send link on WhatsApp"
+                                  aria-label={`Send ${guest.first_name}'s link on WhatsApp`}
+                                  className="rounded-lg border border-aisle-border p-1.5 hover:bg-emerald-50 text-aisle-charcoal hover:text-emerald-700"
+                                >
+                                  <MessageCircle className="h-3.5 w-3.5" />
+                                </a>
                                 <button
                                   onClick={() => copyToClipboard(`${window.location.origin}/g/${guest.access_token}`, guest.id)}
                                   title="Copy Guest Link"
@@ -2846,6 +2973,48 @@ export default function AdminDashboardView({
                     </div>
                   )}
 
+                  {/* Music on open (shown with the opening styles) */}
+                  {builderSubTab === 'reveal' && (
+                    <div className="space-y-3 rounded-2xl border border-aisle-border p-4 text-xs">
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-aisle-charcoal">Music on open</h4>
+                        <p className="text-xs text-aisle-muted mt-0.5">
+                          Plays when a guest taps to open the invitation. Guests can mute it at any time.
+                        </p>
+                      </div>
+                      {customSections.music?.url ? (
+                        <div className="space-y-2">
+                          <p className="font-semibold text-aisle-charcoal">{customSections.music.title || 'Your song'}</p>
+                          <audio controls src={customSections.music.url} className="w-full" />
+                          <button
+                            type="button"
+                            onClick={() => handleSetMusic(null)}
+                            disabled={isProcessingAction}
+                            className="rounded-full border border-aisle-border px-4 py-2 font-semibold text-aisle-muted hover:text-red-600 cursor-pointer disabled:opacity-50"
+                          >
+                            Remove song
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="inline-flex items-center gap-1.5 rounded-full bg-aisle-charcoal px-4 py-2 font-semibold text-white hover:bg-aisle-terracotta cursor-pointer">
+                          <Upload className="h-3.5 w-3.5" />
+                          <span>{isProcessingAction ? 'Uploading…' : 'Upload a song (MP3, M4A, up to 15MB)'}</span>
+                          <input
+                            type="file"
+                            accept="audio/*"
+                            className="sr-only"
+                            disabled={isProcessingAction}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              e.target.value = '';
+                              if (file) handleSetMusic(file);
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  )}
+
                   {/* SUB-TAB 5: IMAGERY & PHOTO SLOTS */}
                   {builderSubTab === 'imagery' && (
                     <div className="space-y-4">
@@ -3523,6 +3692,15 @@ export default function AdminDashboardView({
                 <p className="text-xs text-aisle-muted">
                   Counts include plus-ones of guests who are attending.
                 </p>
+                <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleExportCatererCsv}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-aisle-border px-4 py-2.5 text-xs font-semibold text-aisle-charcoal hover:bg-aisle-sand cursor-pointer"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Caterer list (CSV)</span>
+                </button>
                 <button
                   type="button"
                   onClick={handleSaveMenu}
@@ -3531,6 +3709,7 @@ export default function AdminDashboardView({
                 >
                   Save Menu
                 </button>
+                </div>
               </div>
             </div>
 

@@ -34,6 +34,10 @@ export interface EventCustomSections {
   menu?: {
     options?: Array<{ name: string; description?: string }>;
   };
+  music?: {
+    url: string;
+    title?: string;
+  };
   planning?: {
     tasks?: PlanningTaskRecord[];
     updatedAt?: string;
@@ -82,6 +86,7 @@ export interface EventRecord {
   custom_sections?: EventCustomSections | Record<string, any> | null;
   is_live: boolean;
   is_ready_for_testing: boolean;
+  rsvp_locked?: boolean;
   setup_completed?: boolean;
   setup_completed_at?: string | null;
   reminder_last_sent_at?: string | null;
@@ -126,6 +131,9 @@ export interface GuestRecord {
   last_opened_at?: string | null;
   created_at: string;
   updated_at: string;
+  first_viewed_at?: string | null;
+  last_viewed_at?: string | null;
+  view_count?: number;
 }
 
 export interface ScheduleItemRecord {

@@ -14,6 +14,8 @@ import {
   Sparkles,
   ExternalLink,
   Lock,
+  Volume2,
+  VolumeX,
   ChevronDown,
   ChevronUp,
   ChevronRight,
@@ -136,6 +138,17 @@ export default function GuestPortalView({
 
   // Opening screen state
   const [hasOpened, setHasOpened] = useState(previewMode);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [musicPlaying, setMusicPlaying] = useState(false);
+  const toggleMusic = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) audio.play().then(() => setMusicPlaying(true)).catch(() => setMusicPlaying(false));
+    else {
+      audio.pause();
+      setMusicPlaying(false);
+    }
+  };
 
   // 4-Step RSVP Wizard State
   // Step 1: Attendance, Step 2: Sub-Events, Step 3: Dining & Questions, Step 4: Review, Step 5: Confirmed
@@ -216,6 +229,7 @@ export default function GuestPortalView({
   const [pledgeMessage, setPledgeMessage] = useState('');
   const [isPledging, setIsPledging] = useState(false);
   const [pledgeSuccess, setPledgeSuccess] = useState(false);
+  const [pledgeError, setPledgeError] = useState('');
   const [copiedZelle, setCopiedZelle] = useState(false);
 
   // Photo uploads
@@ -260,7 +274,7 @@ export default function GuestPortalView({
 
   // Check deadline lockout
   const isPastDeadline = new Date() > new Date(event.rsvp_deadline);
-  const isRsvpLocked = isPastDeadline && !event.allow_late_rsvp;
+  const isRsvpLocked = !!event.rsvp_locked || (isPastDeadline && !event.allow_late_rsvp);
 
   // Filter schedule items based on guest VIP status
   const isGuestVip = activeGuest.is_vip || partyMembers.some((p) => p?.is_vip);
@@ -336,7 +350,7 @@ export default function GuestPortalView({
   // Submit RSVP via Server Action
   const handleFinalRsvpSubmit = async () => {
     if (isRsvpLocked) {
-      setErrorMessage('The RSVP deadline for this event has passed. Please contact the couple directly.');
+      setErrorMessage('RSVPs are closed. Please contact the couple directly.');
       return;
     }
 
@@ -432,6 +446,7 @@ export default function GuestPortalView({
     if (!activeCashFund) return;
 
     setIsPledging(true);
+    setPledgeError('');
     const amountNum = parseFloat(pledgeAmount) || 0;
 
     try {
@@ -443,8 +458,12 @@ export default function GuestPortalView({
       formData.append('message', pledgeMessage);
 
       const res = await contributeToRegistryAction(formData);
+      if (!res?.success) {
+        setPledgeError(res?.error || 'Your gift could not be recorded. Please try again.');
+        return;
+      }
 
-      const newTotal = res?.newAmount ?? ((activeCashFund.current_amount || 0) + amountNum);
+      const newTotal = res.newAmount ?? ((activeCashFund.current_amount || 0) + amountNum);
 
       setRegistryList((prev) =>
         prev.map((item) =>
@@ -467,6 +486,7 @@ export default function GuestPortalView({
 
   const partyNames = allGuests.map((g) => g?.first_name || 'Guest').join(' & ');
   const menuOptions = getMenuOptions(event);
+  const musicUrl: string | undefined = (event.custom_sections as any)?.music?.url;
   const customSections = (event.custom_sections || {}) as any;
   const faqList = customSections.faq?.items || [];
   const localRecsList = customSections.local_recs?.items || [];
@@ -914,6 +934,7 @@ export default function GuestPortalView({
                 <p className="text-sm font-editorial italic opacity-75">
                   Kindly reply by{' '}
                   {new Date(event.rsvp_deadline).toLocaleDateString('en-US', {
+                    timeZone: 'UTC', // dates are stored as midnight UTC
                     month: 'long',
                     day: 'numeric',
                     year: 'numeric',
@@ -935,8 +956,8 @@ export default function GuestPortalView({
                     <Lock className="h-6 w-6 mx-auto opacity-70" />
                     <h4 className="font-serif text-base font-semibold">RSVP Window Concluded</h4>
                     <p className="text-sm opacity-70">
-                      The deadline has passed. If you need to make an adjustment, please contact the
-                      couple directly.
+                      {event.rsvp_locked ? 'RSVPs are now closed.' : 'The deadline has passed.'} If you need
+                      to make an adjustment, please contact the couple directly.
                     </p>
                   </div>
                 ) : rsvpStep === 5 ? (
@@ -1794,8 +1815,31 @@ export default function GuestPortalView({
           coupleNames={event.couple_names}
           openingStyle={theme.opening_style}
           guestName={partyNames}
-          onOpen={() => setHasOpened(true)}
+          onOpen={() => {
+            setHasOpened(true);
+            // Opening is a tap, so browsers allow sound to start here.
+            if (musicUrl) {
+              audioRef.current?.play().then(() => setMusicPlaying(true)).catch(() => setMusicPlaying(false));
+            }
+          }}
         />
+      )}
+
+      {musicUrl && (
+        <>
+          <audio ref={audioRef} src={musicUrl} loop preload="none" />
+          {hasOpened && (
+            <button
+              type="button"
+              onClick={toggleMusic}
+              aria-label={musicPlaying ? 'Pause music' : 'Play music'}
+              className="fixed bottom-5 right-5 z-40 flex h-11 w-11 items-center justify-center rounded-full shadow-lg text-white"
+              style={{ backgroundColor: theme.accent_color || '#9E5A44' }}
+            >
+              {musicPlaying ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+            </button>
+          )}
+        </>
       )}
 
       {/* Main Flowing Stationery Canvas */}
@@ -1860,6 +1904,7 @@ export default function GuestPortalView({
           <div className="space-y-1 pt-2">
             <p className="font-serif text-base sm:text-lg font-medium tracking-wide">
               {new Date(event.wedding_date).toLocaleDateString('en-US', {
+                timeZone: 'UTC', // dates are stored as midnight UTC
                 weekday: 'long',
                 month: 'long',
                 day: 'numeric',
@@ -1978,6 +2023,11 @@ export default function GuestPortalView({
                 </div>
               ) : (
                 <form onSubmit={handleCashFundPledge} className="space-y-4 text-sm">
+                  {pledgeError && (
+                    <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+                      {pledgeError}
+                    </p>
+                  )}
                   <div>
                     <label className="block uppercase tracking-wider text-xs font-semibold mb-1 opacity-80">
                       Select Amount ($)
@@ -2001,7 +2051,7 @@ export default function GuestPortalView({
                     <input
                       type="number"
                       min="1"
-                      step="5"
+                      step="1"
                       value={pledgeAmount}
                       onChange={(e) => setPledgeAmount(e.target.value)}
                       required
