@@ -158,3 +158,29 @@ export function pageBackgroundStyle(design: DesignStyleSource): React.CSSPropert
       return {};
   }
 }
+
+/** theme_config keys only the Design Studio may set (layout, containers, backgrounds, section order). */
+export const STUDIO_LAYOUT_KEYS = [
+  'container_surface_color',
+  'container_border_color',
+  'container_shadow_color',
+  'container_radius',
+  'container_border_width',
+  'container_layout',
+  'container_padding',
+  'text_frame_style',
+  'text_frame_radius',
+  'text_frame_border_width',
+  'section_order',
+  'hidden_sections',
+  'section_styles',
+  'per_section_styles',
+  'page_background_mode',
+  'page_background_image_url',
+] as const;
+
+export function stripStudioLayout<T extends Record<string, unknown>>(config: T): T {
+  const copy: Record<string, unknown> = { ...config };
+  for (const key of STUDIO_LAYOUT_KEYS) delete copy[key];
+  return copy as T;
+}

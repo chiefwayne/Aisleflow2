@@ -16,6 +16,7 @@ import {
 } from '@/lib/types';
 import { getEventReadiness, missingRequired } from '@/lib/event-readiness';
 import { assertChannelAllowed, featureError, hasFeature } from '@/lib/plans';
+import { stripStudioLayout } from '@/lib/portal-design';
 import { getMenuOptions, isMealOnMenu } from '@/lib/menu';
 import { scopeRsvpPayload } from '@/lib/rsvp-scope';
 import { isDemoEvent, isDemoGuestToken, updateMockDemoEvent, DEMO_EVENT_ID, DEMO_ADMIN_TOKEN } from '@/lib/demo-seeder';
@@ -1513,7 +1514,12 @@ export async function updateEventCustomSectionsAction(input: FormData | Record<s
 
     if (formData.has('custom_sections')) {
       const sectionsJson = formData.get('custom_sections') as string;
-      updatePayload.custom_sections = typeof sectionsJson === 'string' ? JSON.parse(sectionsJson) : sectionsJson;
+      const sections = typeof sectionsJson === 'string' ? JSON.parse(sectionsJson) : sectionsJson;
+      // Music is managed only by setEventMusicAction (plan-checked); keep whatever is saved.
+      const { data: saved } = await supabaseAdmin.from('events').select('custom_sections').eq('id', eventId).maybeSingle();
+      const savedMusic = (saved?.custom_sections as Record<string, any> | null)?.music;
+      delete sections.music;
+      updatePayload.custom_sections = savedMusic ? { ...sections, music: savedMusic } : sections;
     }
     if (formData.has('welcome_message')) {
       updatePayload.welcome_message = formData.get('welcome_message') as string;
@@ -1568,7 +1574,20 @@ export async function updateEventThemeAction(input: FormData | Record<string, an
 
   try {
     await requireAdminAccess(eventId, adminToken);
-    const themeConfig = themeConfigJson ? (typeof themeConfigJson === 'string' ? JSON.parse(themeConfigJson) : themeConfigJson) : {};
+    let themeConfig = themeConfigJson ? (typeof themeConfigJson === 'string' ? JSON.parse(themeConfigJson) : themeConfigJson) : {};
+
+    // A published catalogue design is copied from the database, never from the browser.
+    // Anything else may carry Studio layout only on a plan with the Design Studio.
+    const [{ data: planRow }, { data: catalogue }] = await Promise.all([
+      supabaseAdmin.from('events').select('plan').eq('id', eventId).maybeSingle(),
+      supabaseAdmin.from('template_designs').select('*').eq('slug', themeId).eq('status', 'published').maybeSingle(),
+    ]);
+    if (catalogue) {
+      const { created_at, updated_at, status, ...snapshot } = catalogue;
+      themeConfig = snapshot;
+    } else if (!hasFeature(planRow || {}, 'design_studio')) {
+      themeConfig = stripStudioLayout(themeConfig);
+    }
 
     let updatedEvent: any = null;
     try {
@@ -1634,7 +1653,9 @@ export async function updateEventDesignAction(input: FormData | Record<string, a
       } catch (e) {
         // Fallback to in-memory config if DB is unreachable
       }
-      updatePayload.theme_config = { ...existingConfig, ...parsedConfig };
+      const { data: planRow } = await supabaseAdmin.from('events').select('plan').eq('id', eventId).maybeSingle();
+      const allowedConfig = hasFeature(planRow || {}, 'design_studio') ? parsedConfig : stripStudioLayout(parsedConfig);
+      updatePayload.theme_config = { ...existingConfig, ...allowedConfig };
     }
     if (formData.has('cover_image_url')) {
       updatePayload.cover_image_url = formData.get('cover_image_url') as string;
