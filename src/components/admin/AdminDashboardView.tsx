@@ -111,6 +111,7 @@ import {
   setGuestRsvpStatusAction,
   setGuestPlusOneAction,
   setEventMusicAction,
+  setInvitationModeAction,
 } from '@/app/actions/wedding-actions';
 
 interface AdminDashboardViewProps {
@@ -949,6 +950,20 @@ export default function AdminDashboardView({
       setIsProcessingAction(false);
       setTimeout(() => setStatusMessage(''), 4000);
     }
+  };
+
+  const handleSetInvitationMode = async (mode: 'save_the_date' | 'invitation') => {
+    if ((event.invitation_mode || 'invitation') === mode) return;
+    setIsProcessingAction(true);
+    const result = await setInvitationModeAction(event.id, event.admin_token, mode);
+    setIsProcessingAction(false);
+    if ('error' in result) {
+      setStatusMessage(result.error);
+    } else {
+      setEvent((prev) => ({ ...prev, invitation_mode: mode }));
+      setStatusMessage(mode === 'save_the_date' ? 'Guests now see your save-the-date.' : 'Guests now see the full invitation.');
+    }
+    setTimeout(() => setStatusMessage(''), 3500);
   };
 
   // Meal options (stored in custom_sections.menu)
@@ -1985,6 +2000,44 @@ export default function AdminDashboardView({
               onEventChange={setEvent}
             />
             <PlanCard event={event} onPlanChange={(plan) => setEvent((prev) => ({ ...prev, plan }))} />
+
+            {/* Save-the-date mode (Premium) */}
+            <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-4 text-xs">
+              <div>
+                <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">
+                  What guests see
+                  <span className="ml-2 rounded-full bg-aisle-gold/20 px-2 py-0.5 text-xs font-bold text-aisle-gold-deep align-middle">Premium</span>
+                </h3>
+                <p className="text-aisle-muted mt-1">
+                  Send a save-the-date first, then switch the same links to the full invitation when you are ready.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label="What guests see">
+                {([
+                  { mode: 'save_the_date', label: 'Save the date', desc: 'Names, date, place and a countdown' },
+                  { mode: 'invitation', label: 'Full invitation', desc: 'Everything, including RSVP' },
+                ] as const).map((option) => {
+                  const selected = (event.invitation_mode || 'invitation') === option.mode;
+                  const locked = option.mode === 'save_the_date' && !hasFeature(event, 'save_the_date');
+                  return (
+                    <button
+                      key={option.mode}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      disabled={locked || isProcessingAction}
+                      onClick={() => handleSetInvitationMode(option.mode)}
+                      className={`min-h-[44px] rounded-2xl border p-3 text-left cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 ${
+                        selected ? 'border-aisle-terracotta bg-aisle-sand/50' : 'border-aisle-border hover:bg-aisle-sand/20'
+                      }`}
+                    >
+                      <strong className="block text-aisle-charcoal">{option.label}</strong>
+                      <span className="text-aisle-muted">{locked ? featureError('save_the_date') : option.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <div className="rounded-3xl border border-aisle-border bg-white p-6 sm:p-8 shadow-sm space-y-6">
               <div>
                 <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">Wedding Setup Wizard</h3>

@@ -1995,3 +1995,29 @@ export async function setEventMusicAction(input: FormData | Record<string, any>)
     return { error: err.message || 'Failed to update music.' };
   }
 }
+
+/** Switches the guest link between a save-the-date and the full invitation. */
+export async function setInvitationModeAction(
+  eventId: string,
+  adminToken: string,
+  mode: 'save_the_date' | 'invitation'
+): Promise<{ success: true } | { error: string }> {
+  try {
+    await requireAdminAccess(eventId, adminToken);
+    if (mode === 'save_the_date') {
+      const { data: planRow } = await supabaseAdmin.from('events').select('plan').eq('id', eventId).single();
+      if (!hasFeature(planRow || {}, 'save_the_date')) return { error: featureError('save_the_date') };
+    }
+    const { error } = await supabaseAdmin
+      .from('events')
+      .update({ invitation_mode: mode, updated_at: new Date().toISOString() })
+      .eq('id', eventId);
+    if (error) throw error;
+    revalidatePath(`/admin/${adminToken}`);
+    revalidatePath('/g/[token]', 'page');
+    return { success: true };
+  } catch (err: any) {
+    console.error('setInvitationModeAction error:', err);
+    return { error: 'Could not change the invitation mode.' };
+  }
+}

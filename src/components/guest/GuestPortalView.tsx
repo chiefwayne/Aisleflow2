@@ -514,6 +514,56 @@ export default function GuestPortalView({
   const heroStyle = studioLayout ? computeSectionStyle(theme, 'hero') : null;
   const renderOrder = studioLayout ? orderedVisibleSections(theme) : DEFAULT_SECTION_ORDER;
 
+  // Save-the-date mode: the same link shows a short announcement until the couple switches to the full invitation.
+  if (event.invitation_mode === 'save_the_date' && hasFeature(event, 'save_the_date')) {
+    const where = [event.venue_name, event.venue_address].filter(Boolean).join(', ');
+    return (
+      <div
+        style={{ backgroundColor: theme.bg_color || '#FAF7F2', color: theme.text_color || '#2C2523' }}
+        className={`min-h-screen flex items-center justify-center px-5 py-12 ${fontClass}`}
+      >
+        <main className="max-w-md w-full text-center space-y-6">
+          <p className="text-sm uppercase tracking-[0.3em] font-semibold" style={{ color: theme.accent_color }}>
+            Save the date
+          </p>
+          <h1 className="font-serif text-4xl sm:text-5xl font-semibold leading-tight">{event.couple_names}</h1>
+          <p className="font-serif text-xl">
+            {new Date(event.wedding_date).toLocaleDateString('en-US', {
+              timeZone: 'UTC',
+              weekday: 'long',
+              month: 'long',
+              day: 'numeric',
+              year: 'numeric',
+            })}
+          </p>
+          {where && <p className="text-sm uppercase tracking-[0.2em]" style={{ color: theme.accent_color }}>{where}</p>}
+          <div className="flex items-center justify-center gap-6 border-y py-4" style={{ borderColor: theme.border_color }}>
+            {(['days', 'hours', 'minutes'] as const).map((unit) => (
+              <div key={unit}>
+                <span className="font-editorial text-3xl font-semibold block leading-none">{timeLeft[unit]}</span>
+                <span className="text-xs uppercase tracking-[0.2em] opacity-70">{unit}</span>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              downloadIcs(
+                'save-the-date.ics',
+                buildIcs([{ uid: `${event.id}-wedding`, title: `${event.couple_names}'s Wedding`, start: String(event.wedding_date).slice(0, 10), location: where }])
+              )
+            }
+            className="min-h-[44px] rounded-full px-6 text-sm font-semibold uppercase tracking-wider text-white"
+            style={{ backgroundColor: theme.accent_color || '#9E5A44' }}
+          >
+            Add to calendar
+          </button>
+          <p className="font-editorial italic opacity-75">Formal invitation to follow.</p>
+        </main>
+      </div>
+    );
+  }
+
   const sectionBlocks: Record<GuestPortalSectionId, React.ReactNode> = {
     'our-story': (
       <>
