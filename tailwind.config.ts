@@ -30,9 +30,9 @@ const config: Config = {
         },
       },
       fontFamily: {
-        serif: ["Playfair Display", "Cormorant Garamond", "Cinzel", "Georgia", "serif"],
-        sans: ["Plus Jakarta Sans", "Inter", "sans-serif"],
-        editorial: ["Cormorant Garamond", "Playfair Display", "serif"],
+        serif: ["var(--font-playfair)", "Georgia", "serif"],
+        sans: ["var(--font-jakarta)", "sans-serif"],
+        editorial: ["var(--font-cormorant)", "serif"],
       },
       boxShadow: {
         'wedding': '0 4px 20px -2px rgba(44, 37, 35, 0.05), 0 2px 6px -1px rgba(44, 37, 35, 0.03)',

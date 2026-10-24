@@ -14,7 +14,7 @@ import {
   CommunicationTemplateRecord,
   PlanningTaskRecord,
 } from '@/lib/types';
-import { isDemoEvent, updateMockDemoEvent, DEMO_EVENT_ID, DEMO_ADMIN_TOKEN } from '@/lib/demo-seeder';
+import { isDemoEvent, isDemoGuestToken, updateMockDemoEvent, DEMO_EVENT_ID, DEMO_ADMIN_TOKEN } from '@/lib/demo-seeder';
 
 const PHOTO_BUCKET = 'wedding-photos';
 const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -49,7 +49,7 @@ export async function submitRsvpAction(input: FormData | Record<string, any>) {
       return { error: 'Missing RSVP submission payload.' };
     }
 
-    if (token.startsWith('guest_') || token.startsWith('gt_')) {
+    if (isDemoGuestToken(token)) {
       revalidatePath(`/g/${token}`);
       revalidatePath(`/admin/${DEMO_ADMIN_TOKEN}`);
       return { success: true };
@@ -133,7 +133,7 @@ export async function submitRsvpAction(input: FormData | Record<string, any>) {
     return { success: true };
   } catch (err: any) {
     console.error('submitRsvpAction error:', err);
-    if (token?.startsWith('guest_') || token?.startsWith('gt_')) {
+    if (isDemoGuestToken(token)) {
       revalidatePath(`/g/${token}`);
       return { success: true };
     }
@@ -171,7 +171,7 @@ export async function uploadPhotoAction(input: FormData | Record<string, any>) {
       .single();
 
     if (!guest) {
-      if (token.startsWith('guest_') || token.startsWith('gt_')) {
+      if (isDemoGuestToken(token)) {
         return {
           success: true,
           photo: {
@@ -242,7 +242,7 @@ export async function uploadPhotoAction(input: FormData | Record<string, any>) {
     return { success: true, photo: photoRecord };
   } catch (err: any) {
     console.error('uploadPhotoAction error:', err);
-    if (token?.startsWith('guest_') || token?.startsWith('gt_')) {
+    if (isDemoGuestToken(token)) {
       return {
         success: true,
         photo: {
@@ -264,7 +264,7 @@ export async function deletePhotoAction(input: FormData | Record<string, any>) {
   const eventId = formData.get('eventId') as string;
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     const { data: photo } = await supabaseAdmin
       .from('photos')
@@ -306,7 +306,7 @@ export async function sendCommunicationAction(input: FormData | Record<string, a
     const customEmailBody = formData.get('emailBody') as string;
     const customSmsBody = formData.get('smsBody') as string;
 
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     const { data: event } = await supabaseAdmin
       .from('events')
@@ -607,7 +607,7 @@ export async function broadcastSmsAction(input: FormData | Record<string, any>) 
   const adminToken = formData.get('adminToken') as string;
   const messageText = formData.get('message') as string;
 
-  requireAdminAccess(eventId, adminToken);
+  await requireAdminAccess(eventId, adminToken);
 
   const fd = new FormData();
   fd.append('eventId', eventId);
@@ -662,7 +662,7 @@ export async function importGuestsCsvAction(input: FormData | Record<string, any
   const csvContent = formData.get('csvContent') as string;
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     if (!csvContent || !csvContent.trim()) {
       return { error: 'CSV data is empty.' };
@@ -761,7 +761,7 @@ export async function addGuestAction(input: FormData | Record<string, any>) {
     const hasPartner = formData.get('has_partner') === 'true';
     const partnerName = (formData.get('partner_name') as string) || '';
 
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     const partyId = partyName || hasPartner ? 'p_' + Math.random().toString(36).substring(2, 10) : null;
     const resolvedPartyName = partyName || (hasPartner ? `${firstName} & ${partnerName} Household` : null);
@@ -820,7 +820,7 @@ export async function updateGuestAction(input: FormData | Record<string, any>) {
   const eventId = formData.get('eventId') as string;
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     const updates: Record<string, any> = {
       first_name: formData.get('first_name'),
@@ -877,7 +877,7 @@ export async function deleteGuestAction(
 
   try {
     if (eventId && adminToken) {
-      requireAdminAccess(eventId, adminToken);
+      await requireAdminAccess(eventId, adminToken);
     }
 
     await supabaseAdmin.from('guests').delete().eq('id', guestId);
@@ -917,7 +917,7 @@ export async function rotateGuestAccessTokenAction(
 
   try {
     if (eventId && adminToken) {
-      requireAdminAccess(eventId, adminToken);
+      await requireAdminAccess(eventId, adminToken);
     }
 
     const newToken = createGuestAccessToken();
@@ -955,7 +955,7 @@ export async function managePartyAction(input: FormData | Record<string, any>) {
     const partyName = (formData.get('partyName') as string) || 'Party Group';
     const existingPartyId = formData.get('partyId') as string | null;
 
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
     const guestIds: string[] = typeof guestIdsJson === 'string' ? JSON.parse(guestIdsJson || '[]') : (guestIdsJson || []);
 
     if (action === 'group') {
@@ -1015,7 +1015,7 @@ export async function manageRegistryItemAction(input: FormData | Record<string, 
   const action = formData.get('action') as 'save' | 'delete';
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     if (action === 'delete') {
       await supabaseAdmin.from('registry_items').delete().eq('id', itemId);
@@ -1184,7 +1184,7 @@ export async function contributeToRegistryAction(input: FormData | Record<string
     return { success: true, newAmount };
   } catch (err: any) {
     console.error('contributeToRegistryAction error:', err);
-    if (token?.startsWith('guest_') || token?.startsWith('gt_') || !process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    if (isDemoGuestToken(token)) {
       return { success: true, newAmount: amount || 100 };
     }
     return { error: err.message || 'Failed to record contribution.' };
@@ -1202,7 +1202,7 @@ export async function manageCustomQuestionAction(input: FormData | Record<string
   const action = formData.get('action') as 'save' | 'delete';
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     if (action === 'delete') {
       await supabaseAdmin.from('custom_rsvp_questions').delete().eq('id', questionId);
@@ -1343,7 +1343,7 @@ export async function updateEventSetupAction(input: FormData | Record<string, an
   const adminToken = formData.get('adminToken') as string;
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     const updates = {
       couple_names: formData.get('couple_names') as string,
@@ -1398,7 +1398,7 @@ export async function updateEventCustomSectionsAction(input: FormData | Record<s
   const adminToken = formData.get('adminToken') as string;
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     const updatePayload: Record<string, any> = {
       updated_at: new Date().toISOString(),
@@ -1460,7 +1460,7 @@ export async function updateEventThemeAction(input: FormData | Record<string, an
   const themeConfigJson = formData.get('theme_config') as string;
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
     const themeConfig = themeConfigJson ? (typeof themeConfigJson === 'string' ? JSON.parse(themeConfigJson) : themeConfigJson) : {};
 
     let updatedEvent: any = null;
@@ -1503,7 +1503,7 @@ export async function updateEventDesignAction(input: FormData | Record<string, a
   const adminToken = formData.get('adminToken') as string;
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     const updatePayload: Record<string, any> = {
       updated_at: new Date().toISOString(),
@@ -1675,7 +1675,7 @@ export async function updateCommunicationTemplateAction(input: FormData | Record
   const lifecycleType = (formData.get('lifecycleType') as string) || 'invitation';
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     if (templateId && templateId !== 'new') {
       const { data: updated, error } = await supabaseAdmin
@@ -1733,7 +1733,7 @@ export async function deleteCommunicationTemplateAction(input: FormData | Record
   const templateId = formData.get('templateId') as string;
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     const { error } = await supabaseAdmin
       .from('communication_templates')
@@ -1750,5 +1750,56 @@ export async function deleteCommunicationTemplateAction(input: FormData | Record
       return { success: true };
     }
     return { error: err.message || 'Failed to delete template.' };
+  }
+}
+
+
+// ============================================================================
+// ADMIN DATA REFRESH (replaces direct browser reads, which row-level security blocks)
+// ============================================================================
+const LISTABLE_TABLES = {
+  guests: 'created_at',
+  schedule_items: 'start_time',
+  custom_rsvp_questions: 'display_order',
+  planning_tasks: 'created_at',
+} as const;
+
+export async function listEventRowsAction(
+  eventId: string,
+  adminToken: string,
+  table: keyof typeof LISTABLE_TABLES
+): Promise<{ rows: any[] | null }> {
+  try {
+    if (!(table in LISTABLE_TABLES)) return { rows: null };
+    await requireAdminAccess(eventId, adminToken);
+    const { data, error } = await supabaseAdmin
+      .from(table)
+      .select('*')
+      .eq('event_id', eventId)
+      .order(LISTABLE_TABLES[table], { ascending: true });
+    if (error) return { rows: null };
+    return { rows: data || [] };
+  } catch {
+    // Demo events live in memory, so there is nothing to refresh.
+    return { rows: null };
+  }
+}
+
+export async function setGuestRsvpStatusAction(
+  eventId: string,
+  adminToken: string,
+  guestId: string,
+  status: 'pending' | 'attending' | 'declined'
+): Promise<{ success: boolean }> {
+  try {
+    await requireAdminAccess(eventId, adminToken);
+    const { error } = await supabaseAdmin
+      .from('guests')
+      .update({ rsvp_status: status, updated_at: new Date().toISOString() })
+      .eq('id', guestId)
+      .eq('event_id', eventId);
+    return { success: !error };
+  } catch {
+    return { success: false };
   }
 }

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Heart, Sparkles } from 'lucide-react';
+import { Heart } from 'lucide-react';
 
 export default function Footer() {
   return (
@@ -16,32 +16,31 @@ export default function Footer() {
               </span>
             </div>
             <p className="mt-4 max-w-md text-sm leading-relaxed text-aisle-muted">
-              The premier guest-experience platform designed specifically for micro-weddings, destination celebrations, and high-touch private events. Zero-login portals, live RSVP tracking, and bespoke editorial designs.
+              Beautiful digital wedding invitations with RSVPs, schedules and shared photos — all in one link your guests can open with a tap.
             </p>
             <div className="mt-6 flex items-center gap-3 text-xs text-aisle-muted">
               <span>© {new Date().getFullYear()} AisleFlow Inc.</span>
               <span>·</span>
-              <span>Crafted with meticulous attention to detail.</span>
+              <span>Made for couples who care about the details.</span>
             </div>
           </div>
 
           <div>
             <h4 className="text-xs uppercase tracking-[0.2em] font-semibold text-aisle-charcoal">Product</h4>
             <ul className="mt-4 space-y-2.5 text-sm text-aisle-muted">
-              <li><Link href="/templates" className="hover:text-aisle-charcoal transition-colors">Design Collection</Link></li>
-              <li><Link href="/#features" className="hover:text-aisle-charcoal transition-colors">Zero-Login Portals</Link></li>
-              <li><Link href="/#rsvp" className="hover:text-aisle-charcoal transition-colors">Two-Way SMS RSVP</Link></li>
-              <li><Link href="/#photos" className="hover:text-aisle-charcoal transition-colors">Live Photo Stream</Link></li>
-              <li><Link href="/admin/admin_sophia_demo_7721" className="hover:text-aisle-charcoal transition-colors">Demo Admin Dashboard</Link></li>
+              <li><Link href="/templates" className="hover:text-aisle-charcoal transition-colors">Designs</Link></li>
+              <li><Link href="/#features" className="hover:text-aisle-charcoal transition-colors">How It Works</Link></li>
+              <li><Link href="/#features" className="hover:text-aisle-charcoal transition-colors">Easy RSVPs</Link></li>
+              <li><Link href="/#features" className="hover:text-aisle-charcoal transition-colors">Shared Photo Album</Link></li>
+              <li><Link href="/admin/admin_sophia_demo_7721" className="hover:text-aisle-charcoal transition-colors">See a Demo Dashboard</Link></li>
             </ul>
           </div>
 
           <div>
-            <h4 className="text-xs uppercase tracking-[0.2em] font-semibold text-aisle-charcoal">Platform</h4>
+            <h4 className="text-xs uppercase tracking-[0.2em] font-semibold text-aisle-charcoal">More</h4>
             <ul className="mt-4 space-y-2.5 text-sm text-aisle-muted">
               <li><Link href="/studio" className="hover:text-aisle-charcoal transition-colors">Owner Template Studio</Link></li>
-              <li><Link href="/g/guest_elena_vance" className="hover:text-aisle-charcoal transition-colors">Sample Guest Portal</Link></li>
-              <li><span className="text-xs text-aisle-gold-deep font-medium">✨ Powered by Supabase & Twilio</span></li>
+              <li><Link href="/g/guest_elena_vance" className="hover:text-aisle-charcoal transition-colors">Sample Guest Invitation</Link></li>
             </ul>
           </div>
         </div>

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { supabaseAdmin } from '@/lib/supabase';
-import { requireOwnerAccess } from '@/lib/owner-auth';
+import { requireOwnerAccess, verifyOwnerAccess } from '@/lib/owner-auth';
 import { TemplateDesignRecord, TemplateMediaAssetRecord } from '@/lib/types';
 
 const MEDIA_BUCKET = 'template-media';
@@ -167,4 +167,9 @@ export async function deleteTemplateDesignAction(formData: FormData) {
     console.error('deleteTemplateDesignAction error:', err);
     return { error: err.message };
   }
+}
+
+/** Lets the owner unlock page confirm a passkey against the server secret. */
+export async function verifyOwnerPasskeyAction(passkey: string) {
+  return verifyOwnerAccess(passkey);
 }

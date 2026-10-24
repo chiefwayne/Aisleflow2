@@ -1,5 +1,6 @@
 import React from 'react';
-import { supabase } from '@/lib/supabase';
+// Server-only: row-level security blocks the public key, so read with the service role.
+import { supabaseAdmin as supabase } from '@/lib/supabase';
 import AdminDashboardView from '@/components/admin/AdminDashboardView';
 import {
   EventRecord,
@@ -106,7 +107,8 @@ export default async function AdminDashboardPage({ params }: PageProps) {
   try {
     const { data } = await supabase
       .from('custom_rsvp_responses')
-      .select('*');
+      .select('*')
+      .in('question_id', questions.map((q) => q.id));
     if (data && data.length > 0) responses = data as CustomRsvpResponseRecord[];
   } catch (err) {}
   if (responses.length === 0 && isUsingMock) {

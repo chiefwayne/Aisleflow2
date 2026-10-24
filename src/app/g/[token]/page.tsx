@@ -1,6 +1,7 @@
 import React from 'react';
 import { notFound } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+// Server-only: row-level security blocks the public key, so read with the service role.
+import { supabaseAdmin as supabase } from '@/lib/supabase';
 import GuestPortalView from '@/components/guest/GuestPortalView';
 import {
   EventRecord,
@@ -54,29 +55,14 @@ export default async function GuestPortalPage({ params }: PageProps) {
     console.warn('Guest lookup in DB failed:', err);
   }
 
-  // 2. If not found by guest access_token, check if token is an admin_token or event slug
+  // 2. If not a guest link, allow the event slug (or admin link) to open a preview with a sample guest.
   if (!event) {
     try {
-      const { data: eventByAdminOrSlug } = await supabase
-        .from('events')
-        .select('*')
-        .or(`admin_token.eq.${token},slug.eq.${token}`)
-        .maybeSingle();
-
-      if (eventByAdminOrSlug) {
-        event = eventByAdminOrSlug as EventRecord;
-        const { data: firstGuest } = await supabase
-          .from('guests')
-          .select('*')
-          .eq('event_id', event.id)
-          .order('created_at', { ascending: true })
-          .limit(1)
-          .maybeSingle();
-
-        if (firstGuest) {
-          primaryGuest = firstGuest as GuestRecord;
-        }
-      }
+      const { data: bySlug } = await supabase.from('events').select('*').eq('slug', token).maybeSingle();
+      const { data: byAdmin } = bySlug
+        ? { data: null }
+        : await supabase.from('events').select('*').eq('admin_token', token).maybeSingle();
+      event = (bySlug || byAdmin) as EventRecord | null;
     } catch (err) {}
   }
 
@@ -213,9 +199,17 @@ export default async function GuestPortalPage({ params }: PageProps) {
     } catch (err) {}
   }
 
+  // Never send admin credentials or billing details to a guest's browser.
+  const publicEvent: EventRecord = {
+    ...(event as EventRecord),
+    admin_token: '',
+    admin_email: '',
+    stripe_customer_id: null,
+  };
+
   return (
     <GuestPortalView
-      event={event as EventRecord}
+      event={publicEvent}
       primaryGuest={primaryGuest as GuestRecord}
       partyMembers={partyMembers}
       scheduleItems={scheduleItems}

@@ -70,7 +70,6 @@ import { generateQrDataUrl } from '@/lib/qrcode';
 import PhoneMockup from '@/components/PhoneMockup';
 import GuestPortalView from '@/components/guest/GuestPortalView';
 import { ImagePickerUploader } from '@/components/common/ImagePickerUploader';
-import { supabase } from '@/lib/supabase';
 import { generateTrackingToken, renderTemplateVariables } from '@/lib/communications';
 import {
   addGuestAction,
@@ -93,7 +92,9 @@ import {
   updateEventThemeAction,
   updateEventDesignAction,
   updateCommunicationTemplateAction,
-  deleteCommunicationTemplateAction
+  deleteCommunicationTemplateAction,
+  listEventRowsAction,
+  setGuestRsvpStatusAction
 } from '@/app/actions/wedding-actions';
 
 interface AdminDashboardViewProps {
@@ -312,6 +313,12 @@ export default function AdminDashboardView({
   >('presets');
 
   // Copy Link Helper
+  // Re-read a list from the server after a change (the browser cannot query the database directly).
+  const refreshRows = async (table: 'guests' | 'schedule_items' | 'custom_rsvp_questions' | 'planning_tasks') => {
+    const res = await listEventRowsAction(event.id, event.admin_token, table);
+    return res.rows as any[] | null;
+  };
+
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     setCopiedLink(label);
@@ -505,11 +512,7 @@ export default function AdminDashboardView({
       });
 
       if (result.success) {
-        const { data: updatedGuests } = await supabase
-          .from('guests')
-          .select('*')
-          .eq('event_id', event.id)
-          .order('created_at', { ascending: true });
+        const updatedGuests = await refreshRows('guests');
 
         if (updatedGuests) setGuests(updatedGuests as GuestRecord[]);
         setSelectedGuestIds([]);
@@ -583,11 +586,7 @@ export default function AdminDashboardView({
       });
 
       if (result.success) {
-        const { data: updatedGuests } = await supabase
-          .from('guests')
-          .select('*')
-          .eq('event_id', event.id)
-          .order('created_at', { ascending: true });
+        const updatedGuests = await refreshRows('guests');
 
         if (updatedGuests) setGuests(updatedGuests as GuestRecord[]);
         setAddGuestToPartySelectedId('');
@@ -788,11 +787,7 @@ export default function AdminDashboardView({
       });
 
       if (result.success) {
-        const { data: refreshedGuests } = await supabase
-          .from('guests')
-          .select('*')
-          .eq('event_id', event.id)
-          .order('created_at', { ascending: true });
+        const refreshedGuests = await refreshRows('guests');
 
         if (refreshedGuests) setGuests(refreshedGuests as GuestRecord[]);
         setCsvImportModalOpen(false);
@@ -1243,11 +1238,7 @@ export default function AdminDashboardView({
             setSchedule((prev) => [...prev, result.item]);
           }
         } else {
-          const { data: updatedSchedule } = await supabase
-            .from('schedule_items')
-            .select('*')
-            .eq('event_id', event.id)
-            .order('start_time', { ascending: true });
+          const updatedSchedule = await refreshRows('schedule_items');
           if (updatedSchedule) setSchedule(updatedSchedule as ScheduleItemRecord[]);
         }
         setScheduleModalOpen(false);
@@ -1327,11 +1318,7 @@ export default function AdminDashboardView({
       });
 
       if (result.success) {
-        const { data: updatedQuestions } = await supabase
-          .from('custom_rsvp_questions')
-          .select('*')
-          .eq('event_id', event.id)
-          .order('display_order', { ascending: true });
+        const updatedQuestions = await refreshRows('custom_rsvp_questions');
         if (updatedQuestions) setQuestions(updatedQuestions as CustomRsvpQuestionRecord[]);
         setQuestionModalOpen(false);
         setStatusMessage(editingQuestion ? '✅ Question updated!' : '🎉 Question added!');
@@ -1425,11 +1412,7 @@ export default function AdminDashboardView({
             setTasks((prev) => [...prev, result.task]);
           }
         } else {
-          const { data: updatedTasks } = await supabase
-            .from('planning_tasks')
-            .select('*')
-            .eq('event_id', event.id)
-            .order('created_at', { ascending: true });
+          const updatedTasks = await refreshRows('planning_tasks');
           if (updatedTasks) setTasks(updatedTasks as PlanningTaskRecord[]);
         }
         setTaskModalOpen(false);
@@ -1536,7 +1519,7 @@ export default function AdminDashboardView({
     }
 
     if (matchedGuest) {
-      await supabase.from('guests').update({ rsvp_status: newStatus }).eq('id', matchedGuest.id);
+      await setGuestRsvpStatusAction(event.id, event.admin_token, matchedGuest.id, newStatus);
       setGuests((prev) =>
         prev.map((g) => (g.id === matchedGuest.id ? { ...g, rsvp_status: newStatus } : g))
       );
@@ -1559,7 +1542,7 @@ export default function AdminDashboardView({
             <Link href="/" className="font-editorial text-2xl font-semibold text-aisle-charcoal">
               Aisle<span className="italic text-aisle-terracotta">Flow</span>
             </Link>
-            <span className="rounded-full bg-aisle-sand px-2.5 py-0.5 text-[10px] font-semibold text-aisle-charcoal">
+            <span className="rounded-full bg-aisle-sand px-2.5 py-0.5 text-xs font-semibold text-aisle-charcoal">
               Admin Suite
             </span>
             <span className="text-xs text-aisle-muted hidden sm:inline-block">
@@ -1588,53 +1571,56 @@ export default function AdminDashboardView({
       </header>
 
       {/* Main Workspace Layout */}
-      <div className="mx-auto max-w-7xl w-full px-4 sm:px-6 lg:px-8 py-6 flex-1 flex flex-col md:flex-row gap-6">
-        {/* Navigation Sidebar */}
-        <aside className="w-full md:w-60 shrink-0">
-          <nav className="rounded-2xl border border-aisle-border bg-white p-3 space-y-1 shadow-sm sticky top-24">
-            {[
-              { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
-              { id: 'setup', label: 'Setup Wizard', icon: Settings },
-              { id: 'guests', label: 'Guest Registry', icon: Users, badge: totalGuests },
-              { id: 'communications', label: 'Communications', icon: Send },
-              { id: 'builder', label: 'Portal Builder', icon: Palette },
-              { id: 'copy', label: 'Guest Copy', icon: Edit3 },
-              { id: 'schedule', label: 'Schedule / VIP', icon: Calendar },
-              { id: 'questions', label: 'RSVP Questions', icon: HelpCircle },
-              { id: 'registry', label: 'Gift Registry', icon: Gift },
-              { id: 'photos', label: 'Photo Stream', icon: Camera, badge: photos.length },
-              { id: 'planning', label: 'Task Workspace', icon: CheckSquare },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={`w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-xs font-medium transition-all ${
-                    isActive
-                      ? 'bg-aisle-charcoal text-white font-semibold shadow-sm'
-                      : 'text-aisle-warm hover:bg-aisle-sand/50'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Icon className={`h-4 w-4 ${isActive ? 'text-aisle-gold-light' : 'text-aisle-muted'}`} />
-                    <span>{tab.label}</span>
-                  </div>
-                  {tab.badge !== undefined && (
-                    <span
-                      className={`rounded-full px-1.5 py-0.2 text-[10px] font-semibold ${
-                        isActive ? 'bg-white/20 text-white' : 'bg-aisle-sand text-aisle-charcoal'
-                      }`}
-                    >
-                      {tab.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-        </aside>
+      <div className="mx-auto max-w-7xl w-full px-4 sm:px-6 lg:px-8 py-6 flex-1 flex flex-col gap-6">
+        {/* Top Tab Bar */}
+        <nav
+          role="tablist"
+          aria-label="Admin sections"
+          className="sticky top-[69px] z-20 flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-2xl border border-aisle-border bg-white/95 p-1 shadow-sm backdrop-blur-md select-none"
+        >
+          {[
+            { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+            { id: 'setup', label: 'Setup', icon: Settings },
+            { id: 'guests', label: 'Guests', icon: Users, badge: totalGuests },
+            { id: 'communications', label: 'Comms', icon: Send },
+            { id: 'builder', label: 'Builder', icon: Palette },
+            { id: 'copy', label: 'Editor', icon: Edit3 },
+            { id: 'schedule', label: 'Schedule', icon: Calendar },
+            { id: 'questions', label: 'RSVP Qs', icon: HelpCircle },
+            { id: 'registry', label: 'Registry', icon: Gift },
+            { id: 'photos', label: 'Photos', icon: Camera, badge: photos.length },
+            { id: 'planning', label: 'Plan', icon: CheckSquare },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aisle-terracotta ${
+                  isActive
+                    ? 'bg-aisle-charcoal text-white font-semibold shadow-sm'
+                    : 'text-aisle-warm hover:bg-aisle-sand/60'
+                }`}
+              >
+                <Icon className={`h-4 w-4 ${isActive ? 'text-aisle-gold-light' : 'text-aisle-muted'}`} />
+                <span>{tab.label}</span>
+                {tab.badge !== undefined && (
+                  <span
+                    className={`rounded-full px-1.5 text-xs font-semibold ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-aisle-sand text-aisle-charcoal'
+                    }`}
+                  >
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
 
         {/* Content Area */}
         <div className="flex-1 min-w-0 space-y-6">
@@ -1662,45 +1648,45 @@ export default function AdminDashboardView({
               {/* Top Metrics Cards */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div className="rounded-2xl border border-aisle-border bg-white p-5 shadow-sm">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-aisle-muted">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-aisle-muted">
                     Total Invited
                   </span>
                   <p className="font-editorial text-3xl font-semibold text-aisle-charcoal mt-1">
                     {totalGuests}
                   </p>
-                  <span className="text-[10px] text-aisle-muted">across all parties</span>
+                  <span className="text-xs text-aisle-muted">across all parties</span>
                 </div>
 
                 <div className="rounded-2xl border border-aisle-border bg-white p-5 shadow-sm">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
                     Attending
                   </span>
                   <p className="font-editorial text-3xl font-semibold text-emerald-700 mt-1">
                     {attendingGuests}
                   </p>
-                  <span className="text-[10px] text-emerald-600">
+                  <span className="text-xs text-emerald-600">
                     {totalGuests ? Math.round((attendingGuests / totalGuests) * 100) : 0}% confirmed
                   </span>
                 </div>
 
                 <div className="rounded-2xl border border-aisle-border bg-white p-5 shadow-sm">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-rose-700">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-rose-700">
                     Declined
                   </span>
                   <p className="font-editorial text-3xl font-semibold text-rose-700 mt-1">
                     {declinedGuests}
                   </p>
-                  <span className="text-[10px] text-rose-600">regretfully declined</span>
+                  <span className="text-xs text-rose-600">regretfully declined</span>
                 </div>
 
                 <div className="rounded-2xl border border-aisle-border bg-white p-5 shadow-sm">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-aisle-gold-deep">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-aisle-gold-deep">
                     Gifts & Cash Raised
                   </span>
                   <p className="font-editorial text-3xl font-semibold text-aisle-gold-deep mt-1">
                     ${totalRaised}
                   </p>
-                  <span className="text-[10px] text-aisle-muted">honeymoon contributions</span>
+                  <span className="text-xs text-aisle-muted">honeymoon contributions</span>
                 </div>
               </div>
 
@@ -1731,7 +1717,7 @@ export default function AdminDashboardView({
                     <Check className="h-4 w-4 text-emerald-600 shrink-0" />
                     <div>
                       <strong className="text-aisle-charcoal">Wedding Basics Complete</strong>
-                      <p className="text-aisle-muted text-[11px]">Date, couple names & venue confirmed</p>
+                      <p className="text-aisle-muted text-xs">Date, couple names & venue confirmed</p>
                     </div>
                   </div>
 
@@ -1739,7 +1725,7 @@ export default function AdminDashboardView({
                     <Check className="h-4 w-4 text-emerald-600 shrink-0" />
                     <div>
                       <strong className="text-aisle-charcoal">Guest List Seeded</strong>
-                      <p className="text-aisle-muted text-[11px]">{totalGuests} tokenized invitations generated</p>
+                      <p className="text-aisle-muted text-xs">{totalGuests} tokenized invitations generated</p>
                     </div>
                   </div>
 
@@ -1747,7 +1733,7 @@ export default function AdminDashboardView({
                     <Check className="h-4 w-4 text-emerald-600 shrink-0" />
                     <div>
                       <strong className="text-aisle-charcoal">VIP & Schedule Configured</strong>
-                      <p className="text-aisle-muted text-[11px]">{schedule.length} timeline events published</p>
+                      <p className="text-aisle-muted text-xs">{schedule.length} timeline events published</p>
                     </div>
                   </div>
 
@@ -1755,7 +1741,7 @@ export default function AdminDashboardView({
                     <Check className="h-4 w-4 text-emerald-600 shrink-0" />
                     <div>
                       <strong className="text-aisle-charcoal">Custom Questions Active</strong>
-                      <p className="text-aisle-muted text-[11px]">{questions.length} RSVP prompts configured</p>
+                      <p className="text-aisle-muted text-xs">{questions.length} RSVP prompts configured</p>
                     </div>
                   </div>
                 </div>
@@ -1778,9 +1764,9 @@ export default function AdminDashboardView({
                     >
                       <div>
                         <strong className="text-aisle-charcoal">{g.first_name} {g.last_name || ''}</strong>
-                        {g.is_vip && <span className="ml-2 text-[10px] text-aisle-gold-deep font-semibold">VIP</span>}
-                        {g.party_name && <span className="ml-2 text-[10px] text-aisle-muted">({g.party_name})</span>}
-                        <p className="text-[10px] text-aisle-muted font-mono">/g/{g.access_token}</p>
+                        {g.is_vip && <span className="ml-2 text-xs text-aisle-gold-deep font-semibold">VIP</span>}
+                        {g.party_name && <span className="ml-2 text-xs text-aisle-muted">({g.party_name})</span>}
+                        <p className="text-xs text-aisle-muted font-mono">/g/{g.access_token}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <button
@@ -1792,7 +1778,7 @@ export default function AdminDashboardView({
                         <Link
                           href={`/g/${g.access_token}`}
                           target="_blank"
-                          className="rounded-lg bg-aisle-charcoal px-3 py-1.5 text-white font-medium hover:bg-aisle-terracotta text-[11px]"
+                          className="rounded-lg bg-aisle-charcoal px-3 py-1.5 text-white font-medium hover:bg-aisle-terracotta text-xs"
                         >
                           Open Portal
                         </Link>
@@ -2068,7 +2054,7 @@ export default function AdminDashboardView({
                               <div className="font-medium text-aisle-charcoal">
                                 {guest.first_name} {guest.last_name || ''}
                                 {guest.is_vip && (
-                                  <span className="ml-2 rounded-full bg-aisle-gold/20 px-2 py-0.5 text-[9px] font-bold text-aisle-gold-deep">
+                                  <span className="ml-2 rounded-full bg-aisle-gold/20 px-2 py-0.5 text-xs font-bold text-aisle-gold-deep">
                                     VIP
                                   </span>
                                 )}
@@ -2079,11 +2065,11 @@ export default function AdminDashboardView({
                                     type="button"
                                     onClick={() => handleOpenManageParty(partyId)}
                                     title="Click to manage this household party"
-                                    className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-900 border border-amber-200/80 hover:bg-amber-100/80 transition-colors cursor-pointer group shadow-xs"
+                                    className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900 border border-amber-200/80 hover:bg-amber-100/80 transition-colors cursor-pointer group shadow-xs"
                                   >
                                     <Users className="h-2.5 w-2.5 text-amber-700" />
                                     <span>{guest.party_name || matchingParty?.name || 'Household Party'}</span>
-                                    <span className="text-[9px] text-amber-700 font-bold ml-0.5">
+                                    <span className="text-xs text-amber-700 font-bold ml-0.5">
                                       ({matchingParty?.members.length || 2})
                                     </span>
                                     <Edit2 className="h-2 w-2 opacity-50 group-hover:opacity-100 ml-0.5" />
@@ -2092,7 +2078,7 @@ export default function AdminDashboardView({
                                     type="button"
                                     onClick={() => handleRemoveGuestFromParty(guest.id)}
                                     title="Unlink from household party"
-                                    className="text-[9px] text-rose-600 hover:underline cursor-pointer"
+                                    className="text-xs text-rose-600 hover:underline cursor-pointer"
                                   >
                                     (unlink)
                                   </button>
@@ -2101,11 +2087,11 @@ export default function AdminDashboardView({
                             </td>
                             <td className="p-3 text-aisle-muted">
                               <div>{guest.phone || '—'}</div>
-                              <div className="text-[10px]">{guest.email || ''}</div>
+                              <div className="text-xs">{guest.email || ''}</div>
                             </td>
                             <td className="p-3">
                               <span
-                                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
                                   guest.rsvp_status === 'attending'
                                     ? 'bg-emerald-100 text-emerald-800'
                                     : guest.rsvp_status === 'declined'
@@ -2119,7 +2105,7 @@ export default function AdminDashboardView({
                             <td className="p-3 text-aisle-warm">
                               <div>{guest.meal_choice || '—'}</div>
                               {guest.dietary_notes && (
-                                <span className="text-[10px] text-rose-700 block">{guest.dietary_notes}</span>
+                                <span className="text-xs text-rose-700 block">{guest.dietary_notes}</span>
                               )}
                             </td>
                             <td className="p-3 text-right">
@@ -2198,13 +2184,13 @@ export default function AdminDashboardView({
                 {/* Templates Selector */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted">
+                    <span className="text-xs uppercase font-bold tracking-wider text-aisle-muted">
                       Standard Communication Templates ({templates.length})
                     </span>
                     <button
                       type="button"
                       onClick={handleOpenNewTemplate}
-                      className="text-[11px] font-semibold text-aisle-terracotta hover:underline cursor-pointer inline-flex items-center gap-1"
+                      className="text-xs font-semibold text-aisle-terracotta hover:underline cursor-pointer inline-flex items-center gap-1"
                     >
                       <Plus className="h-3 w-3" />
                       <span>Add Custom Template</span>
@@ -2223,14 +2209,14 @@ export default function AdminDashboardView({
                               <span>{tpl.name}</span>
                             </span>
                             <div className="flex items-center gap-1.5">
-                              <span className="rounded-full bg-aisle-sand px-2 py-0.5 text-[9px] uppercase font-bold text-aisle-muted">
+                              <span className="rounded-full bg-aisle-sand px-2 py-0.5 text-xs uppercase font-bold text-aisle-muted">
                                 {tpl.lifecycle_type}
                               </span>
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditTemplate(tpl)}
                                 title="Edit this communication template"
-                                className="inline-flex items-center gap-1 rounded-lg border border-aisle-border bg-white px-2 py-1 text-[10px] font-semibold text-aisle-charcoal hover:bg-aisle-sand hover:text-aisle-terracotta cursor-pointer transition-colors shadow-2xs"
+                                className="inline-flex items-center gap-1 rounded-lg border border-aisle-border bg-white px-2 py-1 text-xs font-semibold text-aisle-charcoal hover:bg-aisle-sand hover:text-aisle-terracotta cursor-pointer transition-colors shadow-2xs"
                               >
                                 <Edit2 className="h-2.5 w-2.5 text-aisle-terracotta" />
                                 <span>Edit</span>
@@ -2238,12 +2224,12 @@ export default function AdminDashboardView({
                             </div>
                           </div>
 
-                          <p className="text-xs text-aisle-muted line-clamp-3 leading-relaxed bg-white/80 p-2.5 rounded-xl border border-aisle-border/60 font-mono text-[11px]">
+                          <p className="text-xs text-aisle-muted line-clamp-3 leading-relaxed bg-white/80 p-2.5 rounded-xl border border-aisle-border/60 font-mono text-xs">
                             {tpl.sms_body || tpl.email_body}
                           </p>
                         </div>
 
-                        <div className="flex items-center justify-between pt-1 border-t border-aisle-border/40 text-[10px] text-aisle-muted">
+                        <div className="flex items-center justify-between pt-1 border-t border-aisle-border/40 text-xs text-aisle-muted">
                           <span className="capitalize">{tpl.channel} channel</span>
                           <button
                             type="button"
@@ -2265,7 +2251,7 @@ export default function AdminDashboardView({
                     <h4 className="font-serif text-sm font-semibold text-aisle-charcoal">
                       Broadcast Campaigns & Delivery Ledger
                     </h4>
-                    <span className="text-[11px] text-aisle-muted">
+                    <span className="text-xs text-aisle-muted">
                       {campaigns.length} total campaigns
                     </span>
                   </div>
@@ -2285,7 +2271,7 @@ export default function AdminDashboardView({
                             <div className="flex items-center gap-2">
                               <strong className="text-aisle-charcoal text-sm font-semibold">{camp.name}</strong>
                               <span
-                                className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                                className={`text-xs font-bold uppercase px-2 py-0.5 rounded-full ${
                                   camp.status === 'completed' || camp.status === 'sent'
                                     ? 'bg-emerald-100 text-emerald-800'
                                     : camp.status === 'scheduled'
@@ -2304,7 +2290,7 @@ export default function AdminDashboardView({
                                   : '⏳ Sending'}
                               </span>
                             </div>
-                            <div className="flex flex-wrap items-center gap-2 text-[10px] text-aisle-muted">
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-aisle-muted">
                               <span>Target: <strong className="text-aisle-charcoal">{camp.target_audience}</strong></span>
                               <span>·</span>
                               <span>Channel: <strong className="text-aisle-charcoal">{camp.channel.toUpperCase()}</strong></span>
@@ -2339,7 +2325,7 @@ export default function AdminDashboardView({
                                 type="button"
                                 disabled={isProcessingAction}
                                 onClick={() => handleDispatchExistingCampaign(camp.id)}
-                                className="inline-flex items-center gap-1 rounded-xl border border-aisle-border bg-white px-2.5 py-1.5 text-[11px] font-semibold text-aisle-charcoal hover:bg-aisle-sand cursor-pointer transition-all"
+                                className="inline-flex items-center gap-1 rounded-xl border border-aisle-border bg-white px-2.5 py-1.5 text-xs font-semibold text-aisle-charcoal hover:bg-aisle-sand cursor-pointer transition-all"
                               >
                                 <span>Send Again</span>
                               </button>
@@ -2411,11 +2397,11 @@ export default function AdminDashboardView({
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">Design & Content Slots</h3>
-                      <p className="text-[11px] text-aisle-muted mt-0.5">
+                      <p className="text-xs text-aisle-muted mt-0.5">
                         Customize visual styling, palettes, fonts, opening reveal, and section layout in real-time.
                       </p>
                     </div>
-                    <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/60 rounded-full px-2.5 py-0.5 shrink-0">
+                    <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/60 rounded-full px-2.5 py-0.5 shrink-0">
                       Auto-syncs live
                     </span>
                   </div>
@@ -2475,7 +2461,7 @@ export default function AdminDashboardView({
                                   <span className="h-2 w-2 rounded-full bg-aisle-terracotta" />
                                 )}
                               </div>
-                              <span className="text-[10px] text-aisle-muted block mt-0.5">{thm.taxonomy}</span>
+                              <span className="text-xs text-aisle-muted block mt-0.5">{thm.taxonomy}</span>
                             </button>
                           ))}
                         </div>
@@ -2483,7 +2469,7 @@ export default function AdminDashboardView({
 
                       <div className="rounded-2xl border border-aisle-border bg-[#FAF7F2]/50 p-3.5 text-xs text-aisle-muted space-y-1">
                         <p className="font-semibold text-aisle-charcoal">{customTheme.name} · {customTheme.taxonomy}</p>
-                        <p className="leading-relaxed text-[11px]">{customTheme.description}</p>
+                        <p className="leading-relaxed text-xs">{customTheme.description}</p>
                       </div>
                     </div>
                   )}
@@ -2495,7 +2481,7 @@ export default function AdminDashboardView({
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <label className="font-semibold text-aisle-charcoal">Primary Accent & Wax Tint</label>
-                          <span className="font-mono text-[11px] text-aisle-muted">{customTheme.accent_color || '#9E5A44'}</span>
+                          <span className="font-mono text-xs text-aisle-muted">{customTheme.accent_color || '#9E5A44'}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <input
@@ -2523,7 +2509,7 @@ export default function AdminDashboardView({
                       <div className="space-y-2 pt-3 border-t border-aisle-border/60">
                         <div className="flex items-center justify-between">
                           <label className="font-semibold text-aisle-charcoal">Stationery Background Canvas</label>
-                          <span className="font-mono text-[11px] text-aisle-muted">{customTheme.bg_color || '#FAF7F2'}</span>
+                          <span className="font-mono text-xs text-aisle-muted">{customTheme.bg_color || '#FAF7F2'}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <input
@@ -2551,7 +2537,7 @@ export default function AdminDashboardView({
                       <div className="space-y-2 pt-3 border-t border-aisle-border/60">
                         <div className="flex items-center justify-between">
                           <label className="font-semibold text-aisle-charcoal">Typography Ink Color</label>
-                          <span className="font-mono text-[11px] text-aisle-muted">{customTheme.text_color || '#2C2523'}</span>
+                          <span className="font-mono text-xs text-aisle-muted">{customTheme.text_color || '#2C2523'}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <input
@@ -2579,7 +2565,7 @@ export default function AdminDashboardView({
                       <div className="space-y-2 pt-3 border-t border-aisle-border/60">
                         <div className="flex items-center justify-between">
                           <label className="font-semibold text-aisle-charcoal">Card & Module Surface</label>
-                          <span className="font-mono text-[11px] text-aisle-muted">{customTheme.surface_color || '#FFFFFF'}</span>
+                          <span className="font-mono text-xs text-aisle-muted">{customTheme.surface_color || '#FFFFFF'}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <input
@@ -2623,7 +2609,7 @@ export default function AdminDashboardView({
                               }`}
                             >
                               <span className="font-semibold text-xs text-aisle-charcoal block">{w.label}</span>
-                              <span className="text-[10px] text-aisle-muted">{w.desc}</span>
+                              <span className="text-xs text-aisle-muted">{w.desc}</span>
                             </button>
                           ))}
                         </div>
@@ -2654,7 +2640,7 @@ export default function AdminDashboardView({
                               }`}
                             >
                               <span className="font-semibold text-xs text-aisle-charcoal block">{f.label}</span>
-                              <span className="text-[10px] text-aisle-muted">{f.desc}</span>
+                              <span className="text-xs text-aisle-muted">{f.desc}</span>
                             </button>
                           ))}
                         </div>
@@ -2762,11 +2748,11 @@ export default function AdminDashboardView({
                           >
                             <div className="flex items-center justify-between">
                               <span className="font-serif font-semibold text-aisle-charcoal">{rev.title}</span>
-                              <span className="text-[9px] uppercase tracking-wider font-semibold text-aisle-gold-deep bg-white px-2 py-0.5 rounded-full border border-aisle-border/60">
+                              <span className="text-xs uppercase tracking-wider font-semibold text-aisle-gold-deep bg-white px-2 py-0.5 rounded-full border border-aisle-border/60">
                                 {rev.badge}
                               </span>
                             </div>
-                            <p className="text-[11px] text-aisle-muted leading-relaxed">{rev.desc}</p>
+                            <p className="text-xs text-aisle-muted leading-relaxed">{rev.desc}</p>
                           </button>
                         ))}
                       </div>
@@ -2780,7 +2766,7 @@ export default function AdminDashboardView({
                         <h4 className="text-xs font-semibold uppercase tracking-wider text-aisle-charcoal">
                           Website Imagery & Photo Uploads
                         </h4>
-                        <p className="text-[11px] text-aisle-muted mt-0.5">
+                        <p className="text-xs text-aisle-muted mt-0.5">
                           Select files from your computer, curated high-res boutique library, or direct URL.
                         </p>
                       </div>
@@ -2827,7 +2813,7 @@ export default function AdminDashboardView({
                         <h4 className="text-xs font-semibold uppercase tracking-wider text-aisle-charcoal">
                           Portal Chapters & Section Flow
                         </h4>
-                        <p className="text-[11px] text-aisle-muted mt-0.5">
+                        <p className="text-xs text-aisle-muted mt-0.5">
                           Toggle visibility and customize the chapter layout for your guests.
                         </p>
                       </div>
@@ -2851,9 +2837,9 @@ export default function AdminDashboardView({
                           >
                             <div>
                               <span className="font-semibold text-aisle-charcoal block">{sec.label}</span>
-                              <span className="text-[10px] text-aisle-muted">{sec.desc}</span>
+                              <span className="text-xs text-aisle-muted">{sec.desc}</span>
                             </div>
-                            <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                            <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
                               Active
                             </span>
                           </div>
@@ -2864,7 +2850,7 @@ export default function AdminDashboardView({
 
                   {/* Manual Save & Action Bar */}
                   <div className="pt-4 border-t border-aisle-border/70 flex items-center justify-between">
-                    <p className="text-[11px] text-aisle-muted italic">
+                    <p className="text-xs text-aisle-muted italic">
                       Changes sync live to your guest view.
                     </p>
                     <button
@@ -2955,7 +2941,7 @@ export default function AdminDashboardView({
                       <HelpCircle className="h-4 w-4 text-aisle-terracotta" />
                       <span>Frequently Asked Questions</span>
                     </h4>
-                    <p className="text-[11px] text-aisle-muted">Accordion Q&A for guests</p>
+                    <p className="text-xs text-aisle-muted">Accordion Q&A for guests</p>
                   </div>
                   <button
                     type="button"
@@ -3025,7 +3011,7 @@ export default function AdminDashboardView({
                       <Compass className="h-4 w-4 text-aisle-terracotta" />
                       <span>Local Recommendations Concierge</span>
                     </h4>
-                    <p className="text-[11px] text-aisle-muted">Curated local spots for guests</p>
+                    <p className="text-xs text-aisle-muted">Curated local spots for guests</p>
                   </div>
                   <button
                     type="button"
@@ -3125,7 +3111,7 @@ export default function AdminDashboardView({
                       <Users className="h-4 w-4 text-aisle-terracotta" />
                       <span>Wedding Party</span>
                     </h4>
-                    <p className="text-[11px] text-aisle-muted">Honorary party members & entourage</p>
+                    <p className="text-xs text-aisle-muted">Honorary party members & entourage</p>
                   </div>
                   <button
                     type="button"
@@ -3305,18 +3291,18 @@ export default function AdminDashboardView({
                           <div className="flex items-center gap-2">
                             <strong className="font-serif text-sm font-semibold text-aisle-charcoal">{item.title}</strong>
                             {item.is_vip_only && (
-                              <span className="rounded-full bg-aisle-gold/20 px-2 py-0.5 text-[9px] font-bold text-aisle-gold-deep">
+                              <span className="rounded-full bg-aisle-gold/20 px-2 py-0.5 text-xs font-bold text-aisle-gold-deep">
                                 VIP Only
                               </span>
                             )}
                             {item.requires_rsvp && (
-                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold text-emerald-800">
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">
                                 RSVP Required
                               </span>
                             )}
                           </div>
                           {item.location_name && (
-                            <div className="text-[11px] text-aisle-muted mt-0.5">
+                            <div className="text-xs text-aisle-muted mt-0.5">
                               📍 {item.location_name}
                             </div>
                           )}
@@ -3326,7 +3312,7 @@ export default function AdminDashboardView({
                           <button
                             type="button"
                             onClick={() => handleOpenEditSchedule(item)}
-                            className="rounded-lg border border-aisle-border bg-white px-2.5 py-1 text-[11px] font-medium text-aisle-charcoal hover:bg-aisle-sand cursor-pointer"
+                            className="rounded-lg border border-aisle-border bg-white px-2.5 py-1 text-xs font-medium text-aisle-charcoal hover:bg-aisle-sand cursor-pointer"
                           >
                             Edit
                           </button>
@@ -3343,7 +3329,7 @@ export default function AdminDashboardView({
 
                       {item.description && <p className="text-aisle-muted leading-relaxed">{item.description}</p>}
 
-                      <div className="flex flex-wrap items-center gap-3 text-[10px] text-aisle-warm pt-1 border-t border-aisle-border/40">
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-aisle-warm pt-1 border-t border-aisle-border/40">
                         <span>
                           🕒 {new Date(item.start_time).toLocaleDateString()} at {new Date(item.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           {item.end_time ? ` – ${new Date(item.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
@@ -3391,11 +3377,11 @@ export default function AdminDashboardView({
                         <div>
                           <div className="flex items-center gap-2">
                             <strong className="text-aisle-charcoal text-sm">{q.prompt}</strong>
-                            <span className="rounded-full bg-aisle-sand px-2 py-0.5 text-[9px] font-bold text-aisle-warm uppercase">
+                            <span className="rounded-full bg-aisle-sand px-2 py-0.5 text-xs font-bold text-aisle-warm uppercase">
                               {q.question_type}
                             </span>
                             {q.is_required && (
-                              <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-bold text-rose-800">
+                              <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-800">
                                 Required
                               </span>
                             )}
@@ -3406,7 +3392,7 @@ export default function AdminDashboardView({
                           <button
                             type="button"
                             onClick={() => handleOpenEditQuestion(q)}
-                            className="rounded-lg border border-aisle-border bg-white px-2.5 py-1 text-[11px] font-medium text-aisle-charcoal hover:bg-aisle-sand cursor-pointer"
+                            className="rounded-lg border border-aisle-border bg-white px-2.5 py-1 text-xs font-medium text-aisle-charcoal hover:bg-aisle-sand cursor-pointer"
                           >
                             Edit
                           </button>
@@ -3422,7 +3408,7 @@ export default function AdminDashboardView({
                       </div>
 
                       {q.options && q.options.length > 0 && (
-                        <p className="text-[11px] text-aisle-muted">
+                        <p className="text-xs text-aisle-muted">
                           <span className="font-semibold text-aisle-charcoal">Choices:</span> {q.options.join(' · ')}
                         </p>
                       )}
@@ -3447,7 +3433,7 @@ export default function AdminDashboardView({
                       Configure your direct payment handles so guests can send honeymoon & cash fund gifts directly to you with zero transaction fees.
                     </p>
                   </div>
-                  <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
+                  <span className="text-xs uppercase font-bold tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
                     Direct Payouts Active
                   </span>
                 </div>
@@ -3457,7 +3443,7 @@ export default function AdminDashboardView({
                   <div className="space-y-1.5 p-3.5 rounded-2xl border border-aisle-border bg-[#FAF7F2]/40">
                     <label className="font-semibold text-aisle-charcoal flex items-center justify-between">
                       <span>Venmo Username</span>
-                      <span className="text-[10px] text-blue-600 font-normal">One-tap app deep link</span>
+                      <span className="text-xs text-blue-600 font-normal">One-tap app deep link</span>
                     </label>
                     <div className="relative">
                       <span className="absolute left-3 top-2.5 text-aisle-muted font-mono font-bold">@</span>
@@ -3483,7 +3469,7 @@ export default function AdminDashboardView({
                   <div className="space-y-1.5 p-3.5 rounded-2xl border border-aisle-border bg-[#FAF7F2]/40">
                     <label className="font-semibold text-aisle-charcoal flex items-center justify-between">
                       <span>Zelle Email or Phone</span>
-                      <span className="text-[10px] text-purple-700 font-normal">Instant bank transfer</span>
+                      <span className="text-xs text-purple-700 font-normal">Instant bank transfer</span>
                     </label>
                     <input
                       type="text"
@@ -3506,7 +3492,7 @@ export default function AdminDashboardView({
                   <div className="space-y-1.5 p-3.5 rounded-2xl border border-aisle-border bg-[#FAF7F2]/40">
                     <label className="font-semibold text-aisle-charcoal flex items-center justify-between">
                       <span>CashApp $cashtag</span>
-                      <span className="text-[10px] text-emerald-700 font-normal">Cash App pay</span>
+                      <span className="text-xs text-emerald-700 font-normal">Cash App pay</span>
                     </label>
                     <div className="relative">
                       <span className="absolute left-3 top-2.5 text-aisle-muted font-mono font-bold">$</span>
@@ -3532,7 +3518,7 @@ export default function AdminDashboardView({
                   <div className="space-y-1.5 p-3.5 rounded-2xl border border-aisle-border bg-[#FAF7F2]/40">
                     <label className="font-semibold text-aisle-charcoal flex items-center justify-between">
                       <span>PayPal.me Username / Link</span>
-                      <span className="text-[10px] text-blue-800 font-normal">PayPal direct</span>
+                      <span className="text-xs text-blue-800 font-normal">PayPal direct</span>
                     </label>
                     <input
                       type="text"
@@ -3575,7 +3561,7 @@ export default function AdminDashboardView({
                 </div>
 
                 <div className="flex items-center justify-between pt-2 border-t border-aisle-border/60">
-                  <p className="text-[11px] text-aisle-muted italic">
+                  <p className="text-xs text-aisle-muted italic">
                     These payment options will be presented to guests when contributing to any cash fund.
                   </p>
                   <button
@@ -3613,11 +3599,11 @@ export default function AdminDashboardView({
                         <div>
                           <strong className="text-sm font-serif text-aisle-charcoal">{item.title}</strong>
                           {item.is_cash_fund ? (
-                            <span className="ml-2 text-[10px] text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full font-semibold">
+                            <span className="ml-2 text-xs text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full font-semibold">
                               Cash Fund
                             </span>
                           ) : (
-                            <span className="ml-2 text-[10px] text-aisle-muted bg-aisle-sand px-2 py-0.5 rounded-full font-semibold">
+                            <span className="ml-2 text-xs text-aisle-muted bg-aisle-sand px-2 py-0.5 rounded-full font-semibold">
                               External Link
                             </span>
                           )}
@@ -3702,7 +3688,7 @@ export default function AdminDashboardView({
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                     {p.caption && (
-                      <div className="absolute inset-x-0 bottom-0 bg-black/60 p-2 text-[10px] text-white">
+                      <div className="absolute inset-x-0 bottom-0 bg-black/60 p-2 text-xs text-white">
                         {p.caption}
                       </div>
                     )}
@@ -3784,7 +3770,7 @@ export default function AdminDashboardView({
                           >
                             {task.title}
                           </span>
-                          <div className="flex flex-wrap items-center gap-2 mt-0.5 text-[10px] text-aisle-muted">
+                          <div className="flex flex-wrap items-center gap-2 mt-0.5 text-xs text-aisle-muted">
                             <span className="rounded-md bg-white border border-aisle-border/60 px-1.5 py-0.5 font-medium">
                               {task.category || 'General'}
                             </span>
@@ -3800,7 +3786,7 @@ export default function AdminDashboardView({
 
                       <div className="flex items-center gap-2 self-end sm:self-center">
                         <span
-                          className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${
+                          className={`rounded-full px-2 py-0.5 text-xs font-bold uppercase ${
                             task.priority === 'high'
                               ? 'bg-rose-100 text-rose-800'
                               : task.priority === 'low'
@@ -3811,7 +3797,7 @@ export default function AdminDashboardView({
                           {task.priority || 'medium'}
                         </span>
                         <span
-                          className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${
+                          className={`rounded-full px-2 py-0.5 text-xs font-bold uppercase ${
                             task.status === 'done'
                               ? 'bg-emerald-100 text-emerald-800'
                               : task.status === 'doing'
@@ -3824,7 +3810,7 @@ export default function AdminDashboardView({
                         <button
                           type="button"
                           onClick={() => handleOpenEditTask(task)}
-                          className="rounded-lg border border-aisle-border bg-white px-2 py-1 text-[11px] font-medium text-aisle-charcoal hover:bg-aisle-sand cursor-pointer"
+                          className="rounded-lg border border-aisle-border bg-white px-2 py-1 text-xs font-medium text-aisle-charcoal hover:bg-aisle-sand cursor-pointer"
                         >
                           Edit
                         </button>
@@ -3891,7 +3877,7 @@ export default function AdminDashboardView({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6 text-xs font-sans">
           <div className="w-full max-w-xl rounded-3xl bg-white p-6 sm:p-8 shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto border border-aisle-border/40">
             <div className="border-b border-aisle-border/60 pb-3">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-aisle-terracotta block mb-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-aisle-terracotta block mb-1">
                 Guest Registry
               </span>
               <h3 className="font-serif text-2xl font-semibold text-aisle-charcoal">
@@ -4055,7 +4041,7 @@ export default function AdminDashboardView({
           <div className="w-full max-w-2xl rounded-3xl bg-white p-6 sm:p-8 shadow-2xl space-y-6 max-h-[92vh] overflow-y-auto border border-aisle-border/40">
             {/* Header */}
             <div className="border-b border-aisle-border/60 pb-4">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-aisle-terracotta block mb-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-aisle-terracotta block mb-1">
                 Communications Dispatcher
               </span>
               <h3 className="font-serif text-2xl font-semibold text-aisle-charcoal">
@@ -4150,7 +4136,7 @@ export default function AdminDashboardView({
                     <label className="text-xs font-semibold text-aisle-charcoal">
                       SMS Message Template
                     </label>
-                    <span className="text-[10px] text-aisle-muted font-mono">
+                    <span className="text-xs text-aisle-muted font-mono">
                       {newCampaignForm.sms_body.length} characters
                     </span>
                   </div>
@@ -4165,7 +4151,7 @@ export default function AdminDashboardView({
 
                   {/* Dynamic Token Chips */}
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    <span className="text-[10px] text-aisle-muted font-medium mr-1">Insert tag:</span>
+                    <span className="text-xs text-aisle-muted font-medium mr-1">Insert tag:</span>
                     {[
                       { label: '{{guest_name}}', tag: '{{guest_name}}' },
                       { label: '{{portal_link}}', tag: '{{portal_link}}' },
@@ -4182,7 +4168,7 @@ export default function AdminDashboardView({
                             sms_body: newCampaignForm.sms_body + (newCampaignForm.sms_body.endsWith(' ') ? '' : ' ') + chip.tag,
                           })
                         }
-                        className="rounded-full bg-white border border-aisle-border px-2 py-0.5 text-[10px] font-mono text-aisle-terracotta hover:bg-aisle-sand transition-colors cursor-pointer shadow-2xs"
+                        className="rounded-full bg-white border border-aisle-border px-2 py-0.5 text-xs font-mono text-aisle-terracotta hover:bg-aisle-sand transition-colors cursor-pointer shadow-2xs"
                       >
                         + {chip.label}
                       </button>
@@ -4310,7 +4296,7 @@ export default function AdminDashboardView({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6 text-xs font-sans">
           <div className="w-full max-w-lg rounded-3xl bg-white p-6 sm:p-8 shadow-2xl space-y-5 border border-aisle-border/40">
             <div className="border-b border-aisle-border/60 pb-3">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-aisle-terracotta block mb-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-aisle-terracotta block mb-1">
                 Registry & Gifts
               </span>
               <h3 className="font-serif text-2xl font-semibold text-aisle-charcoal">
@@ -4426,7 +4412,7 @@ export default function AdminDashboardView({
       {tableCardModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="w-full max-w-md rounded-3xl bg-[#FAF7F2] border-2 border-aisle-gold/60 p-8 text-center space-y-4 shadow-2xl">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.25em] text-aisle-gold-deep">
+            <span className="text-xs font-semibold uppercase tracking-[0.25em] text-aisle-gold-deep">
               Capture The Love
             </span>
             <h3 className="font-serif text-2xl font-semibold text-aisle-charcoal">
@@ -4438,7 +4424,7 @@ export default function AdminDashboardView({
             <div className="flex justify-center p-4 bg-white rounded-2xl border border-aisle-border shadow-sm mx-auto max-w-[200px]">
               <img src={tableCardModal} alt="Table QR" className="h-40 w-40" />
             </div>
-            <p className="text-[11px] font-editorial italic text-aisle-terracotta">
+            <p className="text-xs font-editorial italic text-aisle-terracotta">
               "We cherish every candid moment through your eyes."
             </p>
             <div className="flex gap-2 pt-2">
@@ -4546,7 +4532,7 @@ export default function AdminDashboardView({
                   />
                   <div>
                     <span className="font-semibold text-aisle-charcoal block">VIP / Family Only</span>
-                    <span className="text-[10px] text-aisle-muted">Only visible to guests flagged as VIP</span>
+                    <span className="text-xs text-aisle-muted">Only visible to guests flagged as VIP</span>
                   </div>
                 </label>
 
@@ -4559,7 +4545,7 @@ export default function AdminDashboardView({
                   />
                   <div>
                     <span className="font-semibold text-aisle-charcoal block">Require RSVP</span>
-                    <span className="text-[10px] text-aisle-muted">Include in Guest Portal RSVP Wizard Step 2</span>
+                    <span className="text-xs text-aisle-muted">Include in Guest Portal RSVP Wizard Step 2</span>
                   </div>
                 </label>
               </div>
@@ -4643,7 +4629,7 @@ export default function AdminDashboardView({
                   />
                   <div>
                     <span className="font-semibold text-aisle-charcoal block">Required Field</span>
-                    <span className="text-[10px] text-aisle-muted">Guests must answer this question before submitting RSVP</span>
+                    <span className="text-xs text-aisle-muted">Guests must answer this question before submitting RSVP</span>
                   </div>
                 </label>
               </div>
@@ -4782,7 +4768,7 @@ export default function AdminDashboardView({
                 <h3 className="font-serif text-lg font-semibold text-aisle-charcoal">
                   Group Guests into Household Party
                 </h3>
-                <p className="text-[11px] text-aisle-muted mt-0.5">
+                <p className="text-xs text-aisle-muted mt-0.5">
                   Party members will share a linked invitation & can RSVP together.
                 </p>
               </div>
@@ -4796,7 +4782,7 @@ export default function AdminDashboardView({
 
             {/* Selected Guests preview */}
             <div className="space-y-1.5">
-              <label className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted block">
+              <label className="text-xs uppercase font-bold tracking-wider text-aisle-muted block">
                 Selected Guests ({selectedGuestIds.length})
               </label>
               <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 rounded-xl bg-[#FAF7F2] border border-aisle-border/60">
@@ -4805,7 +4791,7 @@ export default function AdminDashboardView({
                   return (
                     <span
                       key={id}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white border border-aisle-border text-[11px] font-medium text-aisle-charcoal shadow-2xs"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white border border-aisle-border text-xs font-medium text-aisle-charcoal shadow-2xs"
                     >
                       <span>{g?.first_name} {g?.last_name || ''}</span>
                     </span>
@@ -4816,7 +4802,7 @@ export default function AdminDashboardView({
 
             {/* Grouping Mode: Create New vs Add to Existing */}
             <div className="space-y-3">
-              <label className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted block">
+              <label className="text-xs uppercase font-bold tracking-wider text-aisle-muted block">
                 Destination Party
               </label>
               <div className="grid grid-cols-2 gap-2">
@@ -4855,7 +4841,7 @@ export default function AdminDashboardView({
 
               {groupTargetPartyId === 'new' ? (
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-aisle-charcoal block">
+                  <label className="text-xs font-medium text-aisle-charcoal block">
                     Household Party Name
                   </label>
                   <input
@@ -4868,7 +4854,7 @@ export default function AdminDashboardView({
                 </div>
               ) : (
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-aisle-charcoal block">
+                  <label className="text-xs font-medium text-aisle-charcoal block">
                     Select Existing Party
                   </label>
                   <select
@@ -4921,7 +4907,7 @@ export default function AdminDashboardView({
                     Manage Household Party
                   </h3>
                 </div>
-                <p className="text-[11px] text-aisle-muted mt-0.5">
+                <p className="text-xs text-aisle-muted mt-0.5">
                   Edit party name, add or remove members, or dissolve the group.
                 </p>
               </div>
@@ -4935,7 +4921,7 @@ export default function AdminDashboardView({
 
             {/* 1. Rename Party */}
             <div className="space-y-1.5 p-3.5 rounded-2xl bg-[#FAF7F2] border border-aisle-border">
-              <label className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted block">
+              <label className="text-xs uppercase font-bold tracking-wider text-aisle-muted block">
                 Party / Household Name
               </label>
               <div className="flex gap-2">
@@ -4959,12 +4945,12 @@ export default function AdminDashboardView({
             {/* 2. Current Members List */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted">
+                <label className="text-xs uppercase font-bold tracking-wider text-aisle-muted">
                   Current Members (
                   {existingParties.find((p) => p.id === activePartyId)?.members.length || 0}
                   )
                 </label>
-                <span className="text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold border border-emerald-200">
+                <span className="text-xs text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold border border-emerald-200">
                   Shared RSVP Link Active
                 </span>
               </div>
@@ -4981,12 +4967,12 @@ export default function AdminDashboardView({
                         <div className="font-semibold text-aisle-charcoal flex items-center gap-1.5">
                           <span>{member.first_name} {member.last_name || ''}</span>
                           {member.is_vip && (
-                            <span className="rounded-full bg-aisle-gold/20 px-1.5 py-0.2 text-[8px] font-bold text-aisle-gold-deep">
+                            <span className="rounded-full bg-aisle-gold/20 px-1.5 py-0.2 text-xs font-bold text-aisle-gold-deep">
                               VIP
                             </span>
                           )}
                           <span
-                            className={`text-[9px] px-1.5 py-0.2 rounded-full font-medium ${
+                            className={`text-xs px-1.5 py-0.2 rounded-full font-medium ${
                               member.rsvp_status === 'attending'
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : member.rsvp_status === 'declined'
@@ -4997,7 +4983,7 @@ export default function AdminDashboardView({
                             {member.rsvp_status}
                           </span>
                         </div>
-                        <div className="text-[10px] text-aisle-muted">
+                        <div className="text-xs text-aisle-muted">
                           {member.email || member.phone || 'No direct contact'}
                         </div>
                       </div>
@@ -5007,7 +4993,7 @@ export default function AdminDashboardView({
                         onClick={() => handleRemoveGuestFromParty(member.id)}
                         disabled={isProcessingAction}
                         title="Remove member from party"
-                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2 py-1 rounded-lg border border-rose-200 cursor-pointer"
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2 py-1 rounded-lg border border-rose-200 cursor-pointer"
                       >
                         <UserMinus className="h-3 w-3" />
                         <span>Remove</span>
@@ -5019,7 +5005,7 @@ export default function AdminDashboardView({
 
             {/* 3. Add Guest to Party */}
             <div className="space-y-1.5 p-3.5 rounded-2xl bg-[#FAF7F2] border border-aisle-border">
-              <label className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted block">
+              <label className="text-xs uppercase font-bold tracking-wider text-aisle-muted block">
                 Add Another Guest to This Party
               </label>
               <div className="flex gap-2">
@@ -5055,7 +5041,7 @@ export default function AdminDashboardView({
                 type="button"
                 onClick={handleDissolveParty}
                 disabled={isProcessingAction}
-                className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer inline-flex items-center gap-1"
+                className="text-xs font-semibold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer inline-flex items-center gap-1"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 <span>Dissolve Entire Party</span>
@@ -5086,7 +5072,7 @@ export default function AdminDashboardView({
                     {editingTemplate ? `Edit "${editingTemplate.name}"` : 'Create Custom Template'}
                   </h3>
                 </div>
-                <p className="text-[11px] text-aisle-muted mt-0.5">
+                <p className="text-xs text-aisle-muted mt-0.5">
                   Customize the SMS copy, email wording, and dynamic smart tags.
                 </p>
               </div>
@@ -5101,7 +5087,7 @@ export default function AdminDashboardView({
 
             {/* Helper: Dynamic Variable Tags */}
             <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3 space-y-1.5">
-              <span className="text-[10px] uppercase font-bold text-amber-900 tracking-wider block">
+              <span className="text-xs uppercase font-bold text-amber-900 tracking-wider block">
                 ✨ Dynamic Smart Tags (Click to Insert into SMS)
               </span>
               <div className="flex flex-wrap gap-1.5">
@@ -5117,7 +5103,7 @@ export default function AdminDashboardView({
                     key={v.tag}
                     type="button"
                     onClick={() => handleInsertVariable('sms_body', v.tag)}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-amber-300 text-[10px] font-mono text-amber-900 hover:bg-amber-100 cursor-pointer shadow-2xs"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-amber-300 text-xs font-mono text-amber-900 hover:bg-amber-100 cursor-pointer shadow-2xs"
                   >
                     <span>+ {v.tag}</span>
                   </button>
@@ -5128,7 +5114,7 @@ export default function AdminDashboardView({
             <form onSubmit={handleSaveTemplate} className="space-y-3.5">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] uppercase font-bold tracking-wider text-aisle-muted mb-1">
+                  <label className="block text-xs uppercase font-bold tracking-wider text-aisle-muted mb-1">
                     Template Name
                   </label>
                   <input
@@ -5140,7 +5126,7 @@ export default function AdminDashboardView({
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] uppercase font-bold tracking-wider text-aisle-muted mb-1">
+                  <label className="block text-xs uppercase font-bold tracking-wider text-aisle-muted mb-1">
                     Channel Format
                   </label>
                   <select
@@ -5156,7 +5142,7 @@ export default function AdminDashboardView({
               </div>
 
               <div>
-                <label className="block text-[10px] uppercase font-bold tracking-wider text-aisle-muted mb-1">
+                <label className="block text-xs uppercase font-bold tracking-wider text-aisle-muted mb-1">
                   Email Subject Line
                 </label>
                 <input
@@ -5170,10 +5156,10 @@ export default function AdminDashboardView({
 
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted">
+                  <label className="text-xs uppercase font-bold tracking-wider text-aisle-muted">
                     SMS Text Body (Twilio)
                   </label>
-                  <span className="text-[10px] font-mono text-aisle-muted">
+                  <span className="text-xs font-mono text-aisle-muted">
                     {templateForm.sms_body.length} chars (~{Math.ceil((templateForm.sms_body.length || 1) / 160)} SMS)
                   </span>
                 </div>
@@ -5188,7 +5174,7 @@ export default function AdminDashboardView({
               </div>
 
               <div>
-                <label className="block text-[10px] uppercase font-bold tracking-wider text-aisle-muted mb-1">
+                <label className="block text-xs uppercase font-bold tracking-wider text-aisle-muted mb-1">
                   Email Message Body (Optional Markdown/Text)
                 </label>
                 <textarea
