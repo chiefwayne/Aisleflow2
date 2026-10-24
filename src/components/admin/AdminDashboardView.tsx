@@ -115,6 +115,7 @@ import {
   setGuestPlusOneAction,
   setEventMusicAction,
   setInvitationModeAction,
+  setCustomSlugAction,
 } from '@/app/actions/wedding-actions';
 
 interface AdminDashboardViewProps {
@@ -954,6 +955,21 @@ export default function AdminDashboardView({
       setIsProcessingAction(false);
       setTimeout(() => setStatusMessage(''), 4000);
     }
+  };
+
+  const [customSlugDraft, setCustomSlugDraft] = useState(event.custom_slug || '');
+  const handleSaveCustomSlug = async () => {
+    setIsProcessingAction(true);
+    const result = await setCustomSlugAction(event.id, event.admin_token, customSlugDraft);
+    setIsProcessingAction(false);
+    if ('error' in result) {
+      setStatusMessage(result.error);
+    } else {
+      setEvent((prev) => ({ ...prev, custom_slug: result.slug }));
+      setCustomSlugDraft(result.slug || '');
+      setStatusMessage(result.slug ? `Short link saved: /i/${result.slug}` : 'Short link removed.');
+    }
+    setTimeout(() => setStatusMessage(''), 4000);
   };
 
   const handleSetInvitationMode = async (mode: 'save_the_date' | 'invitation') => {
@@ -2005,6 +2021,49 @@ export default function AdminDashboardView({
               onEventChange={setEvent}
             />
             <PlanCard event={event} onPlanChange={(plan) => setEvent((prev) => ({ ...prev, plan }))} />
+
+            {/* Custom short link (Premium) */}
+            <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-3 text-xs">
+              <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">
+                Short link
+                <span className="ml-2 rounded-full bg-aisle-gold/20 px-2 py-0.5 text-xs font-bold text-aisle-gold-deep align-middle">Premium</span>
+              </h3>
+              <p className="text-aisle-muted">
+                A readable public link to your published invitation, for social media or printed cards. It has no RSVP; guests reply with their personal link.
+              </p>
+              {hasFeature(event, 'custom_url') ? (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSaveCustomSlug();
+                  }}
+                  className="flex flex-wrap items-center gap-2"
+                >
+                  <span className="text-aisle-muted">Your link: /i/</span>
+                  <input
+                    value={customSlugDraft}
+                    onChange={(e) => setCustomSlugDraft(e.target.value)}
+                    placeholder="sarah-and-james"
+                    aria-label="Short link"
+                    maxLength={60}
+                    className="flex-1 min-w-[160px] rounded-xl border border-aisle-border px-3 py-2.5 focus:outline-none focus:border-aisle-terracotta"
+                  />
+                  <button type="submit" disabled={isProcessingAction} className="min-h-[44px] rounded-full bg-aisle-charcoal px-4 font-semibold text-white hover:bg-aisle-terracotta disabled:opacity-50 cursor-pointer">
+                    Save link
+                  </button>
+                  {event.custom_slug && (
+                    <a href={`/i/${event.custom_slug}`} target="_blank" rel="noopener noreferrer" className="font-semibold text-aisle-terracotta underline">
+                      Open
+                    </a>
+                  )}
+                </form>
+              ) : (
+                <p className="text-aisle-muted">{featureError('custom_url')}</p>
+              )}
+              {event.custom_slug && !event.is_live && (
+                <p className="text-amber-700">The link works once your invitation is published.</p>
+              )}
+            </div>
 
             {/* Save-the-date mode (Premium) */}
             <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-4 text-xs">

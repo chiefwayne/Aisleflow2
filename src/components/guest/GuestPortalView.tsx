@@ -81,6 +81,8 @@ interface GuestPortalViewProps {
   initialScheduleRsvps?: any[];
   customTheme?: TemplateDesignRecord;
   previewMode?: boolean;
+  /** The couple's public short link: no guest identity, no RSVP, uploads or pledges. */
+  publicView?: boolean;
 }
 
 const COMMON_DIETARY_TAGS = [
@@ -106,6 +108,7 @@ export default function GuestPortalView({
   initialScheduleRsvps = [],
   customTheme,
   previewMode = false,
+  publicView = false,
 }: GuestPortalViewProps) {
   const baseTheme =
     customTheme ||
@@ -973,7 +976,12 @@ export default function GuestPortalView({
             )}
       </>
     ),
-    'rsvp': (
+    'rsvp': publicView ? (
+      <section id="rsvp" className="text-center space-y-3 pt-4">
+        <h2 className="font-serif text-2xl sm:text-3xl font-semibold">{tr.rsvpTitle}</h2>
+        <p className="text-base opacity-80">{tr.usePersonalLink}</p>
+      </section>
+    ) : (
       <>
             {/* 8. FORMAL STATIONERY RESPONSE CARD (4-STEP TACTILE RSVP WIZARD) */}
             <section id="rsvp" className="space-y-6 pt-4">
@@ -1724,7 +1732,8 @@ export default function GuestPortalView({
                 )}
               </div>
 
-              {/* Upload Button */}
+              {/* Upload Button (not on the public short link) */}
+              {!publicView && (
               <div className="pt-2">
                 <input
                   type="file"
@@ -1748,6 +1757,7 @@ export default function GuestPortalView({
                   </p>
                 )}
               </div>
+              )}
 
               {/* Staggered Photo Grid */}
               <div className="grid grid-cols-2 gap-3 sm:gap-4 pt-4">
@@ -1812,7 +1822,7 @@ export default function GuestPortalView({
                         </div>
 
                         {item.is_cash_fund ? (
-                          <button
+                          publicView ? null : <button
                             onClick={() => setActiveCashFund(item)}
                             className="rounded-full px-4 py-3.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 cursor-pointer shrink-0 min-h-[44px]"
                             style={{ backgroundColor: theme.accent_color }}
@@ -1881,7 +1891,7 @@ export default function GuestPortalView({
           coupleNames={event.couple_names}
           openingStyle={theme.opening_style}
           strings={tr}
-          guestName={partyNames}
+          guestName={publicView ? undefined : partyNames}
           onOpen={() => {
             setHasOpened(true);
             // Opening is a tap, so browsers allow sound to start here.

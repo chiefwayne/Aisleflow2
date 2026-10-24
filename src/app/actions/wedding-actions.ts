@@ -18,6 +18,7 @@ import { getEventReadiness, missingRequired } from '@/lib/event-readiness';
 import { assertChannelAllowed, featureError, hasFeature } from '@/lib/plans';
 import { stripStudioLayout } from '@/lib/portal-design';
 import { portalLanguageOf } from '@/lib/portal-i18n';
+import { normalizeCustomSlug } from '@/lib/custom-slug';
 import { getMenuOptions, isMealOnMenu } from '@/lib/menu';
 import { scopeRsvpPayload } from '@/lib/rsvp-scope';
 import { isDemoEvent, isDemoGuestToken, updateMockDemoEvent, DEMO_EVENT_ID, DEMO_ADMIN_TOKEN } from '@/lib/demo-seeder';
@@ -2021,5 +2022,37 @@ export async function setInvitationModeAction(
   } catch (err: any) {
     console.error('setInvitationModeAction error:', err);
     return { error: 'Could not change the invitation mode.' };
+  }
+}
+
+/** Sets (or clears, with an empty value) the couple's public short link /i/<slug>. */
+export async function setCustomSlugAction(
+  eventId: string,
+  adminToken: string,
+  input: string
+): Promise<{ slug: string | null } | { error: string }> {
+  try {
+    await requireAdminAccess(eventId, adminToken);
+    const { data: planRow } = await supabaseAdmin.from('events').select('plan').eq('id', eventId).single();
+    if (!hasFeature(planRow || {}, 'custom_url')) return { error: featureError('custom_url') };
+
+    let slug: string | null = null;
+    if (input.trim()) {
+      const normalized = normalizeCustomSlug(input);
+      if ('error' in normalized) return normalized;
+      slug = normalized.slug;
+    }
+
+    const { error } = await supabaseAdmin.from('events').update({ custom_slug: slug }).eq('id', eventId);
+    if (error) {
+      // 23505: unique violation, another event already uses this link.
+      if (error.code === '23505') return { error: 'That link is already taken. Please try another.' };
+      throw error;
+    }
+    revalidatePath(`/admin/${adminToken}`);
+    return { slug };
+  } catch (err: any) {
+    console.error('setCustomSlugAction error:', err);
+    return { error: 'Could not save the link.' };
   }
 }
