@@ -122,13 +122,17 @@ export function containerClassName(style: GuestPortalSectionStyle): string {
   return padding;
 }
 
-/** Visible sections in the design's order. Unknown ids are dropped and missing ones appended. */
-export function orderedVisibleSections(design: DesignStyleSource): GuestPortalSectionId[] {
+/** Every section in the design's order. Unknown ids are dropped and missing ones appended. */
+export function normalizedSectionOrder(design: DesignStyleSource): GuestPortalSectionId[] {
   const known = new Set<string>(ALL_GUEST_SECTIONS);
   const ordered = (design.section_order || []).filter((id): id is GuestPortalSectionId => known.has(id));
-  const complete = [...new Set([...ordered, ...ALL_GUEST_SECTIONS])];
+  return [...new Set([...ordered, ...ALL_GUEST_SECTIONS])];
+}
+
+/** Visible sections in the design's order. */
+export function orderedVisibleSections(design: DesignStyleSource): GuestPortalSectionId[] {
   const hidden = new Set<string>(design.hidden_sections || []);
-  return complete.filter((id) => !hidden.has(id));
+  return normalizedSectionOrder(design).filter((id) => !hidden.has(id));
 }
 
 export function pageBackgroundStyle(design: DesignStyleSource): React.CSSProperties {

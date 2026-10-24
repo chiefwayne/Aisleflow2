@@ -15,6 +15,7 @@ import {
   PlanningTaskRecord,
 } from '@/lib/types';
 import { getEventReadiness, missingRequired } from '@/lib/event-readiness';
+import { assertChannelAllowed, featureError, hasFeature } from '@/lib/plans';
 import { getMenuOptions, isMealOnMenu } from '@/lib/menu';
 import { scopeRsvpPayload } from '@/lib/rsvp-scope';
 import { isDemoEvent, isDemoGuestToken, updateMockDemoEvent, DEMO_EVENT_ID, DEMO_ADMIN_TOKEN } from '@/lib/demo-seeder';
@@ -356,6 +357,9 @@ export async function sendCommunicationAction(input: FormData | Record<string, a
     if (dispatchMode === 'send_now' && !event.is_live) {
       return { error: 'Publish the event before sending messages to guests.' };
     }
+    // Checked before the campaign is created, so a draft or scheduled SMS can't be saved on a plan without SMS.
+    const channelError = assertChannelAllowed(event, channel);
+    if (channelError) return { error: channelError };
 
     // 1. Fetch Target Guests
     let guestQuery = supabaseAdmin.from('guests').select('*').eq('event_id', eventId);
@@ -508,6 +512,8 @@ export async function dispatchExistingCampaignAction(input: FormData | Record<st
 
     const event = campaign.events as EventRecord;
     if (!event.is_live) return { error: 'Publish the event before sending messages to guests.' };
+    const channelError = assertChannelAllowed(event, campaign.channel);
+    if (channelError) return { error: channelError };
     const audience = campaign.target_audience;
     const channel = campaign.channel;
 
@@ -1447,6 +1453,7 @@ export async function setEventPublishedAction(input: FormData | Record<string, a
         .eq('id', eventId)
         .single();
       if (eventErr || !current) return { error: 'Event not found.' };
+      if (!hasFeature(current, 'publish')) return { error: featureError('publish') };
 
       const count = async (table: string) => {
         const { count, error } = await supabaseAdmin
@@ -1734,20 +1741,7 @@ export async function uploadWebsiteImageAction(input: FormData | Record<string, 
       publicUrl = publicUrlData.publicUrl;
     }
 
-    // Save record to template_media_assets for future reuse
-    try {
-      await supabaseAdmin.from('template_media_assets').insert({
-        title: `${category.toUpperCase()} - ${file.name}`,
-        category: category.toLowerCase(),
-        image_url: publicUrl,
-        storage_path: storagePath,
-        content_type: file.type,
-        file_size: file.size,
-      });
-    } catch (ignoreErr) {
-      // Ignore DB logging error if table not present
-    }
-
+    // Couples' photos stay with their event; they are not added to the owner's shared media library.
     revalidatePath(`/admin/${adminToken}`);
     return { success: true, url: publicUrl };
   } catch (err: any) {
@@ -1940,6 +1934,8 @@ export async function setEventMusicAction(input: FormData | Record<string, any>)
 
     let music: { url: string; title: string } | null = null;
     if (!remove) {
+      const { data: planRow } = await supabaseAdmin.from('events').select('plan').eq('id', eventId).single();
+      if (!hasFeature(planRow || {}, 'music')) return { error: featureError('music') };
       if (!file) return { error: 'No audio file provided.' };
       if (!ALLOWED_MUSIC_TYPES.includes(file.type.toLowerCase())) {
         return { error: 'Please choose an MP3, M4A, AAC, OGG or WAV file.' };

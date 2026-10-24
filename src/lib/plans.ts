@@ -1,0 +1,47 @@
+/** Plans: free builds and previews; Essentials publishes and emails; Premium adds SMS, music and the Design Studio. */
+export type PlanId = 'free' | 'essentials' | 'premium';
+export type Feature = 'publish' | 'sms' | 'music' | 'design_studio';
+
+const PLAN_ORDER: PlanId[] = ['free', 'essentials', 'premium'];
+
+export const PLAN_FEATURES: Record<PlanId, Record<Feature, boolean>> = {
+  free: { publish: false, sms: false, music: false, design_studio: false },
+  essentials: { publish: true, sms: false, music: false, design_studio: false },
+  premium: { publish: true, sms: true, music: true, design_studio: true },
+};
+
+export const PLAN_NAMES: Record<PlanId, string> = {
+  free: 'Free',
+  essentials: 'Essentials',
+  premium: 'Premium',
+};
+
+export function planOf(event: { plan?: string | null }): PlanId {
+  return PLAN_ORDER.includes(event.plan as PlanId) ? (event.plan as PlanId) : 'free';
+}
+
+export function hasFeature(event: { plan?: string | null }, feature: Feature): boolean {
+  return PLAN_FEATURES[planOf(event)][feature];
+}
+
+export function featureError(feature: Feature): string {
+  switch (feature) {
+    case 'publish':
+      return 'Choose Essentials or Premium to publish your invitation.';
+    case 'sms':
+      return 'SMS is part of Premium. Upgrade to send text messages.';
+    case 'music':
+      return 'Your own song is part of Premium. Upgrade to add music.';
+    case 'design_studio':
+      return 'The Design Studio is part of Premium. Upgrade to customise your invitation.';
+  }
+}
+
+/** Returns the error to show, or null when the plan allows this channel. */
+export function assertChannelAllowed(event: { plan?: string | null }, channel: 'email' | 'sms' | 'both'): string | null {
+  return channel !== 'email' && !hasFeature(event, 'sms') ? featureError('sms') : null;
+}
+
+export function isUpgrade(from: PlanId, to: PlanId): boolean {
+  return PLAN_ORDER.indexOf(to) > PLAN_ORDER.indexOf(from);
+}

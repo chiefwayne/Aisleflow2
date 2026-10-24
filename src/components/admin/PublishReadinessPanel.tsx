@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Check, ChevronRight, Circle } from 'lucide-react';
 import type { EventRecord } from '@/lib/types';
 import { getEventReadiness, missingRequired, ReadinessCounts, ReadinessTab } from '@/lib/event-readiness';
+import { featureError, hasFeature } from '@/lib/plans';
 import { setEventPublishedAction } from '@/app/actions/wedding-actions';
 
 interface PublishReadinessPanelProps {
@@ -19,7 +20,8 @@ export default function PublishReadinessPanel({ event, counts, onNavigate, onEve
 
   const items = getEventReadiness(event, counts);
   const blockers = missingRequired(items);
-  const canPublish = blockers.length === 0;
+  const planAllowsPublish = hasFeature(event, 'publish');
+  const canPublish = blockers.length === 0 && planAllowsPublish;
 
   const changePublished = async (publish: boolean) => {
     if (!publish && !window.confirm('Unpublish? Guests can still open their links, but you won’t be able to send messages until you publish again.')) {
@@ -55,9 +57,11 @@ export default function PublishReadinessPanel({ event, counts, onNavigate, onEve
           <p className="text-xs text-aisle-muted mt-1">
             {event.is_live
               ? 'Your event is live. You can send invitations and reminders.'
-              : canPublish
-                ? 'Everything required is done. Publish to start sending invitations.'
-                : `Finish ${blockers.length} required ${blockers.length === 1 ? 'item' : 'items'} to publish.`}
+              : blockers.length > 0
+                ? `Finish ${blockers.length} required ${blockers.length === 1 ? 'item' : 'items'} to publish.`
+                : planAllowsPublish
+                  ? 'Everything required is done. Publish to start sending invitations.'
+                  : featureError('publish')}
           </p>
         </div>
 

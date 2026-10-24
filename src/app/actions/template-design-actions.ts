@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { supabaseAdmin } from '@/lib/supabase';
 import { requireOwnerAccess, verifyOwnerAccess } from '@/lib/owner-auth';
+import { requireAdminAccess } from '@/lib/admin-auth';
+import { featureError, hasFeature } from '@/lib/plans';
 import { TemplateDesignRecord, TemplateMediaAssetRecord } from '@/lib/types';
 
 const MEDIA_BUCKET = 'template-media';
@@ -192,4 +194,41 @@ export async function deleteTemplateDesignAction(formData: FormData) {
 /** Lets the owner unlock page confirm a passkey against the server secret. */
 export async function verifyOwnerPasskeyAction(passkey: string) {
   return verifyOwnerAccess(passkey);
+}
+
+/** Saves a Premium couple's Studio design into their own event (not the shared catalogue). */
+export async function saveEventStudioDesignAction(input: {
+  eventId: string;
+  adminToken: string;
+  design: string;
+}): Promise<{ success: true } | { error: string }> {
+  try {
+    await requireAdminAccess(input.eventId, input.adminToken);
+
+    const { data: event } = await supabaseAdmin.from('events').select('id, plan').eq('id', input.eventId).single();
+    if (!event) return { error: 'Event not found.' };
+    if (!hasFeature(event, 'design_studio')) return { error: featureError('design_studio') };
+
+    const design = JSON.parse(input.design);
+    const snapshot: Record<string, unknown> = {};
+    for (const column of TEMPLATE_DESIGN_COLUMNS) {
+      if (column !== 'status' && design[column] !== undefined) snapshot[column] = design[column];
+    }
+    // container_layout marks a Studio design, so the portal applies its layout controls.
+    snapshot.container_layout ||= 'card';
+    snapshot.id = `event-studio-${input.eventId}`;
+
+    const { error } = await supabaseAdmin
+      .from('events')
+      .update({ theme_config: snapshot, updated_at: new Date().toISOString() })
+      .eq('id', input.eventId);
+    if (error) throw error;
+
+    revalidatePath(`/admin/${input.adminToken}`);
+    revalidatePath('/g/[token]', 'page');
+    return { success: true };
+  } catch (err: any) {
+    console.error('saveEventStudioDesignAction error:', err);
+    return { error: err.message || 'Failed to save your design.' };
+  }
 }

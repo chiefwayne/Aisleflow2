@@ -87,6 +87,8 @@ export interface EventRecord {
   is_live: boolean;
   is_ready_for_testing: boolean;
   rsvp_locked?: boolean;
+  plan?: 'free' | 'essentials' | 'premium';
+  plan_activated_at?: string | null;
   setup_completed?: boolean;
   setup_completed_at?: string | null;
   reminder_last_sent_at?: string | null;

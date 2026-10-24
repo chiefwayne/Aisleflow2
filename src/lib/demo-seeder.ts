@@ -38,6 +38,7 @@ export const MOCK_DEMO_EVENT: EventRecord = {
   story_image_url: 'https://images.unsplash.com/photo-1583939003579-730e3918a45a?auto=format&fit=crop&w=1200&q=80',
   venue_image_url: 'https://images.unsplash.com/photo-1533105079780-92b9be482077?auto=format&fit=crop&w=1200&q=80',
   is_live: true,
+  plan: 'premium',
   is_ready_for_testing: true,
   theme_config: {
     accent_color: '#9E5A44',

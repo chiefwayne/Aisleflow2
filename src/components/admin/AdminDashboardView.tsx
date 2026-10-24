@@ -72,6 +72,8 @@ import PortalPreviewPane from '@/components/admin/PortalPreviewPane';
 import GuestPortalView from '@/components/guest/GuestPortalView';
 import { ImagePickerUploader } from '@/components/common/ImagePickerUploader';
 import PublishReadinessPanel from '@/components/admin/PublishReadinessPanel';
+import PlanCard from '@/components/admin/PlanCard';
+import { featureError, hasFeature } from '@/lib/plans';
 import { isStudioDesign } from '@/lib/portal-design';
 import { getMenuOptions, MenuOption } from '@/lib/menu';
 import { whatsappShareUrl } from '@/lib/share';
@@ -291,7 +293,7 @@ export default function AdminDashboardView({
     name: '',
     lifecycle_type: 'invitation',
     target_audience: 'all',
-    channel: 'sms',
+    channel: hasFeature(initialEvent, 'sms') ? 'sms' : 'email',
     subject: `Formal Wedding Invitation: ${event.couple_names}`,
     email_body: `Dear {{guest_name}},\n\nYou are cordially invited to celebrate the marriage of ${event.couple_names} on {{wedding_date}} at {{venue_name}}.\n\nPlease visit your private portal to RSVP: {{portal_link}}`,
     sms_body: `Hi {{guest_name}}! You're invited to ${event.couple_names}'s wedding. Please view details and RSVP at: {{portal_link}}`,
@@ -359,6 +361,7 @@ export default function AdminDashboardView({
   const declinedGuests = guests.filter((g) => g.rsvp_status === 'declined').length;
   const pendingGuests = guests.filter((g) => g.rsvp_status === 'pending').length;
   const totalRaised = registry.reduce((sum, item) => sum + (Number(item.current_amount) || 0), 0);
+  const smsAllowed = hasFeature(event, 'sms');
   const readinessCounts = {
     guests: guests.length,
     schedule: schedule.length,
@@ -1926,6 +1929,7 @@ export default function AdminDashboardView({
               onNavigate={setActiveTab}
               onEventChange={setEvent}
             />
+            <PlanCard event={event} onPlanChange={(plan) => setEvent((prev) => ({ ...prev, plan }))} />
             <div className="rounded-3xl border border-aisle-border bg-white p-6 sm:p-8 shadow-sm space-y-6">
               <div>
                 <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">Wedding Setup Wizard</h3>
@@ -2341,7 +2345,8 @@ export default function AdminDashboardView({
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handleBroadcastReminder}
-                      disabled={isProcessingAction}
+                      disabled={isProcessingAction || !smsAllowed}
+                      title={smsAllowed ? undefined : featureError('sms')}
                       className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100 cursor-pointer transition-colors"
                     >
                       <Clock className="h-3.5 w-3.5 text-amber-700" />
@@ -2615,6 +2620,29 @@ export default function AdminDashboardView({
                   {/* SUB-TAB 1: PRESETS */}
                   {builderSubTab === 'presets' && (
                     <div className="space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-aisle-border bg-aisle-sand/30 p-4 text-xs">
+                        <div>
+                          <span className="font-semibold text-aisle-charcoal">Design Studio</span>
+                          <span className="ml-2 rounded-full bg-aisle-gold/20 px-2 py-0.5 text-xs font-bold text-aisle-gold-deep">Premium</span>
+                          <p className="text-aisle-muted mt-0.5">Rearrange sections and style every card, border and background.</p>
+                        </div>
+                        {hasFeature(event, 'design_studio') ? (
+                          <Link
+                            href={`/admin/${event.admin_token}/studio`}
+                            className="inline-flex min-h-[44px] items-center rounded-full bg-aisle-charcoal px-4 font-semibold text-white hover:bg-aisle-terracotta"
+                          >
+                            Open Design Studio
+                          </Link>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('setup')}
+                            className="inline-flex min-h-[44px] items-center rounded-full border border-aisle-border px-4 font-semibold text-aisle-charcoal hover:bg-white cursor-pointer"
+                          >
+                            See plans
+                          </button>
+                        )}
+                      </div>
                       <div>
                         <label className="block text-xs font-semibold uppercase tracking-wider text-aisle-muted mb-2">
                           Select Aesthetic Preset
@@ -2982,7 +3010,14 @@ export default function AdminDashboardView({
                           Plays when a guest taps to open the invitation. Guests can mute it at any time.
                         </p>
                       </div>
-                      {customSections.music?.url ? (
+                      {!hasFeature(event, 'music') ? (
+                        <p className="text-aisle-muted">
+                          {featureError('music')}{' '}
+                          <button type="button" onClick={() => setActiveTab('setup')} className="font-semibold text-aisle-terracotta underline cursor-pointer">
+                            See plans
+                          </button>
+                        </p>
+                      ) : customSections.music?.url ? (
                         <div className="space-y-2">
                           <p className="font-semibold text-aisle-charcoal">{customSections.music.title || 'Your song'}</p>
                           <audio controls src={customSections.music.url} className="w-full" />
@@ -4462,7 +4497,9 @@ export default function AdminDashboardView({
                     <button
                       type="button"
                       onClick={() => setNewCampaignForm({ ...newCampaignForm, channel: 'sms' })}
-                      className={`py-2 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      disabled={!smsAllowed}
+                      title={smsAllowed ? undefined : featureError('sms')}
+                      className={`py-2 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
                         newCampaignForm.channel === 'sms'
                           ? 'bg-white text-aisle-charcoal shadow-sm'
                           : 'text-aisle-muted hover:text-aisle-charcoal'
@@ -4484,7 +4521,9 @@ export default function AdminDashboardView({
                     <button
                       type="button"
                       onClick={() => setNewCampaignForm({ ...newCampaignForm, channel: 'both' })}
-                      className={`py-2 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      disabled={!smsAllowed}
+                      title={smsAllowed ? undefined : featureError('sms')}
+                      className={`py-2 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
                         newCampaignForm.channel === 'both'
                           ? 'bg-white text-aisle-charcoal shadow-sm'
                           : 'text-aisle-muted hover:text-aisle-charcoal'
@@ -4493,6 +4532,14 @@ export default function AdminDashboardView({
                       ✨ Both
                     </button>
                   </div>
+                  {!smsAllowed && (
+                    <p className="mt-1.5 text-xs text-aisle-muted">
+                      Text messages are part of Premium.{' '}
+                      <button type="button" onClick={() => { setNewCampaignModalOpen(false); setActiveTab('setup'); }} className="font-semibold text-aisle-terracotta underline cursor-pointer">
+                        See plans
+                      </button>
+                    </p>
+                  )}
                 </div>
               </div>
 
