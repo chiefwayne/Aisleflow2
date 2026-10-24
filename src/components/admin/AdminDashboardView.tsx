@@ -70,6 +70,7 @@ import { generateQrDataUrl } from '@/lib/qrcode';
 import PhoneMockup from '@/components/PhoneMockup';
 import GuestPortalView from '@/components/guest/GuestPortalView';
 import { ImagePickerUploader } from '@/components/common/ImagePickerUploader';
+import PublishReadinessPanel from '@/components/admin/PublishReadinessPanel';
 import { generateTrackingToken, renderTemplateVariables } from '@/lib/communications';
 import {
   addGuestAction,
@@ -345,6 +346,12 @@ export default function AdminDashboardView({
   const declinedGuests = guests.filter((g) => g.rsvp_status === 'declined').length;
   const pendingGuests = guests.filter((g) => g.rsvp_status === 'pending').length;
   const totalRaised = registry.reduce((sum, item) => sum + (Number(item.current_amount) || 0), 0);
+  const readinessCounts = {
+    guests: guests.length,
+    schedule: schedule.length,
+    questions: questions.length,
+    registry: registry.length,
+  };
 
   // Setup Save Handler (Server Action)
   const handleSaveSetup = async (e: React.FormEvent) => {
@@ -362,7 +369,6 @@ export default function AdminDashboardView({
         venue_name: setupForm.venue_name,
         venue_address: setupForm.venue_address,
         launch_notes: setupForm.launch_notes,
-        is_ready_for_testing: setupForm.is_ready_for_testing,
       });
 
       if (result.success && result.event) {
@@ -1690,62 +1696,13 @@ export default function AdminDashboardView({
                 </div>
               </div>
 
-              {/* Readiness Checklist */}
-              <div className="rounded-3xl border border-aisle-border bg-white p-6 sm:p-8 shadow-sm space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">
-                      Event Launch Readiness
-                    </h3>
-                    <p className="text-xs text-aisle-muted mt-0.5">
-                      Verify key wedding details before sharing tokenized links with guests
-                    </p>
-                  </div>
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                      event.is_ready_for_testing
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-amber-100 text-amber-800'
-                    }`}
-                  >
-                    {event.is_ready_for_testing ? 'Ready for Guest Testing' : 'Setup In Progress'}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div className="flex items-center gap-3 rounded-2xl border border-aisle-border bg-aisle-sand/30 p-3.5">
-                    <Check className="h-4 w-4 text-emerald-600 shrink-0" />
-                    <div>
-                      <strong className="text-aisle-charcoal">Wedding Basics Complete</strong>
-                      <p className="text-aisle-muted text-xs">Date, couple names & venue confirmed</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 rounded-2xl border border-aisle-border bg-aisle-sand/30 p-3.5">
-                    <Check className="h-4 w-4 text-emerald-600 shrink-0" />
-                    <div>
-                      <strong className="text-aisle-charcoal">Guest List Seeded</strong>
-                      <p className="text-aisle-muted text-xs">{totalGuests} tokenized invitations generated</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 rounded-2xl border border-aisle-border bg-aisle-sand/30 p-3.5">
-                    <Check className="h-4 w-4 text-emerald-600 shrink-0" />
-                    <div>
-                      <strong className="text-aisle-charcoal">VIP & Schedule Configured</strong>
-                      <p className="text-aisle-muted text-xs">{schedule.length} timeline events published</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 rounded-2xl border border-aisle-border bg-aisle-sand/30 p-3.5">
-                    <Check className="h-4 w-4 text-emerald-600 shrink-0" />
-                    <div>
-                      <strong className="text-aisle-charcoal">Custom Questions Active</strong>
-                      <p className="text-aisle-muted text-xs">{questions.length} RSVP prompts configured</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              {/* Publish readiness */}
+              <PublishReadinessPanel
+                event={event}
+                counts={readinessCounts}
+                onNavigate={setActiveTab}
+                onEventChange={setEvent}
+              />
 
               {/* Sample Guest Links for Instant Testing */}
               <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-4">
@@ -1792,6 +1749,13 @@ export default function AdminDashboardView({
 
           {/* TAB 2: SETUP WIZARD */}
           {activeTab === 'setup' && (
+            <div className="space-y-6">
+            <PublishReadinessPanel
+              event={event}
+              counts={readinessCounts}
+              onNavigate={setActiveTab}
+              onEventChange={setEvent}
+            />
             <div className="rounded-3xl border border-aisle-border bg-white p-6 sm:p-8 shadow-sm space-y-6">
               <div>
                 <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">Wedding Setup Wizard</h3>
@@ -1882,19 +1846,6 @@ export default function AdminDashboardView({
                   </label>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="ready_test"
-                    checked={setupForm.is_ready_for_testing}
-                    onChange={(e) => setSetupForm({ ...setupForm, is_ready_for_testing: e.target.checked })}
-                    className="h-4 w-4 rounded border-aisle-border text-aisle-terracotta focus:ring-0"
-                  />
-                  <label htmlFor="ready_test" className="font-medium text-aisle-warm">
-                    Mark event as "Ready for Guest Testing & Communications"
-                  </label>
-                </div>
-
                 <div>
                   <label className="block font-medium text-aisle-warm mb-1">Internal Launch Notes</label>
                   <textarea
@@ -1912,6 +1863,7 @@ export default function AdminDashboardView({
                   Save Setup
                 </button>
               </form>
+            </div>
             </div>
           )}
 
@@ -2152,6 +2104,18 @@ export default function AdminDashboardView({
           {/* TAB 4: COMMUNICATIONS */}
           {activeTab === 'communications' && (
             <div className="space-y-6">
+              {!event.is_live && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-xs text-amber-900">
+                  <span>Your event is a draft. Publish it before sending messages to guests. You can still save drafts and schedule campaigns.</span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('setup')}
+                    className="min-h-[44px] rounded-full bg-amber-900 px-4 font-semibold text-white hover:bg-amber-800"
+                  >
+                    Go to Publish
+                  </button>
+                </div>
+              )}
               <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-5">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div>

@@ -14,6 +14,7 @@ import {
   CommunicationTemplateRecord,
   PlanningTaskRecord,
 } from '@/lib/types';
+import { getEventReadiness, missingRequired } from '@/lib/event-readiness';
 import { isDemoEvent, isDemoGuestToken, updateMockDemoEvent, DEMO_EVENT_ID, DEMO_ADMIN_TOKEN } from '@/lib/demo-seeder';
 
 const PHOTO_BUCKET = 'wedding-photos';
@@ -331,6 +332,9 @@ export async function sendCommunicationAction(input: FormData | Record<string, a
     const lifecycleType = (formData.get('lifecycleType') as string) || (template ? template.lifecycle_type : 'invitation');
 
     const dispatchMode = (formData.get('dispatchMode') as 'send_now' | 'schedule' | 'draft') || (scheduledFor ? 'schedule' : 'send_now');
+    if (dispatchMode === 'send_now' && !event.is_live) {
+      return { error: 'Publish the event before sending messages to guests.' };
+    }
 
     // 1. Fetch Target Guests
     let guestQuery = supabaseAdmin.from('guests').select('*').eq('event_id', eventId);
@@ -482,6 +486,7 @@ export async function dispatchExistingCampaignAction(input: FormData | Record<st
     if (cErr || !campaign) return { error: 'Campaign not found.' };
 
     const event = campaign.events as EventRecord;
+    if (!event.is_live) return { error: 'Publish the event before sending messages to guests.' };
     const audience = campaign.target_audience;
     const channel = campaign.channel;
 
@@ -1350,7 +1355,6 @@ export async function updateEventSetupAction(input: FormData | Record<string, an
       venue_name: formData.get('venue_name') as string,
       venue_address: formData.get('venue_address') as string,
       admin_email: formData.get('admin_email') as string,
-      is_ready_for_testing: formData.get('is_ready_for_testing') === 'true',
       launch_notes: (formData.get('launch_notes') as string) || null,
       updated_at: new Date().toISOString(),
     };
@@ -1386,6 +1390,74 @@ export async function updateEventSetupAction(input: FormData | Record<string, an
       return { success: true, event: fallbackEvent, data: fallbackEvent };
     }
     return { error: err.message || 'Failed to update setup.' };
+  }
+}
+
+// Publish / Go live. Publishing re-checks the required readiness items on the server.
+export async function setEventPublishedAction(input: FormData | Record<string, any>) {
+  const formData = toFormData(input);
+  const eventId = formData.get('eventId') as string;
+  const adminToken = formData.get('adminToken') as string;
+  const publish = formData.get('publish') === 'true';
+
+  try {
+    // The in-memory demo event has no database row.
+    if (eventId === DEMO_EVENT_ID) {
+      const event = updateMockDemoEvent({ is_live: publish });
+      return { success: true, event };
+    }
+
+    await requireAdminAccess(eventId, adminToken);
+
+    if (publish) {
+      const { data: current, error: eventErr } = await supabaseAdmin
+        .from('events')
+        .select('*')
+        .eq('id', eventId)
+        .single();
+      if (eventErr || !current) return { error: 'Event not found.' };
+
+      const count = async (table: string) => {
+        const { count, error } = await supabaseAdmin
+          .from(table)
+          .select('id', { count: 'exact', head: true })
+          .eq('event_id', eventId);
+        if (error) throw error;
+        return count || 0;
+      };
+      const [guests, schedule, questions, registry] = await Promise.all([
+        count('guests'),
+        count('schedule_items'),
+        count('custom_rsvp_questions'),
+        count('registry_items'),
+      ]);
+
+      const missing = missingRequired(
+        getEventReadiness(current as EventRecord, { guests, schedule, questions, registry })
+      );
+      if (missing.length > 0) {
+        return { error: `Finish before publishing: ${missing.map((item) => item.label).join(', ')}.` };
+      }
+    }
+
+    const now = new Date().toISOString();
+    const { data: event, error } = await supabaseAdmin
+      .from('events')
+      .update({
+        is_live: publish,
+        ...(publish ? { setup_completed: true, setup_completed_at: now } : {}),
+        updated_at: now,
+      })
+      .eq('id', eventId)
+      .select()
+      .single();
+    if (error || !event) throw error || new Error('Failed to update event.');
+
+    revalidatePath(`/admin/${adminToken}`);
+    return { success: true, event };
+  } catch (err: any) {
+    console.error('setEventPublishedAction error:', err);
+    return { error: err.message || 'Failed to change publish status.' };
   }
 }
 

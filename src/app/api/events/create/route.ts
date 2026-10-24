@@ -47,9 +47,9 @@ export async function POST(request: Request) {
           'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=1200&q=80',
         venue_image_url:
           'https://images.unsplash.com/photo-1533105079780-92b9be482077?auto=format&fit=crop&w=1200&q=80',
-        is_live: true,
+        is_live: false,
         is_ready_for_testing: false,
-        launch_notes: 'Initial event provisioned. Complete setup wizard before sending invites.',
+        launch_notes: 'Initial event provisioned. Complete setup and publish before sending invites.',
       })
       .select()
       .single();
