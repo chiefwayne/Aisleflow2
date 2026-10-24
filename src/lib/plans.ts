@@ -1,13 +1,13 @@
 /** Plans: free builds and previews; Essentials publishes and emails; Premium adds SMS, music and the Design Studio. */
 export type PlanId = 'free' | 'essentials' | 'premium';
-export type Feature = 'publish' | 'sms' | 'music' | 'design_studio';
+export type Feature = 'publish' | 'sms' | 'music' | 'design_studio' | 'memories';
 
 const PLAN_ORDER: PlanId[] = ['free', 'essentials', 'premium'];
 
 export const PLAN_FEATURES: Record<PlanId, Record<Feature, boolean>> = {
-  free: { publish: false, sms: false, music: false, design_studio: false },
-  essentials: { publish: true, sms: false, music: false, design_studio: false },
-  premium: { publish: true, sms: true, music: true, design_studio: true },
+  free: { publish: false, sms: false, music: false, design_studio: false, memories: false },
+  essentials: { publish: true, sms: false, music: false, design_studio: false, memories: false },
+  premium: { publish: true, sms: true, music: true, design_studio: true, memories: true },
 };
 
 export const PLAN_NAMES: Record<PlanId, string> = {
@@ -34,6 +34,8 @@ export function featureError(feature: Feature): string {
       return 'Your own song is part of Premium. Upgrade to add music.';
     case 'design_studio':
       return 'The Design Studio is part of Premium. Upgrade to customise your invitation.';
+    case 'memories':
+      return 'The Memories album is part of Premium. Upgrade to collect photos, messages and voice notes.';
   }
 }
 

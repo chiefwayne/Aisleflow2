@@ -16,6 +16,8 @@ describe('plans', () => {
     expect(hasFeature({ plan: 'premium' }, 'sms')).toBe(true);
     expect(hasFeature({ plan: 'premium' }, 'music')).toBe(true);
     expect(hasFeature({ plan: 'premium' }, 'design_studio')).toBe(true);
+    expect(hasFeature({ plan: 'essentials' }, 'memories')).toBe(false);
+    expect(hasFeature({ plan: 'premium' }, 'memories')).toBe(true);
   });
 
   it('only allows SMS channels on Premium', () => {

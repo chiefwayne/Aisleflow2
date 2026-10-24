@@ -87,6 +87,7 @@ export interface EventRecord {
   is_live: boolean;
   is_ready_for_testing: boolean;
   rsvp_locked?: boolean;
+  album_token?: string | null;
   plan?: 'free' | 'essentials' | 'premium';
   plan_activated_at?: string | null;
   setup_completed?: boolean;
@@ -218,6 +219,7 @@ export interface PhotoRecord {
   guest_name?: string;
   is_approved: boolean;
   created_at: string;
+  uploader_name?: string | null;
 }
 
 export interface PlanningTaskRecord {
@@ -417,4 +419,16 @@ export interface TemplateDesignRecord {
   status: 'draft' | 'published' | 'archived';
   created_at: string;
   updated_at: string;
+}
+
+
+export interface GuestbookEntryRecord {
+  id: string;
+  event_id: string;
+  guest_id?: string | null;
+  author_name: string;
+  message?: string | null;
+  voice_url?: string | null;
+  is_approved: boolean;
+  created_at: string;
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Papa from 'papaparse';
 import {
@@ -64,6 +64,7 @@ import {
   CommunicationCampaignRecord,
   CommunicationMessageRecord,
   TemplateDesignRecord,
+  GuestbookEntryRecord,
   EventCustomSections
 } from '@/lib/types';
 import { BUILTIN_THEMES } from '@/lib/theme-presets';
@@ -73,6 +74,12 @@ import GuestPortalView from '@/components/guest/GuestPortalView';
 import { ImagePickerUploader } from '@/components/common/ImagePickerUploader';
 import PublishReadinessPanel from '@/components/admin/PublishReadinessPanel';
 import PlanCard from '@/components/admin/PlanCard';
+import {
+  deleteGuestbookEntryAction,
+  getOrCreateAlbumTokenAction,
+  listGuestbookAction,
+  setMemoryVisibilityAction,
+} from '@/app/actions/album-actions';
 import { featureError, hasFeature } from '@/lib/plans';
 import { isStudioDesign } from '@/lib/portal-design';
 import { getMenuOptions, MenuOption } from '@/lib/menu';
@@ -349,10 +356,58 @@ export default function AdminDashboardView({
   };
 
   // Open Printable Table Card
+  // The table card links to the shared album, never to a guest's or the couple's own link.
   const handleOpenTableCard = async () => {
-    const url = `${window.location.origin}/g/${guests[0]?.access_token || event.admin_token}`;
-    const qrData = await generateQrDataUrl(url);
-    setTableCardModal(qrData);
+    if (!hasFeature(event, 'memories')) {
+      setStatusMessage(featureError('memories'));
+      setTimeout(() => setStatusMessage(''), 4000);
+      setActiveTab('setup');
+      return;
+    }
+    const albumUrl = await ensureAlbumUrl();
+    if (!albumUrl) return;
+    setTableCardModal(await generateQrDataUrl(albumUrl));
+  };
+
+  const ensureAlbumUrl = async (): Promise<string | null> => {
+    const result = await getOrCreateAlbumTokenAction(event.id, event.admin_token);
+    if ('error' in result) {
+      setStatusMessage(result.error);
+      setTimeout(() => setStatusMessage(''), 4000);
+      return null;
+    }
+    if (result.albumToken !== event.album_token) setEvent((prev) => ({ ...prev, album_token: result.albumToken }));
+    return `${window.location.origin}/album/${result.albumToken}`;
+  };
+
+  const openAlbumPage = async (path: '' | '/slideshow') => {
+    const albumUrl = await ensureAlbumUrl();
+    if (albumUrl) window.open(`${albumUrl}${path}`, '_blank', 'noopener');
+  };
+
+  // Guestbook entries for moderation (loaded when the Photos tab opens)
+  const [guestbook, setGuestbook] = useState<GuestbookEntryRecord[]>([]);
+  useEffect(() => {
+    if (activeTab !== 'photos' || !hasFeature(event, 'memories')) return;
+    listGuestbookAction(event.id, event.admin_token).then((r) => setGuestbook(r.entries));
+  }, [activeTab, event.id, event.admin_token, event.plan]);
+
+  const handleToggleMemory = async (kind: 'photo' | 'message', id: string, approved: boolean) => {
+    if (kind === 'photo') setPhotos((prev) => prev.map((p) => (p.id === id ? { ...p, is_approved: approved } : p)));
+    else setGuestbook((prev) => prev.map((m) => (m.id === id ? { ...m, is_approved: approved } : m)));
+    const result = await setMemoryVisibilityAction({ eventId: event.id, adminToken: event.admin_token, kind, id, approved });
+    if (!result.success) {
+      if (kind === 'photo') setPhotos((prev) => prev.map((p) => (p.id === id ? { ...p, is_approved: !approved } : p)));
+      else setGuestbook((prev) => prev.map((m) => (m.id === id ? { ...m, is_approved: !approved } : m)));
+      setStatusMessage('Could not update visibility. Please try again.');
+      setTimeout(() => setStatusMessage(''), 3500);
+    }
+  };
+
+  const handleDeleteGuestbookEntry = async (id: string) => {
+    if (!confirm('Delete this message for good?')) return;
+    const result = await deleteGuestbookEntryAction(event.id, event.admin_token, id);
+    if (result.success) setGuestbook((prev) => prev.filter((m) => m.id !== id));
   };
 
   // Metric Rollups
@@ -4067,21 +4122,42 @@ export default function AdminDashboardView({
             <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">Guest Photo Stream Moderation</h3>
-                  <p className="text-xs text-aisle-muted mt-0.5">Live photo stream uploaded by wedding guests to Supabase Storage</p>
+                  <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">Memories</h3>
+                  <p className="text-xs text-aisle-muted mt-0.5">
+                    Photos and messages from your guests. Hide anything you don't want shown; hidden items stay here.
+                  </p>
                 </div>
-                <button
-                  onClick={handleOpenTableCard}
-                  className="rounded-full bg-aisle-charcoal px-4 py-1.5 text-xs font-semibold text-white hover:bg-aisle-terracotta cursor-pointer"
-                >
-                  Print Table QR Card
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  {hasFeature(event, 'memories') ? (
+                    <>
+                      <button onClick={() => openAlbumPage('')} className="rounded-full border border-aisle-border px-4 py-1.5 text-xs font-semibold text-aisle-charcoal hover:bg-aisle-sand cursor-pointer">
+                        Open album
+                      </button>
+                      <button onClick={() => openAlbumPage('/slideshow')} className="rounded-full border border-aisle-border px-4 py-1.5 text-xs font-semibold text-aisle-charcoal hover:bg-aisle-sand cursor-pointer">
+                        Live slideshow
+                      </button>
+                      <button onClick={handleOpenTableCard} className="rounded-full bg-aisle-charcoal px-4 py-1.5 text-xs font-semibold text-white hover:bg-aisle-terracotta cursor-pointer">
+                        Print album QR card
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={() => setActiveTab('setup')} className="rounded-full border border-aisle-border px-4 py-1.5 text-xs font-semibold text-aisle-charcoal hover:bg-aisle-sand cursor-pointer">
+                      Memories album is Premium · See plans
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {photos.map((p) => (
                   <div key={p.id} className="relative aspect-square rounded-2xl overflow-hidden border border-aisle-border bg-aisle-sand group">
-                    <img src={p.image_url} alt="Photo" className="h-full w-full object-cover" />
+                    <img src={p.image_url} alt="Photo" className={`h-full w-full object-cover ${p.is_approved === false ? 'opacity-30' : ''}`} />
+                    <button
+                      onClick={() => handleToggleMemory('photo', p.id, p.is_approved === false)}
+                      className="absolute top-2 left-2 rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold text-aisle-charcoal shadow cursor-pointer"
+                    >
+                      {p.is_approved === false ? 'Hidden · Show' : 'Hide'}
+                    </button>
                     <button
                       onClick={() => handleDeletePhoto(p.id, p.image_url)}
                       title="Delete Photo"
@@ -4097,6 +4173,33 @@ export default function AdminDashboardView({
                   </div>
                 ))}
               </div>
+
+              {hasFeature(event, 'memories') && (
+                <div className="space-y-3 border-t border-aisle-border pt-5">
+                  <h4 className="font-serif text-lg font-semibold text-aisle-charcoal">Guestbook ({guestbook.length})</h4>
+                  {guestbook.length === 0 ? (
+                    <p className="text-xs text-aisle-muted">Messages and voice notes from the album will appear here.</p>
+                  ) : (
+                    guestbook.map((m) => (
+                      <div key={m.id} className={`rounded-2xl border border-aisle-border p-4 space-y-2 text-xs ${m.is_approved ? 'bg-white' : 'bg-aisle-sand/40 opacity-60'}`}>
+                        {m.message && <p className="text-sm text-aisle-charcoal">“{m.message}”</p>}
+                        {m.voice_url && <audio controls src={m.voice_url} preload="none" className="w-full" />}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-aisle-muted">— {m.author_name} · {new Date(m.created_at).toLocaleString()}</span>
+                          <span className="flex gap-1.5">
+                            <button onClick={() => handleToggleMemory('message', m.id, !m.is_approved)} className="rounded-full border border-aisle-border px-3 py-1 font-semibold cursor-pointer">
+                              {m.is_approved ? 'Hide' : 'Show'}
+                            </button>
+                            <button onClick={() => handleDeleteGuestbookEntry(m.id)} aria-label="Delete message" className="rounded-full border border-aisle-border p-1.5 text-aisle-muted hover:text-rose-700 cursor-pointer">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -4833,7 +4936,7 @@ export default function AdminDashboardView({
               {event.couple_names}
             </h3>
             <p className="text-xs text-aisle-muted">
-              Scan this QR code with your phone to instantly upload photos to our live wedding stream. No app needed.
+              Scan to share your photos and leave us a message. No app or account needed.
             </p>
             <div className="flex justify-center p-4 bg-white rounded-2xl border border-aisle-border shadow-sm mx-auto max-w-[200px]">
               <img src={tableCardModal} alt="Table QR" className="h-40 w-40" />

@@ -52,6 +52,7 @@ import WaxSealOpening from '@/components/WaxSeal';
 import { BotanicalCorner, GoldHairlineDivider } from '@/components/MotifDecorations';
 import { buildIcs, downloadIcs } from '@/lib/ics';
 import { getMenuOptions } from '@/lib/menu';
+import { hasFeature } from '@/lib/plans';
 import { submitRsvpAction, uploadPhotoAction, contributeToRegistryAction } from '@/app/actions/wedding-actions';
 
 // Built-in themes keep the portal's original section order.
@@ -1657,6 +1658,15 @@ export default function GuestPortalView({
                 <p className="text-sm font-editorial italic opacity-75">
                   Snap and upload your candid moments to the live wedding gallery
                 </p>
+                {event.album_token && hasFeature(event, 'memories') && (
+                  <a
+                    href={`/album/${event.album_token}`}
+                    className="inline-block pt-1 text-sm font-semibold underline underline-offset-4"
+                    style={{ color: theme.accent_color }}
+                  >
+                    Open the shared album and guestbook
+                  </a>
+                )}
               </div>
 
               {/* Upload Button */}
