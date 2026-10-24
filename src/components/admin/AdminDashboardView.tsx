@@ -1628,7 +1628,7 @@ export default function AdminDashboardView({
       'Portal Link': `${window.location.origin}/g/${g.access_token}`,
     }));
 
-    const csv = Papa.unparse(exportData);
+    const csv = Papa.unparse(exportData, { escapeFormulae: true });
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1664,7 +1664,7 @@ export default function AdminDashboardView({
         ];
       });
 
-    const csv = Papa.unparse(rows);
+    const csv = Papa.unparse(rows, { escapeFormulae: true });
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

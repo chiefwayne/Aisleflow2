@@ -69,7 +69,7 @@ export async function POST(request: Request) {
     // Narrow by the last four digits, then require an exact normalised match.
     const { data: candidates } = await supabase
       .from('guests')
-      .select('id, first_name, access_token, phone, events(couple_names)')
+      .select('id, first_name, access_token, phone, events(couple_names, rsvp_locked, rsvp_deadline, allow_late_rsvp)')
       .ilike('phone', `%${from.slice(-4)}%`)
       .limit(50);
 
@@ -83,6 +83,15 @@ export async function POST(request: Request) {
     const matchedGuest = matches[0] as any;
     const eventName = matchedGuest.events?.couple_names || 'the';
     const portal = `https://aisleflow.com/g/${matchedGuest.access_token}`;
+
+    // Text replies follow the same rules as the RSVP form: no changes once RSVPs are closed.
+    const ev = matchedGuest.events || {};
+    const rsvpClosed =
+      ev.rsvp_locked === true || (ev.allow_late_rsvp === false && new Date() > new Date(ev.rsvp_deadline));
+    const isRsvpReply = /YES|ATTENDING|CONFIRM|NO|DECLINE|CANNOT/.test(cleanBody);
+    if (rsvpClosed && isRsvpReply) {
+      return twiml(`Hi ${matchedGuest.first_name}, RSVPs for ${eventName}'s celebration are closed. Please contact the couple directly.`);
+    }
 
     if (cleanBody.includes('YES') || cleanBody.includes('ATTENDING') || cleanBody.includes('CONFIRM')) {
       await supabase
