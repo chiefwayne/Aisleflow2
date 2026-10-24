@@ -138,6 +138,7 @@ export interface GuestRecord {
   first_viewed_at?: string | null;
   last_viewed_at?: string | null;
   view_count?: number;
+  table_id?: string | null;
 }
 
 export interface ScheduleItemRecord {

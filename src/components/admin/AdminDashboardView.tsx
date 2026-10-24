@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Papa from 'papaparse';
 import {
   LayoutDashboard,
+  LayoutGrid,
   Settings,
   Users,
   Send,
@@ -74,6 +75,7 @@ import GuestPortalView from '@/components/guest/GuestPortalView';
 import { ImagePickerUploader } from '@/components/common/ImagePickerUploader';
 import PublishReadinessPanel from '@/components/admin/PublishReadinessPanel';
 import PlanCard from '@/components/admin/PlanCard';
+import SeatingPlanner from '@/components/admin/SeatingPlanner';
 import {
   deleteGuestbookEntryAction,
   getOrCreateAlbumTokenAction,
@@ -145,7 +147,7 @@ export default function AdminDashboardView({
 }: AdminDashboardViewProps) {
   // Navigation Tabs
   const [activeTab, setActiveTab] = useState<
-    'dashboard' | 'setup' | 'guests' | 'communications' | 'builder' | 'copy' | 'schedule' | 'questions' | 'registry' | 'photos' | 'planning'
+    'dashboard' | 'setup' | 'guests' | 'communications' | 'builder' | 'copy' | 'schedule' | 'questions' | 'registry' | 'photos' | 'seating' | 'planning'
   >('dashboard');
 
   // State
@@ -1838,6 +1840,7 @@ export default function AdminDashboardView({
             { id: 'questions', label: 'RSVP Qs', icon: HelpCircle },
             { id: 'registry', label: 'Registry', icon: Gift },
             { id: 'photos', label: 'Photos', icon: Camera, badge: photos.length },
+            { id: 'seating', label: 'Seating', icon: LayoutGrid },
             { id: 'planning', label: 'Plan', icon: CheckSquare },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -4255,6 +4258,22 @@ export default function AdminDashboardView({
               )}
             </div>
           )}
+
+          {/* SEATING CHART (Premium) */}
+          {activeTab === 'seating' &&
+            (hasFeature(event, 'seating') ? (
+              <SeatingPlanner event={event} guests={guests} onGuestsChange={setGuests} />
+            ) : (
+              <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-3 text-xs">
+                <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">Seating chart</h3>
+                <p className="text-aisle-muted">
+                  {featureError('seating')} Arrange guests at tables, then print a table plan and place cards.
+                </p>
+                <button type="button" onClick={() => setActiveTab('setup')} className="rounded-full bg-aisle-charcoal px-4 py-2 font-semibold text-white hover:bg-aisle-terracotta cursor-pointer">
+                  See plans
+                </button>
+              </div>
+            ))}
 
           {/* TAB 11: PLANNING TASKS */}
           {activeTab === 'planning' && (
