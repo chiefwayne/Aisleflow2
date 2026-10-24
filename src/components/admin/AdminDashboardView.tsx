@@ -67,7 +67,7 @@ import {
 } from '@/lib/types';
 import { BUILTIN_THEMES } from '@/lib/theme-presets';
 import { generateQrDataUrl } from '@/lib/qrcode';
-import PhoneMockup from '@/components/PhoneMockup';
+import PortalPreviewPane from '@/components/admin/PortalPreviewPane';
 import GuestPortalView from '@/components/guest/GuestPortalView';
 import { ImagePickerUploader } from '@/components/common/ImagePickerUploader';
 import PublishReadinessPanel from '@/components/admin/PublishReadinessPanel';
@@ -2904,9 +2904,9 @@ export default function AdminDashboardView({
                 </div>
               </div>
 
-              {/* Phone Preview Column */}
-              <div className="lg:col-span-6 flex justify-center sticky top-24">
-                <PhoneMockup badgeText="Live Mobile Canvas">
+              {/* Live Preview Column */}
+              <div className="lg:col-span-6">
+                <PortalPreviewPane>
                   <GuestPortalView
                     event={event}
                     primaryGuest={guests && guests.length > 0 ? guests[0] : null}
@@ -2918,14 +2918,15 @@ export default function AdminDashboardView({
                     customTheme={customTheme}
                     previewMode={true}
                   />
-                </PhoneMockup>
+                </PortalPreviewPane>
               </div>
             </div>
           )}
 
           {/* TAB 6: GUEST COPY & STRUCTURED CMS EDITOR */}
           {activeTab === 'copy' && (
-            <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-8">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            <div className="lg:col-span-6 rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-8">
               <div>
                 <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">
                   Guest Copy & Structured CMS Sections
@@ -3291,6 +3292,24 @@ export default function AdminDashboardView({
                   {isProcessingAction ? 'Saving Editorial CMS...' : 'Save All CMS Sections'}
                 </button>
               </div>
+            </div>
+
+            {/* Live Preview Column: shows unsaved copy and CMS edits */}
+            <div className="lg:col-span-6">
+              <PortalPreviewPane>
+                <GuestPortalView
+                  event={{ ...event, custom_sections: customSections }}
+                  primaryGuest={guests && guests.length > 0 ? guests[0] : null}
+                  partyMembers={guests && guests.length > 1 ? guests.slice(0, 2) : []}
+                  scheduleItems={schedule || []}
+                  customQuestions={questions || []}
+                  registryItems={registry || []}
+                  initialPhotos={photos || []}
+                  customTheme={customTheme}
+                  previewMode={true}
+                />
+              </PortalPreviewPane>
+            </div>
             </div>
           )}
 
