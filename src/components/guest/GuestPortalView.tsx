@@ -49,6 +49,7 @@ import {
 import WaxSealOpening from '@/components/WaxSeal';
 import { BotanicalCorner, GoldHairlineDivider } from '@/components/MotifDecorations';
 import { buildIcs, downloadIcs } from '@/lib/ics';
+import { getMenuOptions } from '@/lib/menu';
 import { submitRsvpAction, uploadPhotoAction, contributeToRegistryAction } from '@/app/actions/wedding-actions';
 
 // Built-in themes keep the portal's original section order.
@@ -465,6 +466,7 @@ export default function GuestPortalView({
   };
 
   const partyNames = allGuests.map((g) => g?.first_name || 'Guest').join(' & ');
+  const menuOptions = getMenuOptions(event);
   const customSections = (event.custom_sections || {}) as any;
   const faqList = customSections.faq?.items || [];
   const localRecsList = customSections.local_recs?.items || [];
@@ -1239,22 +1241,54 @@ export default function GuestPortalView({
                                   <label className="block text-xs uppercase tracking-wider font-semibold mb-1 opacity-80">
                                     Entrée / Main Course Preference
                                   </label>
-                                  <input
-                                    type="text"
-                                    placeholder="e.g. Pan-Seared Chilean Sea Bass or Filet Mignon"
-                                    value={gState.meal_choice}
-                                    onChange={(e) =>
-                                      setPartyState((prev) => ({
-                                        ...prev,
-                                        [guest.id]: {
-                                          ...prev[guest.id],
-                                          meal_choice: e.target.value,
-                                        },
-                                      }))
-                                    }
-                                    className="w-full rounded-xl border p-3.5 bg-white focus:outline-none text-base"
-                                    style={{ borderColor: theme.border_color }}
-                                  />
+                                  {menuOptions.length > 0 ? (
+                                    <div role="radiogroup" aria-label={`Meal for ${guest.first_name}`} className="space-y-2">
+                                      {menuOptions.map((option) => {
+                                        const isSelected = gState.meal_choice === option.name;
+                                        return (
+                                          <button
+                                            key={option.name}
+                                            type="button"
+                                            role="radio"
+                                            aria-checked={isSelected}
+                                            onClick={() =>
+                                              setPartyState((prev) => ({
+                                                ...prev,
+                                                [guest.id]: { ...prev[guest.id], meal_choice: option.name },
+                                              }))
+                                            }
+                                            className="w-full min-h-[44px] rounded-xl border p-3.5 text-left transition-colors cursor-pointer"
+                                            style={{
+                                              borderColor: isSelected ? theme.accent_color : theme.border_color,
+                                              backgroundColor: isSelected ? `${theme.accent_color}10` : '#FFFFFF',
+                                            }}
+                                          >
+                                            <span className="block text-base font-semibold">{option.name}</span>
+                                            {option.description && (
+                                              <span className="block text-sm opacity-75 mt-0.5">{option.description}</span>
+                                            )}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <input
+                                      type="text"
+                                      placeholder="e.g. Pan-Seared Chilean Sea Bass or Filet Mignon"
+                                      value={gState.meal_choice}
+                                      onChange={(e) =>
+                                        setPartyState((prev) => ({
+                                          ...prev,
+                                          [guest.id]: {
+                                            ...prev[guest.id],
+                                            meal_choice: e.target.value,
+                                          },
+                                        }))
+                                      }
+                                      className="w-full rounded-xl border p-3.5 bg-white focus:outline-none text-base"
+                                      style={{ borderColor: theme.border_color }}
+                                    />
+                                  )}
                                 </div>
 
                                 {/* Dietary Tag Selector */}
@@ -1335,22 +1369,44 @@ export default function GuestPortalView({
                                       className="w-full rounded-xl border p-3 bg-white focus:outline-none text-base"
                                       style={{ borderColor: theme.border_color }}
                                     />
-                                    <input
-                                      type="text"
-                                      placeholder="Plus-One Meal Choice & Dietary"
-                                      value={gState.plus_one_meal}
-                                      onChange={(e) =>
-                                        setPartyState((prev) => ({
-                                          ...prev,
-                                          [guest.id]: {
-                                            ...prev[guest.id],
-                                            plus_one_meal: e.target.value,
-                                          },
-                                        }))
-                                      }
-                                      className="w-full rounded-xl border p-3 bg-white focus:outline-none text-base"
-                                      style={{ borderColor: theme.border_color }}
-                                    />
+                                    {menuOptions.length > 0 ? (
+                                      <select
+                                        aria-label="Plus-one meal"
+                                        value={gState.plus_one_meal}
+                                        onChange={(e) =>
+                                          setPartyState((prev) => ({
+                                            ...prev,
+                                            [guest.id]: { ...prev[guest.id], plus_one_meal: e.target.value },
+                                          }))
+                                        }
+                                        className="w-full min-h-[44px] rounded-xl border p-3 bg-white focus:outline-none text-base"
+                                        style={{ borderColor: theme.border_color }}
+                                      >
+                                        <option value="">Plus-one meal choice</option>
+                                        {menuOptions.map((option) => (
+                                          <option key={option.name} value={option.name}>
+                                            {option.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <input
+                                        type="text"
+                                        placeholder="Plus-One Meal Choice & Dietary"
+                                        value={gState.plus_one_meal}
+                                        onChange={(e) =>
+                                          setPartyState((prev) => ({
+                                            ...prev,
+                                            [guest.id]: {
+                                              ...prev[guest.id],
+                                              plus_one_meal: e.target.value,
+                                            },
+                                          }))
+                                        }
+                                        className="w-full rounded-xl border p-3 bg-white focus:outline-none text-base"
+                                        style={{ borderColor: theme.border_color }}
+                                      />
+                                    )}
                                   </div>
                                 )}
                               </div>

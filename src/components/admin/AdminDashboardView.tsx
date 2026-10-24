@@ -72,6 +72,7 @@ import GuestPortalView from '@/components/guest/GuestPortalView';
 import { ImagePickerUploader } from '@/components/common/ImagePickerUploader';
 import PublishReadinessPanel from '@/components/admin/PublishReadinessPanel';
 import { isStudioDesign } from '@/lib/portal-design';
+import { getMenuOptions, MenuOption } from '@/lib/menu';
 import { generateTrackingToken, renderTemplateVariables } from '@/lib/communications';
 import {
   addGuestAction,
@@ -837,6 +838,53 @@ export default function AdminDashboardView({
     } catch (err: any) {
       console.error(err);
       setStatusMessage(`Failed to save: ${err?.message}`);
+    } finally {
+      setIsProcessingAction(false);
+      setTimeout(() => setStatusMessage(''), 3500);
+    }
+  };
+
+  // Meal options (stored in custom_sections.menu)
+  const [menuDraft, setMenuDraft] = useState<MenuOption[]>(() => getMenuOptions(event));
+  const mealCounts = guests
+    .filter((g) => g.rsvp_status === 'attending')
+    .reduce<Record<string, number>>((counts, g) => {
+      for (const meal of [g.meal_choice, g.plus_one_name ? g.plus_one_meal : null]) {
+        if (meal) counts[meal] = (counts[meal] || 0) + 1;
+      }
+      return counts;
+    }, {});
+
+  const handleSaveMenu = async () => {
+    const options = menuDraft
+      .map((o) => ({ name: o.name.trim(), description: o.description?.trim() || '' }))
+      .filter((o) => o.name);
+    if (new Set(options.map((o) => o.name)).size !== options.length) {
+      setStatusMessage('Each meal needs a different name.');
+      setTimeout(() => setStatusMessage(''), 3500);
+      return;
+    }
+    setIsProcessingAction(true);
+    setStatusMessage('Saving menu...');
+    try {
+      // Start from the saved sections so unsaved Editor changes aren't saved with the menu.
+      const result = await updateEventCustomSectionsAction({
+        eventId: event.id,
+        adminToken: event.admin_token,
+        custom_sections: { ...(event.custom_sections || {}), menu: { options } },
+      });
+      if (result.success && result.event) {
+        // Only take custom_sections back, so unsaved Editor text in `event` is kept.
+        setEvent((prev) => ({ ...prev, custom_sections: (result.event as EventRecord).custom_sections }));
+        setCustomSections((prev) => ({ ...prev, menu: { options } }));
+        setMenuDraft(options);
+        setStatusMessage('✨ Menu saved. Guests now choose from these meals.');
+      } else {
+        setStatusMessage(`Error: ${result.error || 'Failed to save menu'}`);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setStatusMessage(`Failed to save menu: ${err?.message}`);
     } finally {
       setIsProcessingAction(false);
       setTimeout(() => setStatusMessage(''), 3500);
@@ -3405,6 +3453,87 @@ export default function AdminDashboardView({
 
           {/* TAB 8: RSVP QUESTIONS */}
           {activeTab === 'questions' && (
+            <div className="space-y-6">
+            {/* Meal options: guests choose from these on the RSVP */}
+            <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-5">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">Meal Options</h3>
+                  <p className="text-xs text-aisle-muted mt-0.5">
+                    Guests pick from this menu for themselves and their plus-one. Leave it empty to let guests type their meal.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMenuDraft([...menuDraft, { name: '', description: '' }])}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-aisle-charcoal px-4 py-2 text-xs font-semibold text-white hover:bg-aisle-terracotta cursor-pointer transition-colors shadow-sm"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Add Meal</span>
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                {menuDraft.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-aisle-border p-6 text-center text-xs text-aisle-muted">
+                    No menu yet. Add each main course your caterer offers, for example "Filet mignon" or "Wild mushroom risotto (vegetarian)".
+                  </div>
+                ) : (
+                  menuDraft.map((option, index) => (
+                    <div key={index} className="flex flex-col sm:flex-row gap-2 rounded-xl border border-aisle-border p-3 bg-[#FAF7F2]/40">
+                      <input
+                        type="text"
+                        aria-label={`Meal ${index + 1} name`}
+                        placeholder="Meal name"
+                        value={option.name}
+                        onChange={(e) =>
+                          setMenuDraft(menuDraft.map((o, i) => (i === index ? { ...o, name: e.target.value } : o)))
+                        }
+                        className="sm:w-1/3 rounded-xl border border-aisle-border px-3 py-2.5 text-xs focus:outline-none focus:border-aisle-terracotta"
+                      />
+                      <input
+                        type="text"
+                        aria-label={`Meal ${index + 1} description`}
+                        placeholder="Description (optional)"
+                        value={option.description || ''}
+                        onChange={(e) =>
+                          setMenuDraft(menuDraft.map((o, i) => (i === index ? { ...o, description: e.target.value } : o)))
+                        }
+                        className="flex-1 rounded-xl border border-aisle-border px-3 py-2.5 text-xs focus:outline-none focus:border-aisle-terracotta"
+                      />
+                      <div className="flex items-center justify-between sm:justify-end gap-3">
+                        <span className="text-aisle-muted whitespace-nowrap">
+                          {mealCounts[option.name.trim()] || 0} chosen
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Remove ${option.name || 'meal'}`}
+                          onClick={() => setMenuDraft(menuDraft.filter((_, i) => i !== index))}
+                          className="rounded-lg border border-aisle-border bg-white p-2 text-aisle-muted hover:text-red-600 cursor-pointer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="flex items-center justify-between gap-3 border-t border-aisle-border/70 pt-4">
+                <p className="text-xs text-aisle-muted">
+                  Counts include plus-ones of guests who are attending.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleSaveMenu}
+                  disabled={isProcessingAction}
+                  className="rounded-full bg-aisle-charcoal px-6 py-2.5 text-xs font-semibold uppercase tracking-wider text-white hover:bg-aisle-terracotta disabled:opacity-50 cursor-pointer"
+                >
+                  Save Menu
+                </button>
+              </div>
+            </div>
+
             <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-5">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
@@ -3474,6 +3603,7 @@ export default function AdminDashboardView({
                   ))
                 )}
               </div>
+            </div>
             </div>
           )}
 

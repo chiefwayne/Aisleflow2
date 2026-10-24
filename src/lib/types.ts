@@ -31,6 +31,9 @@ export interface EventCustomSections {
     enabled?: boolean;
     members?: Array<{ name: string; role: string; bio: string; photo_url?: string }>;
   };
+  menu?: {
+    options?: Array<{ name: string; description?: string }>;
+  };
   planning?: {
     tasks?: PlanningTaskRecord[];
     updatedAt?: string;

@@ -15,6 +15,8 @@ import {
   PlanningTaskRecord,
 } from '@/lib/types';
 import { getEventReadiness, missingRequired } from '@/lib/event-readiness';
+import { getMenuOptions, isMealOnMenu } from '@/lib/menu';
+import { scopeRsvpPayload } from '@/lib/rsvp-scope';
 import { isDemoEvent, isDemoGuestToken, updateMockDemoEvent, DEMO_EVENT_ID, DEMO_ADMIN_TOKEN } from '@/lib/demo-seeder';
 
 const PHOTO_BUCKET = 'wedding-photos';
@@ -57,11 +59,6 @@ export async function submitRsvpAction(input: FormData | Record<string, any>) {
     }
 
     const payload = JSON.parse(payloadJson);
-    const {
-      guests = [],
-      subEvents = {},
-      customAnswers = {},
-    } = payload;
 
     // 1. Fetch Primary Guest & Event
     const { data: primaryGuest, error: guestErr } = await supabaseAdmin
@@ -78,6 +75,26 @@ export async function submitRsvpAction(input: FormData | Record<string, any>) {
     const isPastDeadline = new Date() > new Date(event.rsvp_deadline);
     if (isPastDeadline && event.allow_late_rsvp === false) {
       return { error: 'The RSVP deadline for this event has passed. Please contact the couple directly.' };
+    }
+
+    // Only the guest's own party, and only this event's schedule items and questions, may be updated.
+    const partyQuery = supabaseAdmin.from('guests').select('id').eq('event_id', event.id);
+    const [{ data: partyRows }, { data: scheduleRows }, { data: questionRows }] = await Promise.all([
+      primaryGuest.party_id ? partyQuery.eq('party_id', primaryGuest.party_id) : partyQuery.eq('id', primaryGuest.id),
+      supabaseAdmin.from('schedule_items').select('id').eq('event_id', event.id),
+      supabaseAdmin.from('custom_rsvp_questions').select('id').eq('event_id', event.id),
+    ]);
+    const scoped = scopeRsvpPayload(payload, {
+      guestIds: [primaryGuest.id, ...(partyRows || []).map((row) => row.id)],
+      scheduleItemIds: (scheduleRows || []).map((row) => row.id),
+      questionIds: (questionRows || []).map((row) => row.id),
+    });
+    if ('error' in scoped) return { error: scoped.error };
+    const { guests, subEvents, customAnswers } = scoped as { guests: any[]; subEvents: Record<string, Record<string, string>>; customAnswers: Record<string, unknown> };
+
+    const menu = getMenuOptions(event);
+    if (guests.some((g: any) => !isMealOnMenu(menu, g.meal_choice) || !isMealOnMenu(menu, g.plus_one_meal))) {
+      return { error: 'Please choose meals from the menu.' };
     }
 
     // 2. Update Guests in Party
