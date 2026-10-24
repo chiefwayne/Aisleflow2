@@ -134,7 +134,8 @@ export default async function AdminDashboardPage({ params }: PageProps) {
   try {
     const { data } = await supabase
       .from('registry_contributions')
-      .select('*');
+      .select('*')
+      .in('registry_item_id', registry.map((r) => r.id));
     if (data && data.length > 0) contributions = data as RegistryContributionRecord[];
   } catch (err) {}
   if (contributions.length === 0 && isUsingMock) {

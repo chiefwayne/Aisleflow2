@@ -24,6 +24,7 @@ export default async function GuestPortalPage({ params }: PageProps) {
 
   let primaryGuest: GuestRecord | null = null;
   let event: EventRecord | null = null;
+  let previewIsAdmin = false;
 
   const isDemoGuestToken =
     token === DEMO_GUEST_TOKEN ||
@@ -63,6 +64,7 @@ export default async function GuestPortalPage({ params }: PageProps) {
         ? { data: null }
         : await supabase.from('events').select('*').eq('admin_token', token).maybeSingle();
       event = (bySlug || byAdmin) as EventRecord | null;
+      previewIsAdmin = !!byAdmin;
     } catch (err) {}
   }
 
@@ -88,7 +90,8 @@ export default async function GuestPortalPage({ params }: PageProps) {
       access_token: token,
       first_name: 'Elena',
       last_name: 'Vance',
-      is_vip: true,
+      // Only someone holding the admin link may preview the VIP-only content.
+      is_vip: previewIsAdmin || isUsingMock,
       relationship: 'Honored Guest',
       rsvp_status: 'pending',
       plus_one_allowed: true,

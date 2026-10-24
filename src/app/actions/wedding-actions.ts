@@ -876,11 +876,9 @@ export async function deleteGuestAction(
   }
 
   try {
-    if (eventId && adminToken) {
-      await requireAdminAccess(eventId, adminToken);
-    }
+    await requireAdminAccess(eventId, adminToken);
 
-    await supabaseAdmin.from('guests').delete().eq('id', guestId);
+    await supabaseAdmin.from('guests').delete().eq('id', guestId).eq('event_id', eventId);
 
     if (adminToken) {
       revalidatePath(`/admin/${adminToken}`);
@@ -916,15 +914,14 @@ export async function rotateGuestAccessTokenAction(
   }
 
   try {
-    if (eventId && adminToken) {
-      await requireAdminAccess(eventId, adminToken);
-    }
+    await requireAdminAccess(eventId, adminToken);
 
     const newToken = createGuestAccessToken();
     const { data: updated, error } = await supabaseAdmin
       .from('guests')
       .update({ access_token: newToken, updated_at: new Date().toISOString() })
       .eq('id', guestId)
+      .eq('event_id', eventId)
       .select()
       .single();
 
