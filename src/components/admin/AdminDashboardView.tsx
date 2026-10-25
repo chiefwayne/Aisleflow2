@@ -367,7 +367,7 @@ export default function AdminDashboardView({
     if (!hasFeature(event, 'memories')) {
       setStatusMessage(featureError('memories'));
       setTimeout(() => setStatusMessage(''), 4000);
-      setActiveTab('setup');
+      setActiveTab('dashboard');
       return;
     }
     const albumUrl = await ensureAlbumUrl();
@@ -1969,6 +1969,8 @@ export default function AdminDashboardView({
                 onEventChange={setEvent}
               />
 
+              <PlanCard event={event} onPlanChange={(plan) => setEvent((prev) => ({ ...prev, plan }))} />
+
               {/* Sample Guest Links for Instant Testing */}
               <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-4">
                 <h3 className="font-serif text-lg font-semibold text-aisle-charcoal">
@@ -2021,7 +2023,6 @@ export default function AdminDashboardView({
               onNavigate={setActiveTab}
               onEventChange={setEvent}
             />
-            <PlanCard event={event} onPlanChange={(plan) => setEvent((prev) => ({ ...prev, plan }))} />
 
             <DesignServiceCard event={event} />
 
@@ -2515,7 +2516,7 @@ export default function AdminDashboardView({
                   <span>Your event is a draft. Publish it before sending messages to guests. You can still save drafts and schedule campaigns.</span>
                   <button
                     type="button"
-                    onClick={() => setActiveTab('setup')}
+                    onClick={() => setActiveTab('dashboard')}
                     className="min-h-[44px] rounded-full bg-amber-900 px-4 font-semibold text-white hover:bg-amber-800"
                   >
                     Go to Publish
@@ -2826,7 +2827,7 @@ export default function AdminDashboardView({
                         ) : (
                           <button
                             type="button"
-                            onClick={() => setActiveTab('setup')}
+                            onClick={() => setActiveTab('dashboard')}
                             className="inline-flex min-h-[44px] items-center rounded-full border border-aisle-border px-4 font-semibold text-aisle-charcoal hover:bg-white cursor-pointer"
                           >
                             See plans
@@ -3203,7 +3204,7 @@ export default function AdminDashboardView({
                       {!hasFeature(event, 'music') ? (
                         <p className="text-aisle-muted">
                           {featureError('music')}{' '}
-                          <button type="button" onClick={() => setActiveTab('setup')} className="font-semibold text-aisle-terracotta underline cursor-pointer">
+                          <button type="button" onClick={() => setActiveTab('dashboard')} className="font-semibold text-aisle-terracotta underline cursor-pointer">
                             See plans
                           </button>
                         </p>
@@ -4276,7 +4277,7 @@ export default function AdminDashboardView({
                       </button>
                     </>
                   ) : (
-                    <button onClick={() => setActiveTab('setup')} className="rounded-full border border-aisle-border px-4 py-1.5 text-xs font-semibold text-aisle-charcoal hover:bg-aisle-sand cursor-pointer">
+                    <button onClick={() => setActiveTab('dashboard')} className="rounded-full border border-aisle-border px-4 py-1.5 text-xs font-semibold text-aisle-charcoal hover:bg-aisle-sand cursor-pointer">
                       Memories album is Premium · See plans
                     </button>
                   )}
@@ -4348,7 +4349,7 @@ export default function AdminDashboardView({
                 <p className="text-aisle-muted">
                   {featureError('seating')} Arrange guests at tables, then print a table plan and place cards.
                 </p>
-                <button type="button" onClick={() => setActiveTab('setup')} className="rounded-full bg-aisle-charcoal px-4 py-2 font-semibold text-white hover:bg-aisle-terracotta cursor-pointer">
+                <button type="button" onClick={() => setActiveTab('dashboard')} className="rounded-full bg-aisle-charcoal px-4 py-2 font-semibold text-white hover:bg-aisle-terracotta cursor-pointer">
                   See plans
                 </button>
               </div>
@@ -4789,7 +4790,7 @@ export default function AdminDashboardView({
                   {!smsAllowed && (
                     <p className="mt-1.5 text-xs text-aisle-muted">
                       Text messages are part of Premium.{' '}
-                      <button type="button" onClick={() => { setNewCampaignModalOpen(false); setActiveTab('setup'); }} className="font-semibold text-aisle-terracotta underline cursor-pointer">
+                      <button type="button" onClick={() => { setNewCampaignModalOpen(false); setActiveTab('dashboard'); }} className="font-semibold text-aisle-terracotta underline cursor-pointer">
                         See plans
                       </button>
                     </p>
