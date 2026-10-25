@@ -59,7 +59,14 @@ import {
   GuestPortalTextFrameStyle,
   GuestPortalOpeningStyle,
   TemplateDesignRecord,
+  CustomRsvpQuestionRecord,
+  EventRecord,
+  GuestRecord,
+  PhotoRecord,
+  RegistryItemRecord,
+  ScheduleItemRecord,
 } from '@/lib/types';
+import GuestPortalView from '@/components/guest/GuestPortalView';
 
 export type SelectedPreviewElement =
   | 'identity'
@@ -465,6 +472,15 @@ interface TemplateDesignStudioProps {
   eventId?: string;
   adminToken?: string;
   initialDesign?: TemplateDesignRow;
+  /** Event mode: the couple's content, so the preview is their real guest page. */
+  eventPreview?: {
+    event: EventRecord;
+    guests: GuestRecord[];
+    schedule: ScheduleItemRecord[];
+    questions: CustomRsvpQuestionRecord[];
+    registry: RegistryItemRecord[];
+    photos: PhotoRecord[];
+  };
 }
 
 export default function TemplateDesignStudio({
@@ -475,6 +491,7 @@ export default function TemplateDesignStudio({
   eventId,
   adminToken,
   initialDesign,
+  eventPreview,
 }: TemplateDesignStudioProps) {
   const isEventMode = mode === 'event';
   // State
@@ -485,6 +502,19 @@ export default function TemplateDesignStudio({
     initialMediaAssets && initialMediaAssets.length > 0 ? initialMediaAssets : INITIAL_MEDIA_ASSETS
   );
   const [currentDesign, setCurrentDesign] = useState<TemplateDesignRow>(initialDesign || SYSTEM_DESIGNS[0]);
+  // The couple's real guest page with the draft design applied, as the Editor shows it.
+  const realPreview = eventPreview ? (
+    <GuestPortalView
+      event={{ ...eventPreview.event, theme_config: currentDesign as unknown as EventRecord['theme_config'] }}
+      primaryGuest={eventPreview.guests[0] || null}
+      partyMembers={eventPreview.guests.length > 1 ? eventPreview.guests : []}
+      scheduleItems={eventPreview.schedule}
+      customQuestions={eventPreview.questions}
+      registryItems={eventPreview.registry}
+      initialPhotos={eventPreview.photos}
+      previewMode={true}
+    />
+  ) : null;
   const [selectedElement, setSelectedElement] = useState<SelectedPreviewElement>('page');
   const [previewMode, setPreviewMode] = useState<PreviewMode>('guest');
   const [previewLayout, setPreviewLayout] = useState<PreviewLayoutId>('editorial-ceremony');
@@ -1025,7 +1055,8 @@ export default function TemplateDesignStudio({
               </div>
             </div>
 
-            {/* Layout Preset Selector */}
+            {/* Layout Preset Selector (sample preview only) */}
+            {!realPreview && (
             <div className="flex items-center justify-between pt-1 border-t border-stone-100 text-xs">
               <span className="text-stone-400 font-medium text-[11px]">Preview Layout:</span>
               <select
@@ -1040,18 +1071,32 @@ export default function TemplateDesignStudio({
                 <option value="royal-floral">Royal Floral</option>
               </select>
             </div>
+            )}
           </div>
 
           {/* Actual Scrollable Guest Invite Canvas */}
           <div className="w-full flex justify-center">
             {previewMode === 'opening' ? (
-              <div className="w-full max-w-md rounded-3xl overflow-hidden shadow-wedding-lg border border-stone-200">
+              // translateZ(0) keeps the full-screen opening inside this box
+              <div className={`w-full h-[640px] rounded-3xl overflow-hidden shadow-wedding-lg border border-stone-200 [transform:translateZ(0)] ${fontClass(currentDesign.font_family)}`}>
                 <WaxSealOpening
-                  coupleNames="Sarah & James"
+                  coupleNames={eventPreview?.event.couple_names || 'Sarah & James'}
                   openingStyle={currentDesign.opening_style}
-                  guestName="Elena"
+                  palette={{
+                    bg: currentDesign.bg_color,
+                    surface: currentDesign.surface_color || '#FFFFFF',
+                    text: currentDesign.text_color,
+                    accent: currentDesign.accent_color,
+                    border: currentDesign.border_color,
+                  }}
+                  guestName={eventPreview ? eventPreview.guests[0]?.first_name : 'Elena'}
                   onOpen={() => setPreviewMode('guest')}
                 />
+              </div>
+            ) : realPreview ? (
+              // translateZ(0) keeps the portal's fixed-position overlays inside this box
+              <div className="w-full h-[840px] overflow-y-auto overflow-x-hidden rounded-3xl border border-stone-200 shadow-wedding-lg [transform:translateZ(0)]">
+                {realPreview}
               </div>
             ) : (
               <LiveGuestInvitePreview
@@ -1483,14 +1528,20 @@ export default function TemplateDesignStudio({
               </button>
             </div>
 
-            <div className="w-full max-h-[82vh] overflow-y-auto rounded-3xl shadow-2xl flex justify-center">
-              <LiveGuestInvitePreview
-                design={currentDesign}
-                selectedElement={selectedElement}
-                onSelectElement={setSelectedElement}
-                previewLayout={previewLayout}
-              />
-            </div>
+            {realPreview ? (
+              <div className="w-full h-[82vh] overflow-y-auto overflow-x-hidden rounded-3xl shadow-2xl [transform:translateZ(0)]">
+                {realPreview}
+              </div>
+            ) : (
+              <div className="w-full max-h-[82vh] overflow-y-auto rounded-3xl shadow-2xl flex justify-center">
+                <LiveGuestInvitePreview
+                  design={currentDesign}
+                  selectedElement={selectedElement}
+                  onSelectElement={setSelectedElement}
+                  previewLayout={previewLayout}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}

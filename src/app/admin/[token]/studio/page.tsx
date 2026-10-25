@@ -5,7 +5,14 @@ import TemplateDesignStudio, { TemplateDesignRow } from '@/components/owner/Temp
 import { BUILTIN_THEMES } from '@/lib/theme-presets';
 import { featureError, hasFeature } from '@/lib/plans';
 import { normalizedSectionOrder } from '@/lib/portal-design';
-import type { EventRecord } from '@/lib/types';
+import type {
+  CustomRsvpQuestionRecord,
+  EventRecord,
+  GuestRecord,
+  PhotoRecord,
+  RegistryItemRecord,
+  ScheduleItemRecord,
+} from '@/lib/types';
 
 interface PageProps {
   params: Promise<{ token: string }>;
@@ -56,5 +63,29 @@ export default async function EventStudioPage({ params }: PageProps) {
     section_styles: merged.section_styles || {},
   } as unknown as TemplateDesignRow;
 
-  return <TemplateDesignStudio mode="event" eventId={event.id} adminToken={token} initialDesign={initialDesign} />;
+  // The couple's own content, so the preview is their real invitation (same as the Editor's).
+  const [guests, schedule, questions, registry, photos] = await Promise.all([
+    supabaseAdmin.from('guests').select('*').eq('event_id', event.id).order('created_at', { ascending: true }).limit(2),
+    supabaseAdmin.from('schedule_items').select('*').eq('event_id', event.id).order('display_order', { ascending: true }),
+    supabaseAdmin.from('custom_rsvp_questions').select('*').eq('event_id', event.id).order('display_order', { ascending: true }),
+    supabaseAdmin.from('registry_items').select('*').eq('event_id', event.id).order('display_order', { ascending: true }),
+    supabaseAdmin.from('photos').select('*').eq('event_id', event.id).order('created_at', { ascending: false }),
+  ]);
+
+  return (
+    <TemplateDesignStudio
+      mode="event"
+      eventId={event.id}
+      adminToken={token}
+      initialDesign={initialDesign}
+      eventPreview={{
+        event,
+        guests: (guests.data || []) as GuestRecord[],
+        schedule: (schedule.data || []) as ScheduleItemRecord[],
+        questions: (questions.data || []) as CustomRsvpQuestionRecord[],
+        registry: (registry.data || []) as RegistryItemRecord[],
+        photos: (photos.data || []) as PhotoRecord[],
+      }}
+    />
+  );
 }
