@@ -42,7 +42,6 @@ import {
   AlertCircle,
   Type,
   Layers,
-  Sliders,
   ChevronUp,
   Eye,
   MessageCircle,
@@ -339,7 +338,7 @@ export default function AdminDashboardView({
   });
 
   const [builderSubTab, setBuilderSubTab] = useState<
-    'presets' | 'palette' | 'typography' | 'reveal' | 'imagery' | 'sections'
+    'presets' | 'palette' | 'typography' | 'reveal' | 'imagery'
   >('presets');
 
   // Copy Link Helper
@@ -2825,7 +2824,6 @@ export default function AdminDashboardView({
                       { id: 'typography', label: 'Typography', icon: Type },
                       { id: 'reveal', label: 'Opening', icon: Layers },
                       { id: 'imagery', label: 'Imagery', icon: Camera },
-                      { id: 'sections', label: 'Chapters', icon: Sliders },
                     ].map((tab) => {
                       const Icon = tab.icon;
                       const isActive = builderSubTab === tab.id;
@@ -2942,6 +2940,46 @@ export default function AdminDashboardView({
                       <div className="rounded-2xl border border-aisle-border bg-[#FAF7F2]/50 p-3.5 text-xs text-aisle-muted space-y-1">
                         <p className="font-semibold text-aisle-charcoal">{customTheme.name} · {customTheme.taxonomy}</p>
                         <p className="leading-relaxed text-xs">{customTheme.description}</p>
+                      </div>
+
+                      {/* Chapters (moved here from its own sub-tab) */}
+                      <div className="space-y-4 text-xs">
+                        <div>
+                          <h4 className="text-xs font-semibold uppercase tracking-wider text-aisle-charcoal">
+                            Portal Chapters & Section Flow
+                          </h4>
+                          <p className="text-xs text-aisle-muted mt-0.5">
+                            Toggle visibility and customize the chapter layout for your guests.
+                          </p>
+                        </div>
+
+                        <div className="space-y-2">
+                          {[
+                            { id: 'story', label: 'Chapter I: Our Story & Welcome', desc: 'Narrative & couple narrative photo' },
+                            { id: 'schedule', label: 'Chapter II: The Itinerary', desc: 'Timeline schedule & attire notes' },
+                            { id: 'venue', label: 'Chapter III: Venue & Setting', desc: 'Location address & one-tap map' },
+                            { id: 'travel', label: 'Chapter IV: Accommodations & Logistics', desc: 'Hotel room blocks & shuttles' },
+                            { id: 'rsvp', label: 'Chapter V: Zero-Login Interactive RSVP', desc: 'Household RSVP, meals & questions' },
+                            { id: 'photos', label: 'Chapter VI: Live Photo Stream', desc: 'Guest camera uploads & gallery' },
+                            { id: 'registry', label: 'Chapter VII: Gift Registry & Cash Funds', desc: 'Honeymoon fund & gift items' },
+                            { id: 'faq', label: 'Chapter VIII: FAQ Accordion', desc: 'Common questions & answers' },
+                            { id: 'local-recs', label: 'Chapter IX: Local Concierge', desc: 'Curated dining, drinks & stays' },
+                            { id: 'wedding-party', label: 'Chapter X: The Wedding Party', desc: 'Entourage bios & portraits' },
+                          ].map((sec) => (
+                            <div
+                              key={sec.id}
+                              className="flex items-center justify-between p-3 rounded-xl border border-aisle-border bg-[#FAF7F2]/40"
+                            >
+                              <div>
+                                <span className="font-semibold text-aisle-charcoal block">{sec.label}</span>
+                                <span className="text-xs text-aisle-muted">{sec.desc}</span>
+                              </div>
+                              <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                Active
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -3324,48 +3362,6 @@ export default function AdminDashboardView({
                         aspectRatio="landscape"
                         helperText="Photo of the ceremony/reception villa, garden, or estate."
                       />
-                    </div>
-                  )}
-
-                  {/* SUB-TAB 6: CHAPTERS & LAYOUT */}
-                  {builderSubTab === 'sections' && (
-                    <div className="space-y-4 text-xs">
-                      <div>
-                        <h4 className="text-xs font-semibold uppercase tracking-wider text-aisle-charcoal">
-                          Portal Chapters & Section Flow
-                        </h4>
-                        <p className="text-xs text-aisle-muted mt-0.5">
-                          Toggle visibility and customize the chapter layout for your guests.
-                        </p>
-                      </div>
-
-                      <div className="space-y-2">
-                        {[
-                          { id: 'story', label: 'Chapter I: Our Story & Welcome', desc: 'Narrative & couple narrative photo' },
-                          { id: 'schedule', label: 'Chapter II: The Itinerary', desc: 'Timeline schedule & attire notes' },
-                          { id: 'venue', label: 'Chapter III: Venue & Setting', desc: 'Location address & one-tap map' },
-                          { id: 'travel', label: 'Chapter IV: Accommodations & Logistics', desc: 'Hotel room blocks & shuttles' },
-                          { id: 'rsvp', label: 'Chapter V: Zero-Login Interactive RSVP', desc: 'Household RSVP, meals & questions' },
-                          { id: 'photos', label: 'Chapter VI: Live Photo Stream', desc: 'Guest camera uploads & gallery' },
-                          { id: 'registry', label: 'Chapter VII: Gift Registry & Cash Funds', desc: 'Honeymoon fund & gift items' },
-                          { id: 'faq', label: 'Chapter VIII: FAQ Accordion', desc: 'Common questions & answers' },
-                          { id: 'local-recs', label: 'Chapter IX: Local Concierge', desc: 'Curated dining, drinks & stays' },
-                          { id: 'wedding-party', label: 'Chapter X: The Wedding Party', desc: 'Entourage bios & portraits' },
-                        ].map((sec) => (
-                          <div
-                            key={sec.id}
-                            className="flex items-center justify-between p-3 rounded-xl border border-aisle-border bg-[#FAF7F2]/40"
-                          >
-                            <div>
-                              <span className="font-semibold text-aisle-charcoal block">{sec.label}</span>
-                              <span className="text-xs text-aisle-muted">{sec.desc}</span>
-                            </div>
-                            <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                              Active
-                            </span>
-                          </div>
-                        ))}
-                      </div>
                     </div>
                   )}
 
