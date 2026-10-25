@@ -14,6 +14,8 @@ export interface EventCustomSections {
     paypal_handle?: string;
     payout_note?: string;
   };
+  /** Dress-code colours shown as swatches under the dress code. */
+  dress_palette?: string[];
   travel?: {
     enabled?: boolean;
     hotel_info?: string;
@@ -420,6 +422,14 @@ export interface TemplateDesignRecord {
   floron?: string;
   border_flair?: 'double-line' | 'hairline-gold' | 'arch' | 'clean' | 'arabesque' | 'botanical-crest';
   is_dark?: boolean;
+  /** Invitation hero: couple photo full-bleed with names over it, or names on framed stationery. */
+  hero_layout?: 'photo' | 'stationery';
+  /** Couple's names in the script face or the theme's serif. */
+  name_style?: 'script' | 'serif';
+  /** Faint paper grain over the page. */
+  paper_texture?: boolean;
+  /** "Chapter I, II…" labels above section headings. */
+  show_chapter_labels?: boolean;
   status: 'draft' | 'published' | 'archived';
   created_at: string;
   updated_at: string;

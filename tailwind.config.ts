@@ -33,6 +33,7 @@ const config: Config = {
         serif: ["var(--font-playfair)", "Georgia", "serif"],
         sans: ["var(--font-jakarta)", "sans-serif"],
         editorial: ["var(--font-cormorant)", "serif"],
+        script: ["var(--font-script)", "cursive"],
       },
       boxShadow: {
         'wedding': '0 4px 20px -2px rgba(44, 37, 35, 0.05), 0 2px 6px -1px rgba(44, 37, 35, 0.03)',

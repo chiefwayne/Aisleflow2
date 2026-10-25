@@ -109,3 +109,158 @@ body {
 .chapter-label::before {
   content: 'Chapter ' counter(chapter, upper-roman);
 }
+
+/* ---------------------------------------------------------------------------
+   Invitation: paper grain, envelope opening, entrance.
+   Colours come from inline CSS variables set from the couple's theme:
+   --env-paper, --env-accent, --env-ink.
+   --------------------------------------------------------------------------- */
+
+/* Faint paper grain over the whole invitation (optional per design) */
+.paper-grain::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  opacity: 0.22;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 220 220' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+}
+
+/* The envelope: five paper layers cut with clip-path, a flap that opens in 3D, and a wax seal */
+.env {
+  position: relative;
+  width: min(78vw, 340px);
+  aspect-ratio: 1.45 / 1;
+  perspective: 1300px;
+  -webkit-tap-highlight-color: transparent;
+}
+.env-stage {
+  position: absolute;
+  inset: 0;
+  animation: env-float 6.5s ease-in-out infinite;
+}
+.env-layer {
+  position: absolute;
+  inset: 0;
+}
+.env-back {
+  border-radius: 10px;
+  background: linear-gradient(168deg,
+    color-mix(in srgb, var(--env-paper) 82%, white) 0%,
+    var(--env-paper) 58%,
+    color-mix(in srgb, var(--env-paper) 90%, var(--env-ink)) 100%);
+  box-shadow:
+    0 34px 52px -28px color-mix(in srgb, var(--env-ink) 55%, transparent),
+    0 10px 20px -14px color-mix(in srgb, var(--env-ink) 40%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--env-accent) 22%, transparent);
+}
+/* Lining, seen when the flap lifts */
+.env-lining {
+  height: 74%;
+  bottom: auto;
+  border-radius: 10px 10px 0 0;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  background:
+    repeating-linear-gradient(135deg, transparent 0 7px, color-mix(in srgb, var(--env-accent) 10%, transparent) 7px 8px),
+    color-mix(in srgb, var(--env-accent) 26%, var(--env-paper));
+}
+.env-fold-left {
+  clip-path: polygon(0 0, 54% 56%, 0 100%);
+  border-radius: 10px 0 0 10px;
+  background: linear-gradient(100deg, color-mix(in srgb, var(--env-paper) 90%, white), color-mix(in srgb, var(--env-paper) 92%, var(--env-ink)));
+}
+.env-fold-right {
+  clip-path: polygon(100% 0, 46% 56%, 100% 100%);
+  border-radius: 0 10px 10px 0;
+  background: linear-gradient(260deg, color-mix(in srgb, var(--env-paper) 90%, white), color-mix(in srgb, var(--env-paper) 92%, var(--env-ink)));
+}
+.env-fold-bottom {
+  clip-path: polygon(0 100%, 100% 100%, 50% 38%);
+  border-radius: 0 0 10px 10px;
+  background: linear-gradient(176deg, color-mix(in srgb, var(--env-paper) 94%, white), color-mix(in srgb, var(--env-paper) 90%, var(--env-ink)));
+  filter: drop-shadow(0 -2px 3px color-mix(in srgb, var(--env-ink) 12%, transparent));
+}
+.env-flap {
+  height: 72%;
+  bottom: auto;
+  border-radius: 10px 10px 0 0;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  transform-origin: center top;
+  transform-style: preserve-3d;
+  background: linear-gradient(178deg,
+    color-mix(in srgb, var(--env-paper) 80%, white) 0%,
+    var(--env-paper) 72%,
+    color-mix(in srgb, var(--env-paper) 92%, var(--env-ink)) 100%);
+  filter: drop-shadow(0 4px 5px color-mix(in srgb, var(--env-ink) 26%, transparent));
+  transition: transform 0.85s cubic-bezier(0.5, 0, 0.2, 1) 0.18s;
+}
+.env-seal {
+  position: absolute;
+  left: 50%;
+  top: 72%;
+  width: 23%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 6px 8px color-mix(in srgb, var(--env-ink) 35%, transparent));
+}
+.env-hint {
+  animation: env-hint 2.6s ease-in-out infinite;
+}
+
+/* Opening sequence: seal lifts, flap opens, envelope slides away, invitation rises */
+.env-open .env-stage {
+  animation: env-away 0.8s cubic-bezier(0.5, 0, 0.2, 1) 0.75s both;
+}
+.env-open .env-flap {
+  transform: rotateX(178deg);
+}
+.env-open .env-seal {
+  animation: seal-lift 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+.env-open .env-hint {
+  animation: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.env-backdrop-out {
+  animation: fade-out 0.45s ease-out 1.15s both;
+}
+
+@keyframes env-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes env-hint {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+@keyframes seal-lift {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+  20% { opacity: 1; transform: translate(-50%, -50%) scale(1.06) rotate(-3deg); }
+  100% { opacity: 0; transform: translate(-50%, -62%) scale(0.4) rotate(5deg); }
+}
+@keyframes env-away {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(-115%); opacity: 0; }
+}
+@keyframes fade-out {
+  to { opacity: 0; }
+}
+
+/* The invitation rising in after the envelope opens. Content is visible without it. */
+.invite-rise {
+  animation: invite-rise 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes invite-rise {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .env-stage, .env-hint { animation: none; }
+  .env-open .env-flap { transform: none; }
+  .env-open .env-stage { animation: fade-out 0.2s both; }
+  .invite-rise { animation: none; }
+}

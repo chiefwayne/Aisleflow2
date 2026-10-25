@@ -351,6 +351,7 @@ export default function AdminDashboardView({
     };
   });
 
+  const [openingReplay, setOpeningReplay] = useState(0);
   const [builderSubTab, setBuilderSubTab] = useState<
     'presets' | 'palette' | 'typography' | 'reveal' | 'imagery'
   >('presets');
@@ -2877,6 +2878,48 @@ export default function AdminDashboardView({
                   {/* SUB-TAB 1: PRESETS */}
                   {builderSubTab === 'presets' && (
                     <div className="space-y-4">
+                      {/* Invitation layout: cover, names, paper and chapter labels (every plan) */}
+                      <div className="space-y-3 rounded-2xl border border-aisle-border p-4 text-xs">
+                        <h4 className="font-semibold uppercase tracking-wider text-aisle-charcoal">Invitation layout</h4>
+                        <SegmentedChoice
+                          label="Cover"
+                          hint={event.cover_image_url ? undefined : 'Add a cover photo under Imagery to use the full photo.'}
+                          value={customTheme.hero_layout || (event.cover_image_url ? 'photo' : 'stationery')}
+                          options={[
+                            { id: 'photo', label: 'Full photo' },
+                            { id: 'stationery', label: 'Framed stationery' },
+                          ]}
+                          onChange={(v) => handleUpdateThemeConfig('hero_layout', v)}
+                        />
+                        <SegmentedChoice
+                          label="Names & headings"
+                          value={customTheme.name_style || 'script'}
+                          options={[
+                            { id: 'script', label: 'Script' },
+                            { id: 'serif', label: 'Serif' },
+                          ]}
+                          onChange={(v) => handleUpdateThemeConfig('name_style', v)}
+                        />
+                        <SegmentedChoice
+                          label="Paper texture"
+                          value={customTheme.paper_texture ? 'on' : 'off'}
+                          options={[
+                            { id: 'off', label: 'Smooth' },
+                            { id: 'on', label: 'Paper grain' },
+                          ]}
+                          onChange={(v) => handleUpdateThemeConfig('paper_texture', v === 'on')}
+                        />
+                        <SegmentedChoice
+                          label="Above each section"
+                          value={customTheme.show_chapter_labels ? 'labels' : 'ornament'}
+                          options={[
+                            { id: 'ornament', label: 'Ornament' },
+                            { id: 'labels', label: 'Chapter I, II…' },
+                          ]}
+                          onChange={(v) => handleUpdateThemeConfig('show_chapter_labels', v === 'labels')}
+                        />
+                      </div>
+
                       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-aisle-border bg-aisle-sand/30 p-4 text-xs">
                         <div>
                           <span className="font-semibold text-aisle-charcoal">Design Studio</span>
@@ -3277,15 +3320,9 @@ export default function AdminDashboardView({
                         {[
                           {
                             id: 'wax-seal',
-                            title: 'Tactile Wax Seal',
-                            desc: 'Dimensional wax monogram stamp with pulsing ring and authentic crack animation.',
-                            badge: 'Classic Romance',
-                          },
-                          {
-                            id: 'envelope',
-                            title: 'Vintage Envelope Unfold',
-                            desc: 'Warm paper envelope letterhead that smoothly unfolds upon tapping.',
-                            badge: 'Editorial Formal',
+                            title: 'Sealed Envelope',
+                            desc: 'A paper envelope sealed in wax with your initials. The seal lifts, the flap opens and the invitation rises out.',
+                            badge: 'Signature',
                           },
                           {
                             id: 'curtain',
@@ -3305,7 +3342,7 @@ export default function AdminDashboardView({
                             type="button"
                             onClick={() => handleUpdateThemeConfig('opening_style', rev.id)}
                             className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all space-y-1.5 ${
-                              (customTheme.opening_style || 'wax-seal') === rev.id
+                              ((customTheme.opening_style === 'envelope' ? 'wax-seal' : customTheme.opening_style) || 'wax-seal') === rev.id
                                 ? 'border-aisle-terracotta bg-aisle-sand/50 shadow-sm ring-1 ring-aisle-terracotta'
                                 : 'border-aisle-border hover:bg-aisle-sand/20'
                             }`}
@@ -3438,8 +3475,23 @@ export default function AdminDashboardView({
 
               {/* Live Preview Column */}
               <div className="lg:col-span-6">
-                <PortalPreviewPane>
+                <PortalPreviewPane
+                  actions={
+                    builderSubTab === 'reveal' && (
+                      <button
+                        type="button"
+                        onClick={() => setOpeningReplay((n) => n + 1)}
+                        className="min-h-[36px] rounded-full border border-aisle-border bg-white px-4 text-xs font-semibold text-aisle-charcoal hover:bg-aisle-sand cursor-pointer"
+                      >
+                        Replay opening
+                      </button>
+                    )
+                  }
+                >
                   <GuestPortalView
+                    // On the Reveal tab, restart on the opening whenever the style changes or Replay is pressed.
+                    key={builderSubTab === 'reveal' ? `opening-${customTheme.opening_style}-${openingReplay}` : 'page'}
+                    showOpening={builderSubTab === 'reveal'}
                     event={event}
                     primaryGuest={guests && guests.length > 0 ? guests[0] : null}
                     partyMembers={guests && guests.length > 1 ? guests.slice(0, 2) : []}
@@ -3502,6 +3554,52 @@ export default function AdminDashboardView({
                     onChange={(e) => setEvent({ ...event, dress_code: e.target.value })}
                     className="w-full rounded-xl border border-aisle-border p-3 focus:outline-none focus:border-aisle-terracotta"
                   />
+                </div>
+
+                <div>
+                  <span className="block font-medium text-aisle-warm mb-1">Dress Code Colours</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {(customSections.dress_palette || []).map((c, i) => (
+                      <span key={i} className="inline-flex items-center gap-1 rounded-full border border-aisle-border py-1 pl-1 pr-2">
+                        <input
+                          type="color"
+                          value={c}
+                          aria-label={`Dress code colour ${i + 1}`}
+                          onChange={(e) => {
+                            const next = [...(customSections.dress_palette || [])];
+                            next[i] = e.target.value;
+                            setCustomSections({ ...customSections, dress_palette: next });
+                            setEditorDirty(true);
+                          }}
+                          className="h-8 w-8 cursor-pointer rounded-full border-0 bg-transparent p-0"
+                        />
+                        <button
+                          type="button"
+                          aria-label={`Remove colour ${i + 1}`}
+                          onClick={() => {
+                            setCustomSections({ ...customSections, dress_palette: (customSections.dress_palette || []).filter((_, j) => j !== i) });
+                            setEditorDirty(true);
+                          }}
+                          className="text-aisle-muted hover:text-red-700"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    {(customSections.dress_palette || []).length < 6 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomSections({ ...customSections, dress_palette: [...(customSections.dress_palette || []), '#C9B79C'] });
+                          setEditorDirty(true);
+                        }}
+                        className="min-h-[36px] rounded-full border border-dashed border-aisle-border px-3 font-semibold text-aisle-charcoal hover:bg-aisle-sand"
+                      >
+                        + Add colour
+                      </button>
+                    )}
+                  </div>
+                  <p className="mt-1 text-aisle-muted">Up to six, shown to guests as swatches under the dress code.</p>
                 </div>
               </div>
 
@@ -5980,6 +6078,46 @@ export default function AdminDashboardView({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** A row of pill buttons for one Builder setting. */
+function SegmentedChoice({
+  label,
+  hint,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  value: string;
+  options: { id: string; label: string }[];
+  onChange: (id: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <span className="font-medium text-aisle-charcoal">{label}</span>
+        {hint && <p className="text-aisle-muted">{hint}</p>}
+      </div>
+      <div role="radiogroup" aria-label={label} className="inline-flex rounded-full border border-aisle-border bg-white p-0.5">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            role="radio"
+            aria-checked={value === o.id}
+            onClick={() => value !== o.id && onChange(o.id)}
+            className={`min-h-[36px] rounded-full px-3.5 font-semibold transition-colors cursor-pointer ${
+              value === o.id ? 'bg-aisle-charcoal text-white' : 'text-aisle-warm hover:text-aisle-charcoal'
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

@@ -22,7 +22,7 @@ const en = {
   forGuest: 'For',
   openingEnvelope: 'Your personalized invitation has arrived. Tap below to unfold.',
   openingCurtain: 'Request the honour of your presence beneath the candlelight sky.',
-  openingMinimal: 'You are warmly invited. Tap to view event details & RSVP.',
+  openingMinimal: 'You are warmly invited.',
   openingSeal: 'Request the pleasure of your company. Tap the seal to open your private guest portal.',
   personalNoAccount: 'Personalized · No Account Required',
   openInvitation: 'Open Invitation →',
@@ -150,6 +150,12 @@ const en = {
   saveTheDate: 'Save the date',
   addToCalendar: 'Add to calendar',
   formalToFollow: 'Formal invitation to follow.',
+  youreInvited: 'You’re invited',
+  tapToOpen: 'Tap to open',
+  dear: 'Dear',
+  replyBy: 'Reply by',
+  dressCode: 'Dress code',
+  ourPalette: 'Our palette',
 };
 
 export type PortalStrings = typeof en;
@@ -161,7 +167,7 @@ const es: PortalStrings = {
   forGuest: 'Para',
   openingEnvelope: 'Ha llegado tu invitación personalizada. Toca abajo para abrirla.',
   openingCurtain: 'Solicitan el honor de tu presencia bajo un cielo de velas.',
-  openingMinimal: 'Estás cordialmente invitado. Toca para ver los detalles y confirmar.',
+  openingMinimal: 'Con mucho cariño, estás invitado.',
   openingSeal: 'Solicitan el placer de tu compañía. Toca el sello para abrir tu portal privado.',
   personalNoAccount: 'Personalizada · Sin registrarte',
   openInvitation: 'Abrir invitación →',
@@ -283,6 +289,12 @@ const es: PortalStrings = {
   saveTheDate: 'Reserva la fecha',
   addToCalendar: 'Añadir al calendario',
   formalToFollow: 'Invitación formal próximamente.',
+  youreInvited: 'Estás invitado',
+  tapToOpen: 'Toca para abrir',
+  dear: 'Hola',
+  replyBy: 'Responde antes del',
+  dressCode: 'Código de vestimenta',
+  ourPalette: 'Nuestra paleta',
 };
 
 const fr: PortalStrings = {
@@ -292,7 +304,7 @@ const fr: PortalStrings = {
   forGuest: 'Pour',
   openingEnvelope: 'Votre invitation personnalisée est arrivée. Touchez ci-dessous pour l’ouvrir.',
   openingCurtain: 'Ont l’honneur de vous convier sous un ciel de chandelles.',
-  openingMinimal: 'Vous êtes chaleureusement invité. Touchez pour voir les détails et répondre.',
+  openingMinimal: 'Vous êtes chaleureusement invité.',
   openingSeal: 'Ont le plaisir de vous inviter. Touchez le sceau pour ouvrir votre espace privé.',
   personalNoAccount: 'Personnalisée · Sans compte',
   openInvitation: 'Ouvrir l’invitation →',
@@ -414,6 +426,12 @@ const fr: PortalStrings = {
   saveTheDate: 'Réservez la date',
   addToCalendar: 'Ajouter à l’agenda',
   formalToFollow: 'Le faire-part suivra.',
+  youreInvited: 'Vous êtes invité',
+  tapToOpen: 'Touchez pour ouvrir',
+  dear: 'Bonjour',
+  replyBy: 'Répondre avant le',
+  dressCode: 'Tenue',
+  ourPalette: 'Notre palette',
 };
 
 const it: PortalStrings = {
@@ -423,7 +441,7 @@ const it: PortalStrings = {
   forGuest: 'Per',
   openingEnvelope: 'È arrivato il tuo invito personale. Tocca qui sotto per aprirlo.',
   openingCurtain: 'Hanno l’onore di invitarti sotto un cielo di candele.',
-  openingMinimal: 'Sei calorosamente invitato. Tocca per vedere i dettagli e rispondere.',
+  openingMinimal: 'Sei calorosamente invitato.',
   openingSeal: 'Hanno il piacere di invitarti. Tocca il sigillo per aprire il tuo spazio privato.',
   personalNoAccount: 'Personalizzato · Nessun account',
   openInvitation: 'Apri l’invito →',
@@ -545,6 +563,12 @@ const it: PortalStrings = {
   saveTheDate: 'Segna la data',
   addToCalendar: 'Aggiungi al calendario',
   formalToFollow: 'Seguirà l’invito ufficiale.',
+  youreInvited: 'Sei invitato',
+  tapToOpen: 'Tocca per aprire',
+  dear: 'Ciao',
+  replyBy: 'Rispondi entro il',
+  dressCode: 'Dress code',
+  ourPalette: 'La nostra palette',
 };
 
 const pt: PortalStrings = {
@@ -554,7 +578,7 @@ const pt: PortalStrings = {
   forGuest: 'Para',
   openingEnvelope: 'O seu convite personalizado chegou. Toque abaixo para o abrir.',
   openingCurtain: 'Têm a honra de o convidar sob um céu de velas.',
-  openingMinimal: 'Está calorosamente convidado. Toque para ver os detalhes e responder.',
+  openingMinimal: 'Está calorosamente convidado.',
   openingSeal: 'Têm o prazer de o convidar. Toque no selo para abrir o seu espaço privado.',
   personalNoAccount: 'Personalizado · Sem conta',
   openInvitation: 'Abrir convite →',
@@ -676,6 +700,12 @@ const pt: PortalStrings = {
   saveTheDate: 'Reserve a data',
   addToCalendar: 'Adicionar ao calendário',
   formalToFollow: 'O convite formal seguirá em breve.',
+  youreInvited: 'Está convidado',
+  tapToOpen: 'Toque para abrir',
+  dear: 'Olá',
+  replyBy: 'Responda até',
+  dressCode: 'Código de vestuário',
+  ourPalette: 'A nossa paleta',
 };
 
 const de: PortalStrings = {
@@ -685,7 +715,7 @@ const de: PortalStrings = {
   forGuest: 'Für',
   openingEnvelope: 'Deine persönliche Einladung ist da. Tippe unten, um sie zu öffnen.',
   openingCurtain: 'Wir freuen uns, dich unter einem Himmel aus Kerzenlicht begrüßen zu dürfen.',
-  openingMinimal: 'Du bist herzlich eingeladen. Tippe für alle Details und deine Zusage.',
+  openingMinimal: 'Du bist herzlich eingeladen.',
   openingSeal: 'Wir freuen uns auf dich. Tippe auf das Siegel, um deine persönliche Seite zu öffnen.',
   personalNoAccount: 'Persönlich · Ohne Konto',
   openInvitation: 'Einladung öffnen →',
@@ -807,6 +837,12 @@ const de: PortalStrings = {
   saveTheDate: 'Save the Date',
   addToCalendar: 'Zum Kalender hinzufügen',
   formalToFollow: 'Die offizielle Einladung folgt.',
+  youreInvited: 'Du bist eingeladen',
+  tapToOpen: 'Zum Öffnen tippen',
+  dear: 'Hallo',
+  replyBy: 'Antwort bis',
+  dressCode: 'Dresscode',
+  ourPalette: 'Unsere Farben',
 };
 
 const STRINGS: Record<PortalLanguage, PortalStrings> = { en, es, fr, it, pt, de };
