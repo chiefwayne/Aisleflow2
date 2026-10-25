@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { supabaseAdmin } from '@/lib/supabase';
 import GuestPortalView from '@/components/guest/GuestPortalView';
 import { hasFeature } from '@/lib/plans';
+import { toPublicEvent } from '@/lib/public-event';
 import type { EventRecord, RegistryItemRecord, ScheduleItemRecord } from '@/lib/types';
 
 interface PageProps {
@@ -26,14 +27,8 @@ export default async function PublicInvitationPage({ params }: PageProps) {
     supabaseAdmin.from('registry_items').select('*').eq('event_id', event.id),
   ]);
 
-  // No admin, billing or album secrets on a public page.
-  const publicEvent: EventRecord = {
-    ...event,
-    admin_token: '',
-    admin_email: '',
-    stripe_customer_id: null,
-    album_token: null,
-  };
+  // Allowlisted fields only: no admin, billing, internal notes or album link on a public page.
+  const publicEvent = toPublicEvent(event);
 
   return (
     <GuestPortalView

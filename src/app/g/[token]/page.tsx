@@ -4,6 +4,7 @@ import { headers } from 'next/headers';
 // Server-only: row-level security blocks the public key, so read with the service role.
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import GuestPortalView from '@/components/guest/GuestPortalView';
+import { toPublicEvent } from '@/lib/public-event';
 import {
   EventRecord,
   GuestRecord,
@@ -219,13 +220,8 @@ export default async function GuestPortalPage({ params, searchParams }: PageProp
     } catch (err) {}
   }
 
-  // Never send admin credentials or billing details to a guest's browser.
-  const publicEvent: EventRecord = {
-    ...(event as EventRecord),
-    admin_token: '',
-    admin_email: '',
-    stripe_customer_id: null,
-  };
+  // Allowlisted fields only: never send admin credentials, billing details or internal notes to a guest's browser.
+  const publicEvent = toPublicEvent(event as EventRecord, { includeAlbum: true });
 
   return (
     <GuestPortalView
