@@ -76,6 +76,7 @@ import { ImagePickerUploader } from '@/components/common/ImagePickerUploader';
 import PublishReadinessPanel from '@/components/admin/PublishReadinessPanel';
 import PlanCard from '@/components/admin/PlanCard';
 import SeatingPlanner from '@/components/admin/SeatingPlanner';
+import DesignServiceCard from '@/components/admin/DesignServiceCard';
 import {
   deleteGuestbookEntryAction,
   getOrCreateAlbumTokenAction,
@@ -2021,6 +2022,8 @@ export default function AdminDashboardView({
               onEventChange={setEvent}
             />
             <PlanCard event={event} onPlanChange={(plan) => setEvent((prev) => ({ ...prev, plan }))} />
+
+            <DesignServiceCard event={event} />
 
             {/* Custom short link (Premium) */}
             <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-3 text-xs">

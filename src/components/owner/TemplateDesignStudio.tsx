@@ -45,6 +45,7 @@ import {
 } from '@/app/actions/template-design-actions';
 import { ALL_GUEST_SECTIONS, computeSectionStyle, containerInlineStyle } from '@/lib/portal-design';
 import { uploadWebsiteImageAction } from '@/app/actions/wedding-actions';
+import OwnerDesignRequests from '@/components/owner/OwnerDesignRequests';
 import { CURATED_WEDDING_MEDIA } from '@/lib/curated-media';
 import {
   GuestPortalSectionId,
@@ -1089,6 +1090,8 @@ export default function TemplateDesignStudio({
           </aside>
         ) : (
         <aside className="lg:col-span-3 space-y-5 lg:sticky lg:top-6 max-h-[calc(100vh-3rem)] overflow-y-auto pl-1">
+          <OwnerDesignRequests ownerToken={ownerToken} />
+
           {/* Catalogue Overview Card */}
           <div className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
