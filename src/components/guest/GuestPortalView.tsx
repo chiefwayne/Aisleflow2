@@ -41,6 +41,7 @@ import {
 } from '@/lib/types';
 import { BUILTIN_THEMES } from '@/lib/theme-presets';
 import {
+  chapterSettings,
   computeSectionStyle,
   containerClassName,
   containerInlineStyle,
@@ -57,18 +58,6 @@ import { fill, PORTAL_LANGUAGES, portalLanguageOf, portalStrings } from '@/lib/p
 import { hasFeature } from '@/lib/plans';
 import { submitRsvpAction, uploadPhotoAction, contributeToRegistryAction } from '@/app/actions/wedding-actions';
 
-// Built-in themes keep the portal's original section order.
-const DEFAULT_SECTION_ORDER: GuestPortalSectionId[] = [
-  'our-story',
-  'schedule',
-  'travel',
-  'wedding-party',
-  'local-recs',
-  'faq',
-  'rsvp',
-  'photos',
-  'registry',
-];
 
 interface GuestPortalViewProps {
   event: EventRecord;
@@ -530,7 +519,11 @@ export default function GuestPortalView({
 
   const studioLayout = isStudioDesign(theme);
   const heroStyle = studioLayout ? computeSectionStyle(theme, 'hero') : null;
-  const renderOrder = studioLayout ? orderedVisibleSections(theme) : DEFAULT_SECTION_ORDER;
+  // Studio designs carry their own layout; built-in themes follow the couple's chapter order and hidden chapters.
+  const chapters = chapterSettings(event?.theme_config as { section_order?: string[]; hidden_sections?: string[] });
+  const renderOrder = studioLayout
+    ? orderedVisibleSections(theme)
+    : orderedVisibleSections({ section_order: chapters.order, hidden_sections: chapters.hidden });
 
   // Save-the-date mode: the same link shows a short announcement until the couple switches to the full invitation.
   if (event.invitation_mode === 'save_the_date' && hasFeature(event, 'save_the_date')) {

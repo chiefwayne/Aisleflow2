@@ -122,6 +122,31 @@ export function containerClassName(style: GuestPortalSectionStyle): string {
   return padding;
 }
 
+/** The guest page's original chapter order, used until a couple reorders chapters. */
+export const DEFAULT_SECTION_ORDER: GuestPortalSectionId[] = [
+  'our-story',
+  'schedule',
+  'travel',
+  'wedding-party',
+  'local-recs',
+  'faq',
+  'rsvp',
+  'photos',
+  'registry',
+];
+
+/** Chapters the couple can't hide: guests need the RSVP to reply. */
+export const ALWAYS_VISIBLE_SECTIONS: GuestPortalSectionId[] = ['rsvp'];
+
+/** The couple's chapter order and hidden chapters from theme_config, defaulting to the original layout. */
+export function chapterSettings(config: { section_order?: string[]; hidden_sections?: string[] } | null | undefined) {
+  const order = normalizedSectionOrder({ section_order: (config?.section_order as GuestPortalSectionId[]) || DEFAULT_SECTION_ORDER });
+  const hidden = (config?.hidden_sections || []).filter(
+    (id): id is GuestPortalSectionId => order.includes(id as GuestPortalSectionId) && !ALWAYS_VISIBLE_SECTIONS.includes(id as GuestPortalSectionId)
+  );
+  return { order, hidden };
+}
+
 /** Every section in the design's order. Unknown ids are dropped and missing ones appended. */
 export function normalizedSectionOrder(design: DesignStyleSource): GuestPortalSectionId[] {
   const known = new Set<string>(ALL_GUEST_SECTIONS);
@@ -159,7 +184,7 @@ export function pageBackgroundStyle(design: DesignStyleSource): React.CSSPropert
   }
 }
 
-/** theme_config keys only the Design Studio may set (layout, containers, backgrounds, section order). */
+/** theme_config keys only the Design Studio may set (layout, containers, backgrounds). Chapter order and visibility are open to every plan. */
 export const STUDIO_LAYOUT_KEYS = [
   'container_surface_color',
   'container_border_color',
@@ -171,8 +196,6 @@ export const STUDIO_LAYOUT_KEYS = [
   'text_frame_style',
   'text_frame_radius',
   'text_frame_border_width',
-  'section_order',
-  'hidden_sections',
   'section_styles',
   'per_section_styles',
   'page_background_mode',

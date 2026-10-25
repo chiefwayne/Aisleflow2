@@ -6,6 +6,7 @@ import Papa from 'papaparse';
 import {
   LayoutDashboard,
   LayoutGrid,
+  ChevronDown,
   Settings,
   Users,
   Send,
@@ -65,6 +66,7 @@ import {
   CommunicationMessageRecord,
   TemplateDesignRecord,
   GuestbookEntryRecord,
+  GuestPortalSectionId,
   EventCustomSections
 } from '@/lib/types';
 import { BUILTIN_THEMES } from '@/lib/theme-presets';
@@ -83,7 +85,7 @@ import {
   setMemoryVisibilityAction,
 } from '@/app/actions/album-actions';
 import { featureError, hasFeature } from '@/lib/plans';
-import { isStudioDesign } from '@/lib/portal-design';
+import { ALWAYS_VISIBLE_SECTIONS, chapterSettings, isStudioDesign } from '@/lib/portal-design';
 import { getMenuOptions, MenuOption } from '@/lib/menu';
 import { whatsappShareUrl } from '@/lib/share';
 import { setAtPath } from '@/lib/set-at-path';
@@ -118,6 +120,18 @@ import {
   setInvitationModeAction,
   setCustomSlugAction,
 } from '@/app/actions/wedding-actions';
+
+const CHAPTER_LABELS: Record<GuestPortalSectionId, { label: string; desc: string }> = {
+  'our-story': { label: 'Our Story & Welcome', desc: 'Welcome message, your story and photo' },
+  schedule: { label: 'The Itinerary', desc: 'Timeline and attire notes' },
+  travel: { label: 'Venue & Travel', desc: 'Address, map, hotels and shuttles' },
+  'wedding-party': { label: 'Wedding Party', desc: 'Names, roles and bios' },
+  'local-recs': { label: 'Local Tips', desc: 'Places to eat, drink and visit' },
+  faq: { label: 'Questions & Answers', desc: 'Your FAQ' },
+  rsvp: { label: 'RSVP', desc: 'Replies, meals and questions' },
+  photos: { label: 'Shared Photos', desc: 'Guest photo uploads' },
+  registry: { label: 'Gift Registry', desc: 'Gifts and cash funds' },
+};
 
 interface AdminDashboardViewProps {
   initialEvent: EventRecord;
@@ -1033,6 +1047,21 @@ export default function AdminDashboardView({
       setIsProcessingAction(false);
       setTimeout(() => setStatusMessage(''), 3500);
     }
+  };
+
+  // Chapter order and visibility (Builder > Presets), saved in theme_config for every plan.
+  const chapters = chapterSettings(event.theme_config as { section_order?: string[]; hidden_sections?: string[] });
+  const handleMoveChapter = (index: number, direction: -1 | 1) => {
+    const order = [...chapters.order];
+    const target = index + direction;
+    if (target < 0 || target >= order.length) return;
+    [order[index], order[target]] = [order[target], order[index]];
+    handleUpdateThemeConfig('section_order', order);
+  };
+  const handleToggleChapter = (id: GuestPortalSectionId) => {
+    if (ALWAYS_VISIBLE_SECTIONS.includes(id)) return;
+    const hidden = chapters.hidden.includes(id) ? chapters.hidden.filter((h) => h !== id) : [...chapters.hidden, id];
+    handleUpdateThemeConfig('hidden_sections', hidden);
   };
 
   // Click-to-edit on the Editor preview. Paths: event.<field>, sections.<path>, theme.<phrase>.
@@ -2949,37 +2978,62 @@ export default function AdminDashboardView({
                             Portal Chapters & Section Flow
                           </h4>
                           <p className="text-xs text-aisle-muted mt-0.5">
-                            Toggle visibility and customize the chapter layout for your guests.
+                            Reorder chapters with the arrows and hide any you don't need. Changes save straight away.
                           </p>
                         </div>
 
-                        <div className="space-y-2">
-                          {[
-                            { id: 'story', label: 'Chapter I: Our Story & Welcome', desc: 'Narrative & couple narrative photo' },
-                            { id: 'schedule', label: 'Chapter II: The Itinerary', desc: 'Timeline schedule & attire notes' },
-                            { id: 'venue', label: 'Chapter III: Venue & Setting', desc: 'Location address & one-tap map' },
-                            { id: 'travel', label: 'Chapter IV: Accommodations & Logistics', desc: 'Hotel room blocks & shuttles' },
-                            { id: 'rsvp', label: 'Chapter V: Zero-Login Interactive RSVP', desc: 'Household RSVP, meals & questions' },
-                            { id: 'photos', label: 'Chapter VI: Live Photo Stream', desc: 'Guest camera uploads & gallery' },
-                            { id: 'registry', label: 'Chapter VII: Gift Registry & Cash Funds', desc: 'Honeymoon fund & gift items' },
-                            { id: 'faq', label: 'Chapter VIII: FAQ Accordion', desc: 'Common questions & answers' },
-                            { id: 'local-recs', label: 'Chapter IX: Local Concierge', desc: 'Curated dining, drinks & stays' },
-                            { id: 'wedding-party', label: 'Chapter X: The Wedding Party', desc: 'Entourage bios & portraits' },
-                          ].map((sec) => (
-                            <div
-                              key={sec.id}
-                              className="flex items-center justify-between p-3 rounded-xl border border-aisle-border bg-[#FAF7F2]/40"
-                            >
-                              <div>
-                                <span className="font-semibold text-aisle-charcoal block">{sec.label}</span>
-                                <span className="text-xs text-aisle-muted">{sec.desc}</span>
-                              </div>
-                              <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                                Active
-                              </span>
-                            </div>
-                          ))}
-                        </div>
+                        <ol className="space-y-2">
+                          {chapters.order.map((id, index) => {
+                            const hidden = chapters.hidden.includes(id);
+                            const locked = ALWAYS_VISIBLE_SECTIONS.includes(id);
+                            return (
+                              <li
+                                key={id}
+                                className={`flex items-center gap-2 p-3 rounded-xl border border-aisle-border ${hidden ? 'bg-aisle-sand/30 opacity-60' : 'bg-[#FAF7F2]/40'}`}
+                              >
+                                <div className="flex flex-col">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMoveChapter(index, -1)}
+                                    disabled={index === 0}
+                                    aria-label={`Move ${CHAPTER_LABELS[id].label} up`}
+                                    className="rounded p-0.5 text-aisle-muted hover:text-aisle-charcoal disabled:opacity-30 cursor-pointer disabled:cursor-default"
+                                  >
+                                    <ChevronUp className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMoveChapter(index, 1)}
+                                    disabled={index === chapters.order.length - 1}
+                                    aria-label={`Move ${CHAPTER_LABELS[id].label} down`}
+                                    className="rounded p-0.5 text-aisle-muted hover:text-aisle-charcoal disabled:opacity-30 cursor-pointer disabled:cursor-default"
+                                  >
+                                    <ChevronDown className="h-4 w-4" />
+                                  </button>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <span className="font-semibold text-aisle-charcoal block">{CHAPTER_LABELS[id].label}</span>
+                                  <span className="text-xs text-aisle-muted">{locked ? 'Always shown so guests can reply' : CHAPTER_LABELS[id].desc}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={!hidden}
+                                  aria-label={`Show ${CHAPTER_LABELS[id].label}`}
+                                  onClick={() => handleToggleChapter(id)}
+                                  disabled={locked}
+                                  className={`min-h-[32px] rounded-full px-3 text-xs font-semibold border cursor-pointer disabled:cursor-default ${
+                                    hidden
+                                      ? 'border-aisle-border text-aisle-muted bg-white'
+                                      : 'border-emerald-200 text-emerald-800 bg-emerald-50'
+                                  }`}
+                                >
+                                  {hidden ? 'Hidden' : 'Shown'}
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ol>
                       </div>
                     </div>
                   )}
