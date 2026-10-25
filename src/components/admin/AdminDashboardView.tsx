@@ -87,6 +87,7 @@ import { featureError, hasFeature } from '@/lib/plans';
 import { isStudioDesign } from '@/lib/portal-design';
 import { getMenuOptions, MenuOption } from '@/lib/menu';
 import { whatsappShareUrl } from '@/lib/share';
+import { setAtPath } from '@/lib/set-at-path';
 import { PORTAL_LANGUAGES } from '@/lib/portal-i18n';
 import { generateTrackingToken, renderTemplateVariables } from '@/lib/communications';
 import {
@@ -903,6 +904,7 @@ export default function AdminDashboardView({
         welcome_message: event.welcome_message || '',
         our_story: event.our_story || '',
         dress_code: event.dress_code || '',
+        travel_info: event.travel_info || '',
       });
 
       if (result.success && result.event) {
@@ -1032,6 +1034,43 @@ export default function AdminDashboardView({
       setIsProcessingAction(false);
       setTimeout(() => setStatusMessage(''), 3500);
     }
+  };
+
+  // Click-to-edit on the Editor preview. Paths: event.<field>, sections.<path>, theme.<phrase>.
+  const [editorDirty, setEditorDirty] = useState(false);
+  // Only the invitation lines actually edited are saved, so untouched ones keep the theme's own wording.
+  const [editedThemeKeys, setEditedThemeKeys] = useState<string[]>([]);
+  const handlePreviewTextEdit = (path: string, value: string) => {
+    const [scope, ...rest] = path.split('.');
+    if (scope === 'event') {
+      setEvent((prev) => ({ ...prev, [rest[0]]: value }));
+    } else if (scope === 'sections') {
+      setCustomSections((prev) => setAtPath(prev, rest, value));
+    } else if (scope === 'theme') {
+      setEvent((prev) => ({ ...prev, theme_config: { ...(prev.theme_config || {}), [rest[0]]: value } }));
+      setCustomTheme((prev) => ({ ...prev, [rest[0]]: value }));
+      setEditedThemeKeys((prev) => (prev.includes(rest[0]) ? prev : [...prev, rest[0]]));
+    }
+    setEditorDirty(true);
+  };
+
+  const handleSaveEditor = async () => {
+    if (editedThemeKeys.length > 0) {
+      const config = (event.theme_config || {}) as Record<string, any>;
+      const result = await updateEventDesignAction({
+        eventId: event.id,
+        adminToken: event.admin_token,
+        theme_config: Object.fromEntries(editedThemeKeys.map((key) => [key, config[key] ?? ''])),
+      });
+      if (!result.success) {
+        setStatusMessage(`Error: ${result.error || 'Failed to save the invitation lines'}`);
+        setTimeout(() => setStatusMessage(''), 3500);
+        return;
+      }
+      setEditedThemeKeys([]);
+    }
+    await handleSaveCustomSections();
+    setEditorDirty(false);
   };
 
   // Replace the whole theme. Studio designs are copied into theme_config, so later Studio edits
@@ -3728,7 +3767,7 @@ export default function AdminDashboardView({
               <div className="pt-4 border-t border-aisle-border flex justify-end">
                 <button
                   type="button"
-                  onClick={handleSaveCustomSections}
+                  onClick={handleSaveEditor}
                   disabled={isProcessingAction}
                   className="rounded-full bg-aisle-charcoal px-8 py-3 text-xs font-semibold uppercase tracking-widest text-white hover:bg-aisle-terracotta disabled:opacity-50 cursor-pointer shadow-md"
                 >
@@ -3739,9 +3778,25 @@ export default function AdminDashboardView({
 
             {/* Live Preview Column: shows unsaved copy and CMS edits */}
             <div className="lg:col-span-6">
-              <PortalPreviewPane>
+              <PortalPreviewPane
+                label="Live preview · click your text to edit"
+                actions={
+                  <span className="inline-flex items-center gap-2">
+                    {editorDirty && <span className="text-xs font-semibold text-amber-700">Unsaved edits</span>}
+                    <button
+                      type="button"
+                      onClick={handleSaveEditor}
+                      disabled={isProcessingAction}
+                      className="min-h-[36px] rounded-full bg-aisle-charcoal px-4 text-xs font-semibold text-white hover:bg-aisle-terracotta disabled:opacity-50 cursor-pointer"
+                    >
+                      {isProcessingAction ? 'Saving…' : 'Save changes'}
+                    </button>
+                  </span>
+                }
+              >
                 <GuestPortalView
                   event={{ ...event, custom_sections: customSections }}
+                  onEditText={handlePreviewTextEdit}
                   primaryGuest={guests && guests.length > 0 ? guests[0] : null}
                   partyMembers={guests && guests.length > 1 ? guests.slice(0, 2) : []}
                   scheduleItems={schedule || []}

@@ -51,6 +51,7 @@ import {
 import WaxSealOpening from '@/components/WaxSeal';
 import { BotanicalCorner, GoldHairlineDivider } from '@/components/MotifDecorations';
 import { buildIcs, downloadIcs } from '@/lib/ics';
+import EditableText from '@/components/guest/EditableText';
 import { getMenuOptions } from '@/lib/menu';
 import { fill, PORTAL_LANGUAGES, portalLanguageOf, portalStrings } from '@/lib/portal-i18n';
 import { hasFeature } from '@/lib/plans';
@@ -83,6 +84,8 @@ interface GuestPortalViewProps {
   previewMode?: boolean;
   /** The couple's public short link: no guest identity, no RSVP, uploads or pledges. */
   publicView?: boolean;
+  /** When set (Editor preview), the couple's own text can be clicked and edited in place. */
+  onEditText?: (path: string, value: string) => void;
 }
 
 const COMMON_DIETARY_TAGS = [
@@ -109,6 +112,7 @@ export default function GuestPortalView({
   customTheme,
   previewMode = false,
   publicView = false,
+  onEditText,
 }: GuestPortalViewProps) {
   const baseTheme =
     customTheme ||
@@ -116,6 +120,13 @@ export default function GuestPortalView({
     BUILTIN_THEMES['royal-floral'];
 
   const tr = portalStrings(event?.language);
+  // Couple-written text: editable in the Editor preview, plain text everywhere else.
+  const editable = (path: string, value: string | null | undefined, label: string, multiline = false) =>
+    onEditText ? (
+      <EditableText value={value || ''} label={label} multiline={multiline} onCommit={(v) => onEditText(path, v)} />
+    ) : (
+      value
+    );
   const locale = PORTAL_LANGUAGES[portalLanguageOf(event?.language)].locale;
 
   const theme: TemplateDesignRecord = {
@@ -576,7 +587,7 @@ export default function GuestPortalView({
     'our-story': (
       <>
             {/* 2. OUR STORY & WELCOME */}
-            {(event.welcome_message || event.our_story || event.story_image_url) && (
+            {(event.welcome_message || event.our_story || event.story_image_url || onEditText) && (
               <section className="text-center space-y-6">
                 <div className="space-y-2">
                   <span
@@ -588,9 +599,9 @@ export default function GuestPortalView({
                   <h2 className="font-serif text-2xl sm:text-3xl font-semibold">{tr.ourStory}</h2>
                 </div>
 
-                {event.welcome_message && (
+                {(event.welcome_message || onEditText) && (
                   <p className="font-editorial text-lg sm:text-xl italic max-w-md mx-auto leading-relaxed opacity-90">
-                    "{event.welcome_message}"
+                    "{editable('event.welcome_message', event.welcome_message, 'welcome message', true)}"
                   </p>
                 )}
 
@@ -607,12 +618,12 @@ export default function GuestPortalView({
                   </div>
                 )}
 
-                {event.our_story && (
+                {(event.our_story || onEditText) && (
                   <p
                     className="text-sm sm:text-base leading-relaxed max-w-lg mx-auto text-left font-sans opacity-80"
                     style={{ color: theme.text_color }}
                   >
-                    {event.our_story}
+                    {editable('event.our_story', event.our_story, 'your story', true)}
                   </p>
                 )}
               </section>
@@ -753,7 +764,7 @@ export default function GuestPortalView({
                   </div>
                 )}
 
-                {event.travel_info && (
+                {(event.travel_info || onEditText) && (
                   <p
                     className="mt-3 text-sm leading-relaxed font-sans p-4 rounded-2xl text-left border"
                     style={{
@@ -764,14 +775,14 @@ export default function GuestPortalView({
                     <strong className="block mb-1 text-sm uppercase tracking-wider font-semibold">
                       {tr.travelGuidance}
                     </strong>
-                    {event.travel_info}
+                    {editable('event.travel_info', event.travel_info, 'travel guidance', true)}
                   </p>
                 )}
 
                 {/* Travel Cards from Custom Sections */}
-                {(travelInfo.hotel_info || travelInfo.shuttle_info) && (
+                {(travelInfo.hotel_info || travelInfo.shuttle_info || onEditText) && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-left font-sans text-sm">
-                    {travelInfo.hotel_info && (
+                    {(travelInfo.hotel_info || onEditText) && (
                       <div
                         className="p-4 rounded-2xl border space-y-1"
                         style={{
@@ -783,11 +794,11 @@ export default function GuestPortalView({
                           <Hotel className="h-4 w-4 text-aisle-terracotta" />
                           <span>{tr.accommodations}</span>
                         </div>
-                        <p className="text-xs opacity-75 leading-relaxed">{travelInfo.hotel_info}</p>
+                        <p className="text-xs opacity-75 leading-relaxed">{editable('sections.travel.hotel_info', travelInfo.hotel_info, 'accommodation details', true)}</p>
                       </div>
                     )}
 
-                    {travelInfo.shuttle_info && (
+                    {(travelInfo.shuttle_info || onEditText) && (
                       <div
                         className="p-4 rounded-2xl border space-y-1"
                         style={{
@@ -799,7 +810,7 @@ export default function GuestPortalView({
                           <Compass className="h-4 w-4 text-aisle-terracotta" />
                           <span>{tr.shuttleTransit}</span>
                         </div>
-                        <p className="text-xs opacity-75 leading-relaxed">{travelInfo.shuttle_info}</p>
+                        <p className="text-xs opacity-75 leading-relaxed">{editable('sections.travel.shuttle_info', travelInfo.shuttle_info, 'shuttle details', true)}</p>
                       </div>
                     )}
                   </div>
@@ -857,17 +868,17 @@ export default function GuestPortalView({
                       </div>
                       <div>
                         <h4 className="font-serif text-base font-semibold" style={{ color: theme.text_color }}>
-                          {member.name}
+                          {editable(`sections.wedding_party.members.${i}.name`, member.name, 'name')}
                         </h4>
                         <span
                           className="text-xs font-bold uppercase tracking-wider block"
                           style={{ color: theme.accent_color }}
                         >
-                          {member.role}
+                          {editable(`sections.wedding_party.members.${i}.role`, member.role, 'role')}
                         </span>
-                        {member.bio && (
+                        {(member.bio || onEditText) && (
                           <p className="text-xs opacity-75 mt-1 leading-relaxed">
-                            {member.bio}
+                            {editable(`sections.wedding_party.members.${i}.bio`, member.bio, 'bio', true)}
                           </p>
                         )}
                       </div>
@@ -908,14 +919,14 @@ export default function GuestPortalView({
                     >
                       <div className="flex items-center justify-between gap-2">
                         <h4 className="font-serif text-base font-semibold" style={{ color: theme.text_color }}>
-                          {rec.name}
+                          {editable(`sections.local_recs.items.${i}.name`, rec.name, 'place name')}
                         </h4>
                         <span className="text-xs uppercase font-bold tracking-wider rounded-full px-2 py-0.5 bg-aisle-sand text-aisle-charcoal">
                           {rec.type || tr.spot}
                         </span>
                       </div>
                       <p className="text-xs opacity-75 leading-relaxed">
-                        {rec.description}
+                        {editable(`sections.local_recs.items.${i}.description`, rec.description, 'description', true)}
                       </p>
                     </div>
                   ))}
@@ -941,7 +952,7 @@ export default function GuestPortalView({
 
                 <div className="space-y-3 text-left font-sans max-w-lg mx-auto">
                   {faqList.map((faq: any, idx: number) => {
-                    const isOpen = openFaqIndex === idx;
+                    const isOpen = openFaqIndex === idx || !!onEditText;
                     return (
                       <div
                         key={idx}
@@ -951,21 +962,28 @@ export default function GuestPortalView({
                           borderColor: theme.border_color || '#E8E0D7',
                         }}
                       >
+                        {onEditText ? (
+                          // In the Editor preview the question is edited in place, so it isn't a toggle button.
+                          <div className="w-full p-4 min-h-[48px] text-left font-medium text-sm">
+                          <span className="font-semibold text-aisle-charcoal">{editable(`sections.faq.items.${idx}.question`, faq.question, 'question')}</span>
+                        </div>
+                        ) : (
                         <button
                           type="button"
                           onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
                           className="w-full p-4 min-h-[48px] text-left font-medium text-sm flex items-center justify-between gap-3 hover:bg-aisle-sand/20 cursor-pointer"
                         >
-                          <span className="font-semibold text-aisle-charcoal">{faq.question}</span>
+                          <span className="font-semibold text-aisle-charcoal">{editable(`sections.faq.items.${idx}.question`, faq.question, 'question')}</span>
                           {isOpen ? (
                             <ChevronUp className="h-4 w-4 text-aisle-muted shrink-0" />
                           ) : (
                             <ChevronDown className="h-4 w-4 text-aisle-muted shrink-0" />
                           )}
                         </button>
+                        )}
                         {isOpen && (
                           <div className="px-4 pb-4 text-sm opacity-80 leading-relaxed border-t border-aisle-border/40 pt-3">
-                            {faq.answer}
+                            {editable(`sections.faq.items.${idx}.answer`, faq.answer, 'answer', true)}
                           </div>
                         )}
                       </div>
@@ -1941,7 +1959,7 @@ export default function GuestPortalView({
               className="text-sm uppercase tracking-[0.3em] font-semibold"
               style={{ color: theme.accent_color || '#9E5A44' }}
             >
-              {theme.floron || '✦'} {theme.eyebrow_text || tr.weddingCelebration} {theme.floron || '✦'}
+              {theme.floron || '✦'} {onEditText ? editable('theme.eyebrow_text', theme.eyebrow_text, 'top line') : theme.eyebrow_text || tr.weddingCelebration} {theme.floron || '✦'}
             </span>
             <span
               className="h-px w-10 sm:w-16"
@@ -1954,7 +1972,7 @@ export default function GuestPortalView({
             className="font-editorial text-base sm:text-lg italic tracking-wide"
             style={{ color: theme.muted_color || '#7D746D' }}
           >
-            "{theme.poetic_line || 'Two hearts, one horizon'}"
+            "{onEditText ? editable('theme.poetic_line', theme.poetic_line, 'poetic line') : theme.poetic_line || 'Two hearts, one horizon'}"
           </p>
 
           <div className="space-y-2 pt-2">
@@ -1973,7 +1991,7 @@ export default function GuestPortalView({
               className="text-sm sm:text-base font-editorial italic pt-1 max-w-sm mx-auto leading-relaxed"
               style={{ color: theme.muted_color }}
             >
-              {theme.invitation_phrase || 'request the honour of your presence at their marriage'}
+              {onEditText ? editable('theme.invitation_phrase', theme.invitation_phrase, 'invitation line', true) : theme.invitation_phrase || 'request the honour of your presence at their marriage'}
             </p>
           </div>
 

@@ -1533,6 +1533,9 @@ export async function updateEventCustomSectionsAction(input: FormData | Record<s
     if (formData.has('dress_code')) {
       updatePayload.dress_code = formData.get('dress_code') as string;
     }
+    if (formData.has('travel_info')) {
+      updatePayload.travel_info = formData.get('travel_info') as string;
+    }
 
     let updatedEvent: any = null;
     try {
