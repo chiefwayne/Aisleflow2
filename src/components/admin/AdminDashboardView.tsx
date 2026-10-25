@@ -3787,7 +3787,7 @@ export default function AdminDashboardView({
                       type="button"
                       onClick={handleSaveEditor}
                       disabled={isProcessingAction}
-                      className="min-h-[36px] rounded-full bg-aisle-charcoal px-4 text-xs font-semibold text-white hover:bg-aisle-terracotta disabled:opacity-50 cursor-pointer"
+                      className="min-h-[44px] min-w-[140px] rounded-full bg-aisle-charcoal px-6 text-sm font-semibold text-white shadow-sm hover:bg-aisle-terracotta disabled:opacity-50 cursor-pointer"
                     >
                       {isProcessingAction ? 'Saving…' : 'Save changes'}
                     </button>
