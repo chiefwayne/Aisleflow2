@@ -241,11 +241,18 @@ function CardOpening({
           <p className="font-editorial text-sm uppercase tracking-[0.32em]" style={{ color: p.accent }}>
             {tr.youreInvited}
           </p>
-          {guestName && (
-            <p className={nameStyle === 'serif' ? 'font-serif text-3xl font-medium tracking-tight' : 'font-script text-4xl leading-tight'}>{guestName}</p>
-          )}
+          {/* The couple first; the guest is the greeting beneath them */}
+          <h2
+            className={nameStyle === 'serif' ? 'font-serif text-3xl sm:text-4xl font-medium tracking-tight [text-wrap:balance]' : 'font-script text-5xl leading-tight [text-wrap:balance]'}
+          >
+            {coupleNames}
+          </h2>
           <span aria-hidden="true" className="mx-auto block h-px w-12" style={{ backgroundColor: p.accent, opacity: 0.5 }} />
-          <h2 className="font-serif text-2xl sm:text-3xl tracking-tight [text-wrap:balance]">{coupleNames}</h2>
+          {guestName && (
+            <p className="font-editorial text-xl italic">
+              {tr.forGuest} {guestName}
+            </p>
+          )}
           <p className="font-editorial text-lg italic opacity-85 leading-relaxed">
             {openingStyle === 'curtain' ? tr.openingCurtain : tr.openingMinimal}
           </p>

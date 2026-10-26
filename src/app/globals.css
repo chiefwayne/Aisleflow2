@@ -168,8 +168,8 @@ body {
   border-radius: 10px 10px 0 0;
   clip-path: polygon(0 0, 100% 0, 50% 100%);
   background:
-    repeating-linear-gradient(135deg, transparent 0 7px, color-mix(in srgb, var(--env-accent) 10%, transparent) 7px 8px),
-    color-mix(in srgb, var(--env-accent) 26%, var(--env-paper));
+    repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--env-accent) 32%, transparent) 6px 8px),
+    color-mix(in srgb, var(--env-accent) 24%, var(--env-paper));
 }
 .env-fold-left {
   clip-path: polygon(0 0, 54% 56%, 0 100%);
@@ -210,8 +210,9 @@ body {
   transform: translate(-50%, -50%);
   filter: drop-shadow(0 6px 8px color-mix(in srgb, var(--env-shadow) 35%, transparent));
 }
+/* The one instruction on the screen: steady and readable, not pulsing */
 .env-hint {
-  animation: env-hint 2.6s ease-in-out infinite;
+  opacity: 1;
 }
 
 /* Opening sequence: seal lifts, flap opens, envelope slides away, invitation rises */
@@ -289,13 +290,18 @@ body {
 .invite-root h3 {
   text-wrap: balance;
 }
-/* "Vintage editorial" themes: Cinzel's stone-cut capitals for serif names and the date and venue lines
-   only. Serif section headings fall back to Cormorant italic so a page never carries three faces. */
-.theme-vintage h1.font-serif,
-.theme-vintage .vintage-caps {
+/* "Vintage editorial" themes. With serif names, Cinzel's stone-cut capitals set the couple's names
+   (everywhere they appear) and the date and venue lines, and section headings fall back to Cormorant italic.
+   With script names, Cinzel stays out (two faces only) and the date and venue take Cormorant small capitals. */
+.theme-vintage.names-serif .couple-names.font-serif,
+.theme-vintage.names-serif .vintage-caps {
   font-family: var(--font-cinzel), Georgia, serif;
   letter-spacing: 0.05em;
   font-style: normal;
+}
+.theme-vintage:not(.names-serif) .vintage-caps {
+  font-variant: small-caps;
+  letter-spacing: 0.06em;
 }
 .theme-vintage h2.font-serif {
   font-family: var(--font-cormorant), Georgia, serif;
@@ -306,8 +312,8 @@ body {
 
 /* Envelope linings: each preset's pattern, seen as the flap lifts */
 .env-liner-dots {
-  background: radial-gradient(circle, color-mix(in srgb, var(--env-accent) 45%, transparent) 1.1px, transparent 1.6px) 0 0 / 10px 10px,
-    color-mix(in srgb, var(--env-accent) 18%, var(--env-paper));
+  background: radial-gradient(circle, color-mix(in srgb, var(--env-accent) 80%, transparent) 1.5px, transparent 2px) 0 0 / 10px 10px,
+    color-mix(in srgb, var(--env-accent) 22%, var(--env-paper));
 }
 .env-liner-stars {
   background: radial-gradient(circle, var(--env-accent) 0.9px, transparent 1.4px) 0 0 / 22px 22px,
@@ -324,9 +330,23 @@ body {
     color-mix(in srgb, var(--env-accent) 22%, var(--env-paper));
 }
 .env-liner-sailcloth {
-  background: repeating-linear-gradient(0deg, color-mix(in srgb, var(--env-accent) 30%, transparent) 0 5px, transparent 5px 12px),
+  background: repeating-linear-gradient(0deg, color-mix(in srgb, var(--env-accent) 70%, transparent) 0 5px, transparent 5px 12px),
     var(--env-paper);
 }
 .env-liner-plain {
   background: color-mix(in srgb, var(--env-accent) 16%, var(--env-paper));
+}
+
+/* Pressed leaves: small offset leaf shapes on kraft */
+.env-liner-leaf {
+  background:
+    radial-gradient(ellipse 5px 2.2px at 50% 50%, color-mix(in srgb, var(--env-accent) 70%, transparent) 98%, transparent) 0 0 / 18px 14px,
+    radial-gradient(ellipse 2.2px 5px at 50% 50%, color-mix(in srgb, var(--env-accent) 55%, transparent) 98%, transparent) 9px 7px / 18px 14px,
+    color-mix(in srgb, var(--env-accent) 14%, var(--env-paper));
+}
+
+.env-liner-stripes {
+  background:
+    repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--env-accent) 32%, transparent) 6px 8px),
+    color-mix(in srgb, var(--env-accent) 24%, var(--env-paper));
 }

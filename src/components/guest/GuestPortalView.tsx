@@ -10,8 +10,6 @@ import {
   Camera,
   Gift,
   CheckCircle2,
-  XCircle,
-  Sparkles,
   ExternalLink,
   Lock,
   Volume2,
@@ -562,9 +560,10 @@ export default function GuestPortalView({
   const heroLayout = theme.hero_layout || (event.cover_image_url ? 'photo' : 'stationery');
   const showPhotoHero = heroLayout === 'photo' && !!event.cover_image_url;
   const scriptNames = theme.name_style !== 'serif';
-  const nameClass = scriptNames ? 'font-script font-normal leading-[0.95]' : 'font-serif font-medium tracking-tight leading-[1.08]';
+  const nameClass = `couple-names ${scriptNames ? 'font-script font-normal leading-[0.95]' : 'font-serif font-medium tracking-tight leading-[1.08]'}`;
+  // Script is kept for the couple's names; section headings are set large in the text face
   const headingClass = scriptNames
-    ? 'font-script text-5xl sm:text-6xl font-normal leading-none [text-wrap:balance]'
+    ? 'font-editorial text-3xl sm:text-4xl font-medium leading-tight tracking-[0.01em] [text-wrap:balance]'
     : 'font-serif text-2xl sm:text-3xl font-medium [text-wrap:balance]';
   const nameParts = (event.couple_names || '').split(/\s+(?:&|and)\s+/i);
   const coupleNamesStacked =
@@ -577,18 +576,22 @@ export default function GuestPortalView({
     ) : (
       event.couple_names
     );
-  // Above each section: a small ornament, or "Chapter I, II…" when the couple turns labels on
-  const chapterMark = theme.show_chapter_labels ? (
+  // "Chapter I, II…" above every section when the couple turns labels on; otherwise a small ornament,
+  // kept to a few key moments (the wording, Our Story, the RSVP) so it stays special
+  const chapterLabel = (
     <span className="text-xs uppercase tracking-[0.3em] block" style={{ color: 'var(--section-accent, ' + accent + ')' }}>
       <span className="chapter-label" />
     </span>
-  ) : (
+  );
+  const ornament = (
     <span aria-hidden="true" className="flex items-center justify-center gap-3" style={{ color: 'var(--section-accent, ' + accent + ')' }}>
       <span className="h-px w-8 bg-current opacity-40" />
-      <span className="text-sm leading-none">{theme.floron || '✦'}</span>
+      <span className="text-base leading-none">{theme.floron || '✦'}</span>
       <span className="h-px w-8 bg-current opacity-40" />
     </span>
   );
+  const chapterMark = theme.show_chapter_labels ? chapterLabel : null;
+  const keyMark = theme.show_chapter_labels ? chapterLabel : ornament;
   // The RSVP sits on a band of the accent colour, with text chosen to stay readable on it
   // Prefer the theme's own page or text colour on the band; fall back to plain white or near-black
   const bandInk = [pageBg, ink].find((c) => contrastRatio(c, accent) >= 4.5) ?? readableOn(accent, [pageBg, ink, '#FFFFFF', '#1A1A1A']);
@@ -628,7 +631,7 @@ export default function GuestPortalView({
       <div
         lang={portalLanguageOf(event.language)}
         style={{ ...paletteVars, backgroundColor: theme.bg_color || '#FAF7F2', color: theme.text_color || '#2C2523' }}
-        className={`invite-root ${theme.font_family === 'vintage-editorial' ? 'theme-vintage' : ''} min-h-screen flex items-center justify-center px-5 py-12 ${fontClass}`}
+        className={`invite-root ${theme.font_family === 'vintage-editorial' ? 'theme-vintage' : ''} ${theme.name_style === 'serif' ? 'names-serif' : ''} min-h-screen flex items-center justify-center px-5 py-12 ${fontClass}`}
       >
         <main className="max-w-md w-full text-center space-y-6">
           <p className="text-sm uppercase tracking-[0.3em] font-semibold" style={{ color: theme.accent_color }}>
@@ -679,7 +682,7 @@ export default function GuestPortalView({
             {(event.welcome_message || event.our_story || event.story_image_url || onEditText) && (
               <section className="text-center space-y-6">
                 <div className="space-y-2">
-                  {chapterMark}
+                  {keyMark}
                   <h2 className={headingClass}>{tr.ourStory}</h2>
                 </div>
 
@@ -796,7 +799,7 @@ export default function GuestPortalView({
                 <p className="font-editorial text-lg italic" style={{ color: muted }}>
                   {tr.dressCode}
                 </p>
-                {event.dress_code && <p className={`${scriptNames ? 'font-script text-4xl' : 'font-serif text-2xl'}`}>{event.dress_code}</p>}
+                {event.dress_code && <p className="font-editorial text-2xl sm:text-3xl italic">{event.dress_code}</p>}
                 {(customSections.dress_palette || []).length > 0 && (
                   <div className="space-y-3 pt-2">
                     <div className="flex items-center justify-center gap-3">
@@ -805,7 +808,7 @@ export default function GuestPortalView({
                           key={i}
                           title={c}
                           className="h-10 w-10 rounded-full"
-                          style={{ backgroundColor: c, boxShadow: `0 6px 14px -6px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(0,0,0,0.06)` }}
+                          style={{ backgroundColor: c, boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.08)' }}
                         />
                       ))}
                     </div>
@@ -1091,7 +1094,7 @@ export default function GuestPortalView({
             {/* 8. FORMAL STATIONERY RESPONSE CARD (4-STEP TACTILE RSVP WIZARD) */}
             <section id="rsvp" className="space-y-6 pt-4">
               <div className="text-center space-y-2">
-                {chapterMark}
+                {keyMark}
                 <h2 className={headingClass}>
                   {tr.rsvpTitle}
                 </h2>
@@ -1135,7 +1138,7 @@ export default function GuestPortalView({
                     <p className="font-editorial text-2xl sm:text-3xl">
                       {tr.dear} {partyNames},
                     </p>
-                    <p className={`${scriptNames ? 'font-script text-4xl sm:text-5xl leading-tight' : 'font-editorial text-2xl italic leading-snug'} max-w-sm mx-auto`}>
+                    <p className="font-editorial text-2xl sm:text-3xl italic leading-snug max-w-sm mx-auto">
                       {allGuests.some((g) => partyState[g.id]?.rsvp_status === 'attending') ? tr.thankNoteAttending : tr.thankNoteDeclined}
                     </p>
                     <p className="italic text-[color:var(--muted)]">
@@ -1219,7 +1222,6 @@ export default function GuestPortalView({
                                         : { borderColor: theme.border_color, color: theme.text_color }
                                     }
                                   >
-                                    <CheckCircle2 className="h-4 w-4 shrink-0" />
                                     <span>{tr.joyfullyAccept}</span>
                                   </button>
 
@@ -1236,7 +1238,6 @@ export default function GuestPortalView({
                                         : { borderColor: theme.border_color, color: theme.text_color }
                                     }
                                   >
-                                    <XCircle className="h-4 w-4 shrink-0" />
                                     <span>{tr.regretfullyDecline}</span>
                                   </button>
                                 </div>
@@ -1258,10 +1259,10 @@ export default function GuestPortalView({
                             }}
                             className={`min-h-[44px] rounded-full border px-6 py-3 text-base font-semibold tracking-wide transition-all flex items-center gap-2 ${
                               allAnswered
-                                ? 'text-[color:var(--on-ink)] shadow-md hover:opacity-95 cursor-pointer'
+                                ? 'text-[color:var(--on-accent)] shadow-md hover:opacity-95 cursor-pointer'
                                 : 'text-[color:var(--muted)] border-[color:var(--line)] cursor-not-allowed'
                             }`}
-                            style={allAnswered ? { backgroundColor: ink, borderColor: ink } : undefined}
+                            style={allAnswered ? { backgroundColor: accent, borderColor: accent } : undefined}
                           >
                             <span>{tr.continue}</span>
                             <ChevronRight className="h-4 w-4" />
@@ -1293,7 +1294,7 @@ export default function GuestPortalView({
                               style={{ borderColor: theme.border_color }}
                             >
                               <span className="font-editorial text-lg font-semibold block" style={{ color: theme.text_color }}>
-                                {guest.first_name}’s Itinerary
+                                {guest.first_name}
                               </span>
 
                               <div className="space-y-2">
@@ -1385,7 +1386,7 @@ export default function GuestPortalView({
                                 style={{ borderColor: theme.border_color }}
                               >
                                 <span className="font-editorial text-lg font-semibold block" style={{ color: theme.text_color }}>
-                                  {guest.first_name}’s Dining Details
+                                  {guest.first_name}
                                 </span>
 
                                 {/* Entrée: only when the couple has set a menu */}
@@ -1656,8 +1657,8 @@ export default function GuestPortalView({
                           <button
                             type="button"
                             onClick={() => setRsvpStep(4)}
-                            className="rounded-full px-6 py-3.5 text-base font-semibold tracking-wide text-[color:var(--on-ink)] shadow-md flex items-center gap-1.5 hover:opacity-95 cursor-pointer min-h-[44px]"
-                            style={{ backgroundColor: theme.text_color }}
+                            className="rounded-full px-6 py-3.5 text-base font-semibold tracking-wide text-[color:var(--on-accent)] shadow-md flex items-center gap-1.5 hover:opacity-95 cursor-pointer min-h-[44px]"
+                            style={{ backgroundColor: accent }}
                           >
                             <span>{tr.reviewSummary}</span>
                             <ChevronRight className="h-4 w-4" />
@@ -1745,14 +1746,13 @@ export default function GuestPortalView({
                             type="button"
                             disabled={isSubmitting}
                             onClick={handleFinalRsvpSubmit}
-                            className="min-h-[44px] rounded-full px-8 py-3 text-sm font-semibold tracking-wide text-[color:var(--on-ink)] shadow-md hover:opacity-90 disabled:opacity-50 cursor-pointer flex items-center gap-2"
-                            style={{ backgroundColor: theme.text_color }}
+                            className="min-h-[44px] rounded-full px-8 py-3 text-sm font-semibold tracking-wide text-[color:var(--on-accent)] shadow-md hover:opacity-90 disabled:opacity-50 cursor-pointer flex items-center gap-2"
+                            style={{ backgroundColor: accent }}
                           >
                             {isSubmitting ? (
                               <span>{tr.recordingRsvp}</span>
                             ) : (
                               <>
-                                <Sparkles className="h-4 w-4" />
                                 <span>{tr.confirmAttendance}</span>
                               </>
                             )}
@@ -1800,8 +1800,8 @@ export default function GuestPortalView({
                 />
                 <label
                   htmlFor="stream-upload"
-                  className="inline-flex cursor-pointer items-center gap-2 rounded-full px-6 py-3 text-base font-semibold tracking-wide transition-all hover:scale-105 shadow-sm text-[color:var(--on-ink)]"
-                  style={{ backgroundColor: theme.text_color }}
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-full px-6 py-3 text-base font-semibold tracking-wide transition-all hover:scale-105 shadow-sm text-[color:var(--on-accent)]"
+                  style={{ backgroundColor: accent }}
                 >
                   <Camera className="h-4 w-4" />
                   <span>{isUploadingPhoto ? tr.uploadingPhoto : tr.addPhoto}</span>
@@ -1966,7 +1966,7 @@ export default function GuestPortalView({
         color: theme.text_color || '#2C2523',
         ...(studioLayout ? pageBackgroundStyle(theme) : {}),
       }}
-      className={`invite-root ${theme.font_family === 'vintage-editorial' ? 'theme-vintage' : ''} min-h-screen selection:bg-[color:var(--accent)] selection:text-[color:var(--on-accent)] pb-28 ${fontClass} transition-colors duration-500 ${theme.paper_texture ? 'paper-grain relative' : ''}`}
+      className={`invite-root ${theme.font_family === 'vintage-editorial' ? 'theme-vintage' : ''} ${theme.name_style === 'serif' ? 'names-serif' : ''} min-h-screen selection:bg-[color:var(--accent)] selection:text-[color:var(--on-accent)] pb-28 ${fontClass} transition-colors duration-500 ${theme.paper_texture ? 'paper-grain relative' : ''}`}
     >
       {/* 1. Tactile Wax-Seal / Envelope Opening Reveal */}
       {!hasOpened && (
@@ -2041,7 +2041,7 @@ export default function GuestPortalView({
         <div className={`mx-auto ${canvasMaxWidthClass} px-5 sm:px-8 pt-14 sm:pt-20 pb-4`}>
           {showPhotoHero ? (
             <header className="text-center space-y-5 max-w-md sm:max-w-xl mx-auto">
-              {chapterMark}
+              {keyMark}
               <p className="font-editorial text-lg italic" style={{ color: muted }}>
                 {tr.togetherWithFamilies}
               </p>
@@ -2189,7 +2189,7 @@ export default function GuestPortalView({
                 key={id}
                 className="my-8 px-5 sm:px-8 py-16 sm:py-24"
                 style={
-                  (darkTheme
+                  ((theme.rsvp_band ?? (darkTheme ? 'deep' : 'accent')) === 'deep'
                     ? // Night themes: a deeper shade of the page between accent hairlines, not a flat block of gold
                       {
                         backgroundColor: `color-mix(in srgb, ${pageBg} 72%, #000)`,
@@ -2468,7 +2468,7 @@ function CoverFrame({ flair, accent }: { flair?: string; accent: string }) {
       return (
         <div aria-hidden="true" className="pointer-events-none absolute inset-4 border p-1.5" style={{ borderColor: tone }}>
           <div className="h-full w-full border" style={{ borderColor: tone, opacity: 0.6 }} />
-          <span className="absolute left-1/2 top-0 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45" style={{ backgroundColor: tone }} />
+          <span className="absolute left-1/2 top-3 h-2.5 w-2.5 -translate-x-1/2 rotate-45" style={{ backgroundColor: tone }} />
         </div>
       );
     case 'stars':
@@ -2480,6 +2480,16 @@ function CoverFrame({ flair, accent }: { flair?: string; accent: string }) {
             </span>
           ))}
         </div>
+      );
+    case 'sprig':
+      // A hand-drawn eucalyptus sprig at the top of the photo
+      return (
+        <svg aria-hidden="true" viewBox="0 0 120 60" className="pointer-events-none absolute left-1/2 top-6 h-14 w-28 -translate-x-1/2" fill="none" stroke={line} strokeWidth="1.2" strokeLinecap="round">
+          <path d="M10 40 C 40 34, 80 34, 110 22" />
+          {[18, 32, 46, 60, 74, 88, 100].map((x, i) => (
+            <ellipse key={x} cx={x} cy={i % 2 ? 31 - i : 44 - i * 1.6} rx="6" ry="3.2" transform={`rotate(${i % 2 ? -28 : 24} ${x} ${i % 2 ? 31 - i : 44 - i * 1.6})`} />
+          ))}
+        </svg>
       );
     default:
       return null;

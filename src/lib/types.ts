@@ -420,11 +420,13 @@ export interface TemplateDesignRecord {
   poetic_line?: string;
   invitation_phrase?: string;
   floron?: string;
-  border_flair?: 'double-line' | 'hairline-gold' | 'arch' | 'clean' | 'arabesque' | 'botanical-crest' | 'stars';
+  border_flair?: 'double-line' | 'hairline-gold' | 'arch' | 'clean' | 'arabesque' | 'botanical-crest' | 'stars' | 'sprig';
+  /** The RSVP band: the accent colour, or a deeper shade of the page (default on dark themes). */
+  rsvp_band?: 'accent' | 'deep';
   /** Envelope paper colour; defaults to a mix of the card and page colours. */
   envelope_paper?: string;
   /** Pattern inside the envelope, seen as the flap lifts. */
-  envelope_liner?: 'stripes' | 'dots' | 'stars' | 'lattice' | 'sunburst' | 'sailcloth' | 'plain';
+  envelope_liner?: 'stripes' | 'dots' | 'stars' | 'lattice' | 'sunburst' | 'sailcloth' | 'plain' | 'leaf';
   is_dark?: boolean;
   /** Invitation hero: couple photo full-bleed with names over it, or names on framed stationery. */
   hero_layout?: 'photo' | 'stationery';
