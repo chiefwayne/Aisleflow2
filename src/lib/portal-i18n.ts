@@ -39,6 +39,9 @@ const en = {
   days: 'Days',
   hours: 'Hours',
   minutes: 'Minutes',
+  day: 'Day',
+  hour: 'Hour',
+  minute: 'Minute',
   ourStory: 'Our Story',
   theItinerary: 'The Itinerary',
   addItineraryToCalendar: 'Add the itinerary to my calendar',
@@ -71,7 +74,7 @@ const en = {
   attending: 'Attending',
   declined: 'Declined',
   pending: 'Pending',
-  editRsvp: 'Edit RSVP Response',
+  editRsvp: 'Change my reply',
   stepWho: 'Who’s coming',
   stepEvents: 'Which events',
   stepDetails: 'Meals & details',
@@ -103,7 +106,7 @@ const en = {
   plusOneMealChoice: 'Plus-one meal choice',
   extraDetails: 'A Few Extra Details',
   yourResponse: 'Your response...',
-  reviewSummary: 'Review Summary',
+  reviewSummary: 'Review my reply',
   reviewTitle: 'Review Your RSVP Summary',
   reviewIntro: 'Please review your party’s selections before confirming:',
   entree: 'Entrée',
@@ -118,7 +121,7 @@ const en = {
   sharedMemories: 'Shared Memories',
   sharedMemoriesIntro: 'Snap and upload your candid moments to the live wedding gallery',
   openAlbum: 'Open the shared album and guestbook',
-  addPhoto: 'Add A Photo',
+  addPhoto: 'Add a photo',
   uploadingPhoto: 'Uploading Photo...',
   photoAdded: 'Photo added to stream! ✨',
   photoTooLarge: 'Image exceeds 10MB limit.',
@@ -156,6 +159,10 @@ const en = {
   replyBy: 'Reply by',
   dressCode: 'Dress code',
   ourPalette: 'Our palette',
+  thankNoteAttending: 'We can’t wait to celebrate with you.',
+  thankNoteDeclined: 'We’ll miss you, and thank you for letting us know.',
+  withLove: 'with love,',
+  anyDietaryNeeds: 'Any dietary needs?',
 };
 
 export type PortalStrings = typeof en;
@@ -183,6 +190,9 @@ const es: PortalStrings = {
   days: 'Días',
   hours: 'Horas',
   minutes: 'Minutos',
+  day: 'Día',
+  hour: 'Hora',
+  minute: 'Minuto',
   ourStory: 'Nuestra historia',
   theItinerary: 'El programa',
   addItineraryToCalendar: 'Añadir el programa a mi calendario',
@@ -295,6 +305,10 @@ const es: PortalStrings = {
   replyBy: 'Responde antes del',
   dressCode: 'Código de vestimenta',
   ourPalette: 'Nuestra paleta',
+  thankNoteAttending: '¡Qué ganas de celebrarlo contigo!',
+  thankNoteDeclined: 'Te echaremos de menos. Gracias por avisarnos.',
+  withLove: 'con cariño,',
+  anyDietaryNeeds: '¿Alguna necesidad alimentaria?',
 };
 
 const fr: PortalStrings = {
@@ -320,6 +334,9 @@ const fr: PortalStrings = {
   days: 'Jours',
   hours: 'Heures',
   minutes: 'Minutes',
+  day: 'Jour',
+  hour: 'Heure',
+  minute: 'Minute',
   ourStory: 'Notre histoire',
   theItinerary: 'Le programme',
   addItineraryToCalendar: 'Ajouter le programme à mon agenda',
@@ -432,6 +449,10 @@ const fr: PortalStrings = {
   replyBy: 'Répondre avant le',
   dressCode: 'Tenue',
   ourPalette: 'Notre palette',
+  thankNoteAttending: 'Nous avons hâte de célébrer avec vous.',
+  thankNoteDeclined: 'Vous allez nous manquer. Merci de nous avoir prévenus.',
+  withLove: 'avec amour,',
+  anyDietaryNeeds: 'Des besoins alimentaires ?',
 };
 
 const it: PortalStrings = {
@@ -457,6 +478,9 @@ const it: PortalStrings = {
   days: 'Giorni',
   hours: 'Ore',
   minutes: 'Minuti',
+  day: 'Giorno',
+  hour: 'Ora',
+  minute: 'Minuto',
   ourStory: 'La nostra storia',
   theItinerary: 'Il programma',
   addItineraryToCalendar: 'Aggiungi il programma al calendario',
@@ -569,6 +593,10 @@ const it: PortalStrings = {
   replyBy: 'Rispondi entro il',
   dressCode: 'Dress code',
   ourPalette: 'La nostra palette',
+  thankNoteAttending: 'Non vediamo l’ora di festeggiare con te.',
+  thankNoteDeclined: 'Ci mancherai. Grazie per avercelo fatto sapere.',
+  withLove: 'con affetto,',
+  anyDietaryNeeds: 'Esigenze alimentari?',
 };
 
 const pt: PortalStrings = {
@@ -594,6 +622,9 @@ const pt: PortalStrings = {
   days: 'Dias',
   hours: 'Horas',
   minutes: 'Minutos',
+  day: 'Dia',
+  hour: 'Hora',
+  minute: 'Minuto',
   ourStory: 'A nossa história',
   theItinerary: 'O programa',
   addItineraryToCalendar: 'Adicionar o programa ao meu calendário',
@@ -706,6 +737,10 @@ const pt: PortalStrings = {
   replyBy: 'Responda até',
   dressCode: 'Código de vestuário',
   ourPalette: 'A nossa paleta',
+  thankNoteAttending: 'Mal podemos esperar para celebrar consigo.',
+  thankNoteDeclined: 'Vamos sentir a sua falta. Obrigado por nos avisar.',
+  withLove: 'com carinho,',
+  anyDietaryNeeds: 'Alguma necessidade alimentar?',
 };
 
 const de: PortalStrings = {
@@ -731,6 +766,9 @@ const de: PortalStrings = {
   days: 'Tage',
   hours: 'Stunden',
   minutes: 'Minuten',
+  day: 'Tag',
+  hour: 'Stunde',
+  minute: 'Minute',
   ourStory: 'Unsere Geschichte',
   theItinerary: 'Der Ablauf',
   addItineraryToCalendar: 'Ablauf zu meinem Kalender hinzufügen',
@@ -843,6 +881,10 @@ const de: PortalStrings = {
   replyBy: 'Antwort bis',
   dressCode: 'Dresscode',
   ourPalette: 'Unsere Farben',
+  thankNoteAttending: 'Wir freuen uns so sehr, mit dir zu feiern.',
+  thankNoteDeclined: 'Du wirst uns fehlen. Danke, dass du Bescheid gibst.',
+  withLove: 'in Liebe,',
+  anyDietaryNeeds: 'Besondere Ernährungswünsche?',
 };
 
 const STRINGS: Record<PortalLanguage, PortalStrings> = { en, es, fr, it, pt, de };

@@ -23,11 +23,14 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Nothing travels, loops or scrolls smoothly... */
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+    transition-property: color, background-color, border-color, opacity, box-shadow !important;
+    /* ...but state changes still read, as brief fades */
+    transition-duration: 0.15s !important;
   }
 }
 
@@ -116,10 +119,11 @@ body {
    --env-paper, --env-accent, --env-ink.
    --------------------------------------------------------------------------- */
 
-/* Faint paper grain over the whole invitation (optional per design) */
+/* Faint paper grain over the whole invitation (optional per design). The layer scrolls with the page
+   (absolute, not fixed), so phones don't re-blend it on every scroll frame; its parent must be positioned. */
 .paper-grain::before {
   content: '';
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 30;
   pointer-events: none;
@@ -131,7 +135,8 @@ body {
 /* The envelope: five paper layers cut with clip-path, a flap that opens in 3D, and a wax seal */
 .env {
   position: relative;
-  width: min(78vw, 340px);
+  /* Phone: most of the width; desktop: grows with the window up to a generous size */
+  width: min(80vw, clamp(340px, 30vw, 480px));
   aspect-ratio: 1.45 / 1;
   perspective: 1300px;
   -webkit-tap-highlight-color: transparent;
@@ -152,8 +157,8 @@ body {
     var(--env-paper) 58%,
     color-mix(in srgb, var(--env-paper) 90%, var(--env-ink)) 100%);
   box-shadow:
-    0 34px 52px -28px color-mix(in srgb, var(--env-ink) 55%, transparent),
-    0 10px 20px -14px color-mix(in srgb, var(--env-ink) 40%, transparent),
+    0 34px 52px -28px color-mix(in srgb, var(--env-shadow) 55%, transparent),
+    0 10px 20px -14px color-mix(in srgb, var(--env-shadow) 40%, transparent),
     inset 0 0 0 1px color-mix(in srgb, var(--env-accent) 22%, transparent);
 }
 /* Lining, seen when the flap lifts */
@@ -180,7 +185,7 @@ body {
   clip-path: polygon(0 100%, 100% 100%, 50% 38%);
   border-radius: 0 0 10px 10px;
   background: linear-gradient(176deg, color-mix(in srgb, var(--env-paper) 94%, white), color-mix(in srgb, var(--env-paper) 90%, var(--env-ink)));
-  filter: drop-shadow(0 -2px 3px color-mix(in srgb, var(--env-ink) 12%, transparent));
+  filter: drop-shadow(0 -2px 3px color-mix(in srgb, var(--env-shadow) 12%, transparent));
 }
 .env-flap {
   height: 72%;
@@ -193,7 +198,7 @@ body {
     color-mix(in srgb, var(--env-paper) 80%, white) 0%,
     var(--env-paper) 72%,
     color-mix(in srgb, var(--env-paper) 92%, var(--env-ink)) 100%);
-  filter: drop-shadow(0 4px 5px color-mix(in srgb, var(--env-ink) 26%, transparent));
+  filter: drop-shadow(0 4px 5px color-mix(in srgb, var(--env-shadow) 26%, transparent));
   transition: transform 0.85s cubic-bezier(0.5, 0, 0.2, 1) 0.18s;
 }
 .env-seal {
@@ -203,7 +208,7 @@ body {
   width: 23%;
   aspect-ratio: 1;
   transform: translate(-50%, -50%);
-  filter: drop-shadow(0 6px 8px color-mix(in srgb, var(--env-ink) 35%, transparent));
+  filter: drop-shadow(0 6px 8px color-mix(in srgb, var(--env-shadow) 35%, transparent));
 }
 .env-hint {
   animation: env-hint 2.6s ease-in-out infinite;
@@ -263,4 +268,65 @@ body {
   .env-open .env-flap { transform: none; }
   .env-open .env-stage { animation: fade-out 0.2s both; }
   .invite-rise { animation: none; }
+}
+
+/* Browser surfaces on the invitation take the couple's colours (variables set on .invite-root) */
+.invite-root ::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+.invite-root input,
+.invite-root textarea {
+  caret-color: var(--accent);
+}
+
+/* Typesetting on the invitation: no lone words on last lines */
+.invite-root p {
+  text-wrap: pretty;
+}
+.invite-root h1,
+.invite-root h2,
+.invite-root h3 {
+  text-wrap: balance;
+}
+/* "Vintage editorial" themes: Cinzel's stone-cut capitals for serif names and the date and venue lines
+   only. Serif section headings fall back to Cormorant italic so a page never carries three faces. */
+.theme-vintage h1.font-serif,
+.theme-vintage .vintage-caps {
+  font-family: var(--font-cinzel), Georgia, serif;
+  letter-spacing: 0.05em;
+  font-style: normal;
+}
+.theme-vintage h2.font-serif {
+  font-family: var(--font-cormorant), Georgia, serif;
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* Envelope linings: each preset's pattern, seen as the flap lifts */
+.env-liner-dots {
+  background: radial-gradient(circle, color-mix(in srgb, var(--env-accent) 45%, transparent) 1.1px, transparent 1.6px) 0 0 / 10px 10px,
+    color-mix(in srgb, var(--env-accent) 18%, var(--env-paper));
+}
+.env-liner-stars {
+  background: radial-gradient(circle, var(--env-accent) 0.9px, transparent 1.4px) 0 0 / 22px 22px,
+    radial-gradient(circle, color-mix(in srgb, var(--env-accent) 55%, transparent) 0.7px, transparent 1.2px) 11px 13px / 22px 22px,
+    color-mix(in srgb, var(--env-paper) 55%, #000);
+}
+.env-liner-lattice {
+  background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--env-accent) 35%, transparent) 0 1px, transparent 1px 10px),
+    repeating-linear-gradient(-45deg, color-mix(in srgb, var(--env-accent) 35%, transparent) 0 1px, transparent 1px 10px),
+    color-mix(in srgb, var(--env-accent) 12%, var(--env-paper));
+}
+.env-liner-sunburst {
+  background: repeating-conic-gradient(from 0deg at 50% 0%, color-mix(in srgb, var(--env-accent) 40%, transparent) 0deg 5deg, transparent 5deg 10deg),
+    color-mix(in srgb, var(--env-accent) 22%, var(--env-paper));
+}
+.env-liner-sailcloth {
+  background: repeating-linear-gradient(0deg, color-mix(in srgb, var(--env-accent) 30%, transparent) 0 5px, transparent 5px 12px),
+    var(--env-paper);
+}
+.env-liner-plain {
+  background: color-mix(in srgb, var(--env-accent) 16%, var(--env-paper));
 }

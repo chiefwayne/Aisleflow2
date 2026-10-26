@@ -27,6 +27,11 @@ describe('toPublicEvent', () => {
     expect(pub.custom_sections).toEqual({ faq: { items: [] } });
   });
 
+  it('passes the dress-code palette through to guests', () => {
+    const withPalette = { ...event, custom_sections: { dress_palette: ['#C9B79C', '#7A8B6F'] } } as unknown as EventRecord;
+    expect(toPublicEvent(withPalette).custom_sections).toEqual({ dress_palette: ['#C9B79C', '#7A8B6F'] });
+  });
+
   it('keeps the album link for invited guests', () => {
     expect(toPublicEvent(event, { includeAlbum: true }).album_token).toBe('al_x');
   });

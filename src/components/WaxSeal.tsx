@@ -2,9 +2,8 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles } from 'lucide-react';
 import { portalStrings, PortalStrings } from '@/lib/portal-i18n';
-import { monogram } from '@/lib/invite-style';
+import { isDarkBackground, monogram, readableOn } from '@/lib/invite-style';
 
 interface WaxSealOpeningProps {
   coupleNames: string;
@@ -14,7 +13,9 @@ interface WaxSealOpeningProps {
   /** Wording in the invitation's language; English when not given. */
   strings?: PortalStrings;
   /** The invitation's colours; when given, the opening matches the invite instead of its default look. */
-  palette?: { bg: string; surface: string; text: string; accent: string; border?: string };
+  palette?: { bg: string; surface: string; text: string; accent: string; border?: string; paper?: string; liner?: string };
+  /** Names in the script face (default) or the theme's serif, to match the invitation. */
+  nameStyle?: 'script' | 'serif';
 }
 
 const DEFAULT_PALETTE = { bg: '#FAF7F2', surface: '#FFFFFF', text: '#2C2523', accent: '#9E5A44', border: '#E8E0D7' };
@@ -29,6 +30,7 @@ export default function WaxSealOpening({
   guestName,
   strings = portalStrings('en'),
   palette,
+  nameStyle = 'script',
 }: WaxSealOpeningProps) {
   if (openingStyle === 'curtain' || openingStyle === 'minimal-fade') {
     return (
@@ -39,6 +41,7 @@ export default function WaxSealOpening({
         guestName={guestName}
         strings={strings}
         palette={palette}
+        nameStyle={nameStyle}
       />
     );
   }
@@ -49,6 +52,7 @@ export default function WaxSealOpening({
       guestName={guestName}
       strings={strings}
       palette={palette || DEFAULT_PALETTE}
+      nameStyle={nameStyle}
     />
   );
 }
@@ -60,12 +64,14 @@ function EnvelopeOpening({
   guestName,
   strings: tr,
   palette,
+  nameStyle,
 }: {
   coupleNames: string;
   onOpen: () => void;
   guestName?: string;
   strings: PortalStrings;
   palette: NonNullable<WaxSealOpeningProps['palette']>;
+  nameStyle: 'script' | 'serif';
 }) {
   const [opening, setOpening] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -85,9 +91,12 @@ function EnvelopeOpening({
 
   const vars = {
     // Paper a shade warmer than the card colour, so the envelope sits in the page rather than on it
-    '--env-paper': `color-mix(in srgb, ${palette.surface} 62%, ${palette.bg})`,
+    '--env-paper': palette.paper || `color-mix(in srgb, ${palette.surface} 62%, ${palette.bg})`,
     '--env-accent': palette.accent,
-    '--env-ink': palette.text,
+    // Folds are shaded toward the ink; light paper on a dark theme (Marigold's cream) needs a dark ink
+    '--env-ink': palette.paper && !isDarkBackground(palette.paper) && isDarkBackground(palette.bg) ? '#2B2118' : palette.text,
+    // Shadows stay dark even when the theme's text colour is light (night themes)
+    '--env-shadow': isDarkBackground(palette.bg) ? '#000000' : palette.text,
     '--tw-ring-color': palette.accent,
   } as React.CSSProperties;
 
@@ -115,7 +124,7 @@ function EnvelopeOpening({
         >
           <span className="env-stage" aria-hidden="true">
             <span className="env-layer env-back" />
-            <span className="env-layer env-lining" />
+            <span className={`env-layer env-lining env-liner-${palette.liner || 'stripes'}`} />
             <span className="env-layer env-fold-left" />
             <span className="env-layer env-fold-right" />
             <span className="env-layer env-fold-bottom" />
@@ -127,8 +136,12 @@ function EnvelopeOpening({
         </button>
 
         <div className="space-y-3">
-          {guestName && <p className="font-script text-4xl sm:text-5xl leading-tight">{guestName}</p>}
-          <p className="env-hint font-editorial text-sm uppercase tracking-[0.3em]" style={{ color: palette.accent }}>
+          {guestName && (
+            <p className={nameStyle === 'serif' ? 'font-serif text-3xl sm:text-4xl font-medium tracking-tight' : 'font-script text-4xl sm:text-5xl leading-tight'}>
+              {guestName}
+            </p>
+          )}
+          <p className="env-hint font-editorial text-lg italic" style={{ color: palette.accent }}>
             {tr.tapToOpen} ✦
           </p>
         </div>
@@ -138,7 +151,7 @@ function EnvelopeOpening({
 }
 
 /** Scalloped wax disc with the couple's initials pressed into it. */
-function SealSvg({ initials, accent }: { initials: string; accent: string }) {
+export function SealSvg({ initials, accent }: { initials: string; accent: string }) {
   // An uneven, softly lobed edge like pressed wax
   const steps = 120;
   const points = Array.from({ length: steps }, (_, i) => {
@@ -148,6 +161,10 @@ function SealSvg({ initials, accent }: { initials: string; accent: string }) {
   }).join(' ');
   const id = 'seal-' + (initials.replace(/\W/g, '') || 'x');
   const size = initials.length > 1 ? 26 : 32;
+  // Pressed letters stay legible on light seals (gold, blush) as well as dark ones
+  const lightLetters = readableOn(accent, ['#FFFFFF', '#1A1A1A']) === '#FFFFFF';
+  const face = lightLetters ? 'rgba(255,255,255,0.88)' : 'rgba(26,26,26,0.78)';
+  const press = lightLetters ? 'rgba(0,0,0,0.28)' : 'rgba(255,255,255,0.45)';
   return (
     <svg viewBox="0 0 100 100" className="h-full w-full">
       <defs>
@@ -161,17 +178,17 @@ function SealSvg({ initials, accent }: { initials: string; accent: string }) {
       <circle cx="50" cy="50" r="33" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="1.2" />
       <circle cx="50" cy="50" r="31" fill="none" stroke="rgba(0,0,0,0.18)" strokeWidth="0.8" />
       {/* Pressed letters: a dark offset under a light face */}
-      <text x="50" y="51.5" textAnchor="middle" dominantBaseline="middle" className="font-editorial" fontSize={size} fontWeight={600} fill="rgba(0,0,0,0.28)" letterSpacing="1">
+      <text x="50" y="51.5" textAnchor="middle" dominantBaseline="middle" className="font-editorial" fontSize={size} fontWeight={600} fill={press} letterSpacing="1">
         {initials}
       </text>
-      <text x="50" y="50" textAnchor="middle" dominantBaseline="middle" className="font-editorial" fontSize={size} fontWeight={600} fill="rgba(255,255,255,0.85)" letterSpacing="1">
+      <text x="50" y="50" textAnchor="middle" dominantBaseline="middle" className="font-editorial" fontSize={size} fontWeight={600} fill={face} letterSpacing="1">
         {initials}
       </text>
     </svg>
   );
 }
 
-/** Curtain and minimal openings: a card in the invite's colours. */
+/** Curtain and minimal openings: a single sheet of stationery in the invite's colours, no box chrome. */
 function CardOpening({
   coupleNames,
   openingStyle,
@@ -179,6 +196,7 @@ function CardOpening({
   guestName,
   strings: tr,
   palette,
+  nameStyle,
 }: {
   coupleNames: string;
   openingStyle: 'curtain' | 'minimal-fade';
@@ -186,9 +204,13 @@ function CardOpening({
   guestName?: string;
   strings: PortalStrings;
   palette?: WaxSealOpeningProps['palette'];
+  nameStyle: 'script' | 'serif';
 }) {
   const [isOpening, setIsOpening] = useState(false);
-  const isDarkCurtain = openingStyle === 'curtain';
+  const p = palette || (openingStyle === 'curtain'
+    ? { bg: '#0D1526', surface: '#142036', text: '#F3EEE3', accent: '#CDB073', border: '#2B3A57' }
+    : DEFAULT_PALETTE);
+  const dark = isDarkBackground(p.bg);
 
   const handleOpen = () => {
     setIsOpening(true);
@@ -200,52 +222,41 @@ function CardOpening({
       initial={{ opacity: 1 }}
       animate={{ opacity: isOpening ? 0 : 1 }}
       transition={{ duration: 0.55, delay: isOpening ? 0.1 : 0 }}
-      className={`paper-grain fixed inset-0 z-50 flex items-center justify-center p-4 ${
-        palette ? '' : isDarkCurtain ? 'bg-[#0B0F15]' : 'bg-[#23201D]'
-      }`}
-      style={palette ? { backgroundColor: palette.bg } : undefined}
+      className="paper-grain fixed inset-0 z-50 flex items-center justify-center p-6"
+      style={{ backgroundColor: p.bg }}
     >
       <motion.div
-        initial={{ scale: 0.96, opacity: 0, y: 16 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-        className={`relative w-full max-w-md overflow-hidden rounded-3xl border p-9 sm:p-11 text-center shadow-2xl ${
-          palette ? '' : isDarkCurtain ? 'border-[#D4AF37]/30 bg-[#161D27] text-[#F2EFE9]' : 'border-stone-200 bg-white text-stone-900'
-        }`}
-        style={palette ? { backgroundColor: palette.surface, color: palette.text, borderColor: palette.border || palette.accent } : undefined}
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+        className="relative w-full max-w-sm p-2 text-center"
+        style={{
+          backgroundColor: p.surface,
+          color: p.text,
+          boxShadow: `0 30px 50px -30px ${dark ? 'rgba(0,0,0,0.7)' : 'rgba(40,30,20,0.35)'}, 0 2px 6px -2px ${dark ? 'rgba(0,0,0,0.5)' : 'rgba(40,30,20,0.12)'}`,
+        }}
       >
-        <p className="font-editorial text-sm uppercase tracking-[0.32em]" style={{ color: palette?.accent || (isDarkCurtain ? '#D4AF37' : undefined) }}>
-          {isDarkCurtain ? tr.eveningInvitation : tr.youreInvited}
-        </p>
-
-        {guestName && (
-          <p className="font-editorial text-lg italic mt-5" style={palette ? { color: palette.accent } : undefined}>
-            {tr.forGuest} {guestName}
+        {/* Double rule, like printed stationery */}
+        <div className="px-7 py-12 sm:px-9 sm:py-14 space-y-5" style={{ border: `1px solid color-mix(in srgb, ${p.accent} 45%, transparent)` }}>
+          <p className="font-editorial text-sm uppercase tracking-[0.32em]" style={{ color: p.accent }}>
+            {tr.youreInvited}
           </p>
-        )}
-
-        <h2 className="font-serif text-3xl sm:text-4xl font-semibold tracking-tight mt-2 [text-wrap:balance]">{coupleNames}</h2>
-
-        <p className="font-editorial text-base italic opacity-80 max-w-xs mx-auto leading-relaxed mt-3">
-          {isDarkCurtain ? tr.openingCurtain : tr.openingMinimal}
-        </p>
-
-        <div className="mt-8 flex justify-center">
+          {guestName && (
+            <p className={nameStyle === 'serif' ? 'font-serif text-3xl font-medium tracking-tight' : 'font-script text-4xl leading-tight'}>{guestName}</p>
+          )}
+          <span aria-hidden="true" className="mx-auto block h-px w-12" style={{ backgroundColor: p.accent, opacity: 0.5 }} />
+          <h2 className="font-serif text-2xl sm:text-3xl tracking-tight [text-wrap:balance]">{coupleNames}</h2>
+          <p className="font-editorial text-lg italic opacity-85 leading-relaxed">
+            {openingStyle === 'curtain' ? tr.openingCurtain : tr.openingMinimal}
+          </p>
           <button
             type="button"
             onClick={handleOpen}
             disabled={isOpening}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-full border px-8 py-3 font-editorial text-sm uppercase tracking-[0.25em] transition-opacity hover:opacity-85 cursor-pointer"
-            style={
-              palette
-                ? isDarkCurtain
-                  ? { color: palette.accent, borderColor: palette.accent }
-                  : { backgroundColor: palette.text, color: palette.surface, borderColor: palette.text }
-                : undefined
-            }
+            className="mt-2 inline-flex min-h-[44px] items-center px-4 font-editorial text-lg italic underline decoration-1 underline-offset-[6px] transition-opacity hover:opacity-75 cursor-pointer"
+            style={{ color: p.accent }}
           >
-            {isDarkCurtain && <Sparkles className="h-4 w-4" />}
-            {isDarkCurtain ? tr.enterEvening : tr.tapToOpen}
+            {tr.tapToOpen}
           </button>
         </div>
       </motion.div>

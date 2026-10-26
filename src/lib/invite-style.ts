@@ -56,3 +56,35 @@ export function contrastRatio(a: string, b: string): number {
 export function readableOn(background: string, candidates: string[]): string {
   return candidates.reduce((best, c) => (contrastRatio(c, background) > contrastRatio(best, background) ? c : best), candidates[0]);
 }
+
+function toHex(rgb: number[]): string {
+  return '#' + rgb.map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0')).join('');
+}
+
+function parseHex(hex: string): number[] | null {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  const full = m[1].length === 3 ? m[1].replace(/./g, '$&$&') : m[1];
+  return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
+}
+
+/**
+ * `color`, moved step by step toward `toward` until it reaches `min` contrast on `background`.
+ * Keeps the couple's hue where it already passes; unreadable colours come back as hex.
+ */
+export function ensureContrast(color: string, background: string, min: number, toward: string): string {
+  if (contrastRatio(color, background) >= min) return color;
+  const from = parseHex(color);
+  const to = parseHex(toward);
+  if (!from || !to) return toward;
+  for (let t = 0.05; t <= 1; t += 0.05) {
+    const candidate = toHex(from.map((v, i) => v + (to[i] - v) * t));
+    if (contrastRatio(candidate, background) >= min) return candidate;
+  }
+  return toward;
+}
+
+/** True when text on this background should be light. */
+export function isDarkBackground(background: string): boolean {
+  return contrastRatio(background, '#FFFFFF') > contrastRatio(background, '#000000');
+}

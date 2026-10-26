@@ -351,10 +351,22 @@ export default function AdminDashboardView({
     };
   });
 
-  const [openingReplay, setOpeningReplay] = useState(0);
   const [builderSubTab, setBuilderSubTab] = useState<
     'presets' | 'palette' | 'typography' | 'reveal' | 'imagery'
   >('presets');
+
+  // What the Builder and Editor previews show: the page alone, the page with the floating RSVP pill, or the opening.
+  const [previewView, setPreviewView] = useState<'page' | 'floating' | 'opening'>('page');
+  const [openingReplay, setOpeningReplay] = useState(0);
+  const choosePreviewView = (view: 'page' | 'floating' | 'opening') => {
+    if (view === 'opening') setOpeningReplay((n) => n + 1); // choosing Opening again replays it
+    setPreviewView(view);
+  };
+  // The Builder's Opening tab is about the opening, so show it there.
+  useEffect(() => {
+    if (builderSubTab === 'reveal') choosePreviewView('opening');
+    else setPreviewView((v) => (v === 'opening' ? 'page' : v));
+  }, [builderSubTab]);
 
   // Copy Link Helper
   // Re-read a list from the server after a change (the browser cannot query the database directly).
@@ -2970,6 +2982,12 @@ export default function AdminDashboardView({
                                 )}
                               </div>
                               <span className="text-xs text-aisle-muted block mt-0.5">{thm.taxonomy}</span>
+                              {/* The preset's page, accent and text colours, so couples can tell them apart at a glance */}
+                              <span className="mt-2 flex items-center gap-1" aria-hidden="true">
+                                {[thm.bg_color, thm.accent_color, thm.text_color].map((c) => (
+                                  <span key={c} className="h-4 w-4 rounded-full border border-black/10" style={{ backgroundColor: c }} />
+                                ))}
+                              </span>
                             </button>
                           ))}
                         </div>
@@ -3475,23 +3493,12 @@ export default function AdminDashboardView({
 
               {/* Live Preview Column */}
               <div className="lg:col-span-6">
-                <PortalPreviewPane
-                  actions={
-                    builderSubTab === 'reveal' && (
-                      <button
-                        type="button"
-                        onClick={() => setOpeningReplay((n) => n + 1)}
-                        className="min-h-[36px] rounded-full border border-aisle-border bg-white px-4 text-xs font-semibold text-aisle-charcoal hover:bg-aisle-sand cursor-pointer"
-                      >
-                        Replay opening
-                      </button>
-                    )
-                  }
-                >
+                <PortalPreviewPane toolbar={<PreviewViewSwitch value={previewView} onChange={choosePreviewView} />}>
                   <GuestPortalView
-                    // On the Reveal tab, restart on the opening whenever the style changes or Replay is pressed.
-                    key={builderSubTab === 'reveal' ? `opening-${customTheme.opening_style}-${openingReplay}` : 'page'}
-                    showOpening={builderSubTab === 'reveal'}
+                    // Restart on the opening whenever the style changes or Opening is chosen again.
+                    key={previewView === 'opening' ? `opening-${customTheme.opening_style}-${openingReplay}` : 'page'}
+                    showOpening={previewView === 'opening'}
+                    showFloating={previewView === 'floating'}
                     event={event}
                     primaryGuest={guests && guests.length > 0 ? guests[0] : null}
                     partyMembers={guests && guests.length > 1 ? guests.slice(0, 2) : []}
@@ -3928,6 +3935,7 @@ export default function AdminDashboardView({
             <div className="lg:col-span-6">
               <PortalPreviewPane
                 label="Live preview · click your text to edit"
+                toolbar={<PreviewViewSwitch value={previewView} onChange={choosePreviewView} />}
                 actions={
                   <span className="inline-flex items-center gap-2">
                     {editorDirty && <span className="text-xs font-semibold text-amber-700">Unsaved edits</span>}
@@ -3943,6 +3951,9 @@ export default function AdminDashboardView({
                 }
               >
                 <GuestPortalView
+                  key={previewView === 'opening' ? `opening-${openingReplay}` : 'page'}
+                  showOpening={previewView === 'opening'}
+                  showFloating={previewView === 'floating'}
                   event={{ ...event, custom_sections: customSections }}
                   onEditText={handlePreviewTextEdit}
                   primaryGuest={guests && guests.length > 0 ? guests[0] : null}
@@ -6118,6 +6129,40 @@ function SegmentedChoice({
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Page / RSVP button / Opening switch above the Builder and Editor previews. */
+function PreviewViewSwitch({
+  value,
+  onChange,
+}: {
+  value: 'page' | 'floating' | 'opening';
+  onChange: (view: 'page' | 'floating' | 'opening') => void;
+}) {
+  const views = [
+    { id: 'page', label: 'Page', title: 'The invitation alone, nothing floating over it' },
+    { id: 'floating', label: 'RSVP button', title: 'With the floating RSVP button guests see' },
+    { id: 'opening', label: 'Opening', title: 'The envelope guests open first (choose again to replay)' },
+  ] as const;
+  return (
+    <div role="radiogroup" aria-label="Preview shows" className="inline-flex rounded-full border border-aisle-border bg-white p-0.5 text-xs">
+      {views.map((v) => (
+        <button
+          key={v.id}
+          type="button"
+          role="radio"
+          aria-checked={value === v.id}
+          title={v.title}
+          onClick={() => onChange(v.id)}
+          className={`min-h-[36px] rounded-full px-3.5 font-semibold transition-colors cursor-pointer ${
+            value === v.id ? 'bg-aisle-charcoal text-white' : 'text-aisle-warm hover:text-aisle-charcoal'
+          }`}
+        >
+          {v.label}
+        </button>
+      ))}
     </div>
   );
 }

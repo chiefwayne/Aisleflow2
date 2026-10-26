@@ -49,14 +49,14 @@ import {
   orderedVisibleSections,
   pageBackgroundStyle,
 } from '@/lib/portal-design';
-import WaxSealOpening from '@/components/WaxSeal';
+import WaxSealOpening, { SealSvg } from '@/components/WaxSeal';
 import { BotanicalCorner, GoldHairlineDivider } from '@/components/MotifDecorations';
 import { buildIcs, downloadIcs } from '@/lib/ics';
 import EditableText from '@/components/guest/EditableText';
 import { getMenuOptions } from '@/lib/menu';
 import { fill, PORTAL_LANGUAGES, portalLanguageOf, portalStrings } from '@/lib/portal-i18n';
 import { hasFeature } from '@/lib/plans';
-import { calendarMonth, monogram, readableOn } from '@/lib/invite-style';
+import { calendarMonth, contrastRatio, ensureContrast, isDarkBackground, monogram, readableOn } from '@/lib/invite-style';
 import { submitRsvpAction, uploadPhotoAction, contributeToRegistryAction } from '@/app/actions/wedding-actions';
 
 
@@ -78,7 +78,17 @@ interface GuestPortalViewProps {
   onEditText?: (path: string, value: string) => void;
   /** Preview only: start on the opening screen instead of the opened invitation. */
   showOpening?: boolean;
+  /** Preview only: show the floating RSVP pill and music button (hidden by default so they don't cover content). */
+  showFloating?: boolean;
 }
+
+/** The countdown's two units: days and hours, or hours and minutes on the last day. */
+function countdownUnits(t: { days: number; hours: number; minutes: number }) {
+  return t.days > 0 ? (['days', 'hours'] as const) : (['hours', 'minutes'] as const);
+}
+
+/** Countdown labels for a single day, hour or minute. */
+const UNIT_SINGULAR = { days: 'day', hours: 'hour', minutes: 'minute' } as const;
 
 const COMMON_DIETARY_TAGS = [
   'Vegetarian',
@@ -106,6 +116,7 @@ export default function GuestPortalView({
   publicView = false,
   onEditText,
   showOpening = false,
+  showFloating = false,
 }: GuestPortalViewProps) {
   const baseTheme =
     customTheme ||
@@ -153,6 +164,14 @@ export default function GuestPortalView({
   const [justOpened, setJustOpened] = useState(false);
   // The floating RSVP pill hides while the RSVP card itself is on screen.
   const [rsvpInView, setRsvpInView] = useState(false);
+  const [pastCalendar, setPastCalendar] = useState(false);
+  useEffect(() => {
+    const el = document.getElementById('save-the-date');
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(([entry]) => setPastCalendar(!entry.isIntersecting && entry.boundingClientRect.top < 0));
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasOpened]);
   useEffect(() => {
     const el = document.getElementById('rsvp');
     if (!el || typeof IntersectionObserver === 'undefined') return;
@@ -411,12 +430,13 @@ export default function GuestPortalView({
       }
 
       setRsvpStep(5);
-      confetti({
+      // Confetti draws over the whole window, so it stays off in the dashboard's preview pane
+      if (!previewMode) confetti({
         disableForReducedMotion: true,
         particleCount: 90,
         spread: 75,
         origin: { y: 0.6 },
-        colors: [theme.accent_color || '#C59B27', '#9E5A44', '#E8C8C0', '#2C2523'],
+        colors: [accent, theme.border_color || '#E8E0D7', surface, muted],
       });
     } catch (err: any) {
       console.error('RSVP submission error:', err);
@@ -542,10 +562,10 @@ export default function GuestPortalView({
   const heroLayout = theme.hero_layout || (event.cover_image_url ? 'photo' : 'stationery');
   const showPhotoHero = heroLayout === 'photo' && !!event.cover_image_url;
   const scriptNames = theme.name_style !== 'serif';
-  const nameClass = scriptNames ? 'font-script font-normal leading-[0.95]' : 'font-serif font-semibold tracking-tight leading-[1.08]';
+  const nameClass = scriptNames ? 'font-script font-normal leading-[0.95]' : 'font-serif font-medium tracking-tight leading-[1.08]';
   const headingClass = scriptNames
     ? 'font-script text-5xl sm:text-6xl font-normal leading-none [text-wrap:balance]'
-    : 'font-serif text-2xl sm:text-3xl font-semibold [text-wrap:balance]';
+    : 'font-serif text-2xl sm:text-3xl font-medium [text-wrap:balance]';
   const nameParts = (event.couple_names || '').split(/\s+(?:&|and)\s+/i);
   const coupleNamesStacked =
     nameParts.length === 2 ? (
@@ -570,7 +590,26 @@ export default function GuestPortalView({
     </span>
   );
   // The RSVP sits on a band of the accent colour, with text chosen to stay readable on it
-  const bandInk = readableOn(accent, [pageBg, ink, '#FFFFFF', '#1A1A1A']);
+  // Prefer the theme's own page or text colour on the band; fall back to plain white or near-black
+  const bandInk = [pageBg, ink].find((c) => contrastRatio(c, accent) >= 4.5) ?? readableOn(accent, [pageBg, ink, '#FFFFFF', '#1A1A1A']);
+  const surface = theme.surface_color || '#FFFFFF';
+  // Secondary text keeps the couple's hue but is nudged until it reads comfortably on the page; 5:1 leaves
+  // room for the tinted calendar band and the RSVP card, which sit a shade off the page colour
+  const muted = ensureContrast(theme.muted_color || '#7D746D', pageBg, 5, ink);
+  const darkTheme = isDarkBackground(pageBg);
+  // Every colour on the invitation comes from the theme through these variables, so dark themes work too
+  const paletteVars = {
+    '--ink': ink,
+    '--muted': muted,
+    '--accent': accent,
+    '--on-accent': bandInk,
+    '--on-ink': readableOn(ink, [surface, pageBg, '#FFFFFF', '#1A1A1A']),
+    '--surface': surface,
+    '--field-bg': surface,
+    '--line': theme.border_color || '#E8E0D7',
+    '--tint': `color-mix(in srgb, ${accent} 9%, ${surface})`,
+    '--error': darkTheme ? '#FCA5A5' : '#B91C1C',
+  } as React.CSSProperties;
   const weddingDateLong = new Date(event.wedding_date).toLocaleDateString(locale, {
     timeZone: 'UTC', // dates are stored as midnight UTC
     weekday: 'long',
@@ -588,15 +627,15 @@ export default function GuestPortalView({
     return (
       <div
         lang={portalLanguageOf(event.language)}
-        style={{ backgroundColor: theme.bg_color || '#FAF7F2', color: theme.text_color || '#2C2523' }}
-        className={`min-h-screen flex items-center justify-center px-5 py-12 ${fontClass}`}
+        style={{ ...paletteVars, backgroundColor: theme.bg_color || '#FAF7F2', color: theme.text_color || '#2C2523' }}
+        className={`invite-root ${theme.font_family === 'vintage-editorial' ? 'theme-vintage' : ''} min-h-screen flex items-center justify-center px-5 py-12 ${fontClass}`}
       >
         <main className="max-w-md w-full text-center space-y-6">
           <p className="text-sm uppercase tracking-[0.3em] font-semibold" style={{ color: theme.accent_color }}>
             {tr.saveTheDate}
           </p>
           <h1 className="font-serif text-4xl sm:text-5xl font-semibold leading-tight">{event.couple_names}</h1>
-          <p className="font-serif text-xl">
+          <p className="font-editorial text-2xl">
             {new Date(event.wedding_date).toLocaleDateString(locale, {
               timeZone: 'UTC',
               weekday: 'long',
@@ -607,10 +646,10 @@ export default function GuestPortalView({
           </p>
           {where && <p className="text-sm uppercase tracking-[0.2em]" style={{ color: theme.accent_color }}>{where}</p>}
           <div className="flex items-center justify-center gap-6 border-y py-4" style={{ borderColor: theme.border_color }}>
-            {(['days', 'hours', 'minutes'] as const).map((unit) => (
+            {countdownUnits(timeLeft).map((unit) => (
               <div key={unit}>
                 <span className="font-editorial text-3xl font-semibold block leading-none">{timeLeft[unit]}</span>
-                <span className="text-xs uppercase tracking-[0.2em] opacity-70">{tr[unit]}</span>
+                <span className="text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">{timeLeft[unit] === 1 ? tr[UNIT_SINGULAR[unit]] : tr[unit]}</span>
               </div>
             ))}
           </div>
@@ -622,7 +661,7 @@ export default function GuestPortalView({
                 buildIcs([{ uid: `${event.id}-wedding`, title: `${event.couple_names}'s Wedding`, start: String(event.wedding_date).slice(0, 10), location: where }])
               )
             }
-            className="min-h-[44px] rounded-full px-6 text-sm font-semibold uppercase tracking-wider text-white"
+            className="min-h-[44px] rounded-full px-6 text-base font-semibold tracking-wide text-[color:var(--on-accent)]"
             style={{ backgroundColor: theme.accent_color || '#9E5A44' }}
           >
             {tr.addToCalendar}
@@ -657,6 +696,8 @@ export default function GuestPortalView({
                   >
                     <img
                       src={event.story_image_url}
+                      loading="lazy"
+                      decoding="async"
                       alt="Couple Story"
                       className="h-full w-full object-cover"
                     />
@@ -689,22 +730,21 @@ export default function GuestPortalView({
                 </div>
 
                 {/* Seamless Vertical Timeline */}
-                <div className="relative pl-6 sm:pl-8 space-y-8 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-px before:bg-gradient-to-b before:from-transparent before:via-aisle-gold/50 before:to-transparent">
+                <div className="relative pl-6 sm:pl-8 space-y-8 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-px before:bg-gradient-to-b before:from-transparent before:via-[color:var(--line)] before:to-transparent">
                   {visibleSchedule.map((item, idx) => (
                     <div key={item.id} className="relative group">
                       {/* Timeline Dot Indicator */}
                       <span
-                        className="absolute -left-[21px] sm:-left-[29px] top-1.5 h-2.5 w-2.5 rounded-full ring-4 transition-transform duration-300 group-hover:scale-125"
+                        className="absolute -left-[21px] sm:-left-[29px] top-1.5 h-2.5 w-2.5 rounded-full transition-transform duration-300 group-hover:scale-125"
                         style={{
-                          backgroundColor: theme.accent_color || '#9E5A44',
-                          // @ts-ignore
-                          ringColor: theme.bg_color,
+                          backgroundColor: accent,
+                          boxShadow: `0 0 0 4px ${pageBg}`,
                         }}
                       />
 
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-baseline justify-between gap-2">
-                          <h3 className="font-serif text-base sm:text-lg font-semibold tracking-tight">
+                          <h3 className="font-editorial text-lg sm:text-xl font-semibold tracking-tight">
                             {item.title}
                           </h3>
                           <span
@@ -753,7 +793,7 @@ export default function GuestPortalView({
             {/* Dress code, with the couple's palette as swatches */}
             {(event.dress_code || (customSections.dress_palette || []).length > 0) && (
               <section className="mt-16 text-center space-y-4">
-                <p className="font-editorial text-sm uppercase tracking-[0.3em]" style={{ color: accent }}>
+                <p className="font-editorial text-lg italic" style={{ color: muted }}>
                   {tr.dressCode}
                 </p>
                 {event.dress_code && <p className={`${scriptNames ? 'font-script text-4xl' : 'font-serif text-2xl'}`}>{event.dress_code}</p>}
@@ -769,7 +809,7 @@ export default function GuestPortalView({
                         />
                       ))}
                     </div>
-                    <p className="text-xs uppercase tracking-[0.25em] opacity-60">{tr.ourPalette}</p>
+                    <p className="text-sm italic text-[color:var(--muted)]">{tr.ourPalette}</p>
                   </div>
                 )}
               </section>
@@ -792,6 +832,8 @@ export default function GuestPortalView({
                 >
                   <img
                     src={event.venue_image_url}
+                      loading="lazy"
+                      decoding="async"
                     alt={event.venue_name}
                     className="h-full w-full object-cover"
                   />
@@ -799,7 +841,7 @@ export default function GuestPortalView({
               )}
 
               <div className="space-y-2">
-                <h3 className="font-serif text-xl font-semibold">{event.venue_name}</h3>
+                <h3 className="font-editorial text-2xl font-semibold vintage-caps">{event.venue_name}</h3>
                 <p className="text-sm opacity-75">{event.venue_address}</p>
 
                 {event.venue_address && (
@@ -850,8 +892,8 @@ export default function GuestPortalView({
                           borderColor: theme.border_color || '#E8E0D7',
                         }}
                       >
-                        <div className="flex items-center gap-1.5 font-semibold text-aisle-charcoal">
-                          <Hotel className="h-4 w-4 text-aisle-terracotta" />
+                        <div className="flex items-center gap-1.5 font-semibold text-[color:var(--ink)]">
+                          <Hotel className="h-4 w-4 text-[color:var(--accent)]" />
                           <span>{tr.accommodations}</span>
                         </div>
                         <p className="text-xs opacity-75 leading-relaxed">{editable('sections.travel.hotel_info', travelInfo.hotel_info, 'accommodation details', true)}</p>
@@ -866,8 +908,8 @@ export default function GuestPortalView({
                           borderColor: theme.border_color || '#E8E0D7',
                         }}
                       >
-                        <div className="flex items-center gap-1.5 font-semibold text-aisle-charcoal">
-                          <Compass className="h-4 w-4 text-aisle-terracotta" />
+                        <div className="flex items-center gap-1.5 font-semibold text-[color:var(--ink)]">
+                          <Compass className="h-4 w-4 text-[color:var(--accent)]" />
                           <span>{tr.shuttleTransit}</span>
                         </div>
                         <p className="text-xs opacity-75 leading-relaxed">{editable('sections.travel.shuttle_info', travelInfo.shuttle_info, 'shuttle details', true)}</p>
@@ -918,13 +960,13 @@ export default function GuestPortalView({
                         borderColor: theme.border_color || '#E8E0D7',
                       }}
                     >
-                      <div className="h-12 w-12 rounded-full bg-aisle-sand flex items-center justify-center font-serif text-lg font-bold shrink-0 text-aisle-charcoal">
+                      <div className="h-12 w-12 rounded-full bg-[color:var(--tint)] flex items-center justify-center font-editorial text-xl font-semibold shrink-0 text-[color:var(--ink)]">
                         {member.name ? member.name.charAt(0) : '✦'}
                       </div>
                       <div>
-                        <h4 className="font-serif text-base font-semibold" style={{ color: theme.text_color }}>
+                        <h3 className="font-editorial text-lg font-semibold" style={{ color: theme.text_color }}>
                           {editable(`sections.wedding_party.members.${i}.name`, member.name, 'name')}
-                        </h4>
+                        </h3>
                         <span
                           className="text-xs font-bold uppercase tracking-wider block"
                           style={{ color: theme.accent_color }}
@@ -968,10 +1010,10 @@ export default function GuestPortalView({
                       }}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <h4 className="font-serif text-base font-semibold" style={{ color: theme.text_color }}>
+                        <h3 className="font-editorial text-lg font-semibold" style={{ color: theme.text_color }}>
                           {editable(`sections.local_recs.items.${i}.name`, rec.name, 'place name')}
-                        </h4>
-                        <span className="text-xs uppercase font-bold tracking-wider rounded-full px-2 py-0.5 bg-aisle-sand text-aisle-charcoal">
+                        </h3>
+                        <span className="text-xs uppercase font-bold tracking-wider rounded-full px-2 py-0.5 bg-[color:var(--tint)] text-[color:var(--ink)]">
                           {rec.type || tr.spot}
                         </span>
                       </div>
@@ -1010,24 +1052,24 @@ export default function GuestPortalView({
                         {onEditText ? (
                           // In the Editor preview the question is edited in place, so it isn't a toggle button.
                           <div className="w-full p-4 min-h-[48px] text-left font-medium text-sm">
-                          <span className="font-semibold text-aisle-charcoal">{editable(`sections.faq.items.${idx}.question`, faq.question, 'question')}</span>
+                          <span className="font-semibold text-[color:var(--ink)]">{editable(`sections.faq.items.${idx}.question`, faq.question, 'question')}</span>
                         </div>
                         ) : (
                         <button
                           type="button"
                           onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
-                          className="w-full p-4 min-h-[48px] text-left font-medium text-sm flex items-center justify-between gap-3 hover:bg-aisle-sand/20 cursor-pointer"
+                          className="w-full p-4 min-h-[48px] text-left font-medium text-sm flex items-center justify-between gap-3 hover:bg-[color:var(--tint)] cursor-pointer"
                         >
-                          <span className="font-semibold text-aisle-charcoal">{editable(`sections.faq.items.${idx}.question`, faq.question, 'question')}</span>
+                          <span className="font-semibold text-[color:var(--ink)]">{editable(`sections.faq.items.${idx}.question`, faq.question, 'question')}</span>
                           {isOpen ? (
-                            <ChevronUp className="h-4 w-4 text-aisle-muted shrink-0" />
+                            <ChevronUp className="h-4 w-4 text-[color:var(--muted)] shrink-0" />
                           ) : (
-                            <ChevronDown className="h-4 w-4 text-aisle-muted shrink-0" />
+                            <ChevronDown className="h-4 w-4 text-[color:var(--muted)] shrink-0" />
                           )}
                         </button>
                         )}
                         {isOpen && (
-                          <div className="px-4 pb-4 text-sm opacity-80 leading-relaxed border-t border-aisle-border/40 pt-3">
+                          <div className="px-4 pb-4 text-sm opacity-80 leading-relaxed border-t border-[color:var(--line)] pt-3">
                             {editable(`sections.faq.items.${idx}.answer`, faq.answer, 'answer', true)}
                           </div>
                         )}
@@ -1053,7 +1095,7 @@ export default function GuestPortalView({
                 <h2 className={headingClass}>
                   {tr.rsvpTitle}
                 </h2>
-                <p className="text-sm font-editorial italic opacity-75">
+                <p className="text-base font-editorial italic">
                   {tr.kindlyReplyBy}{' '}
                   {new Date(event.rsvp_deadline).toLocaleDateString(locale, {
                     timeZone: 'UTC', // dates are stored as midnight UTC
@@ -1067,101 +1109,81 @@ export default function GuestPortalView({
               {/* Physical Response Card Frame */}
               <div
                 ref={rsvpCardRef}
-                className="relative overflow-hidden rounded-3xl p-6 sm:p-10 border shadow-wedding scroll-mt-20"
+                className="relative overflow-hidden rounded-[2px] p-7 sm:p-11 scroll-mt-20"
                 style={{
-                  backgroundColor: theme.surface_color || '#FFFFFF',
-                  borderColor: theme.border_color || '#E8E0D7',
+                  backgroundColor: surface,
                   color: ink,
+                  // A sheet of stationery: a fine double rule inside the edge and a soft paper shadow
+                  boxShadow: `inset 0 0 0 7px ${surface}, inset 0 0 0 8px color-mix(in srgb, ${accent} 40%, transparent), 0 24px 40px -28px rgba(0,0,0,${darkTheme ? 0.7 : 0.35}), 0 2px 6px -3px rgba(0,0,0,0.15)`,
                 }}
               >
                 {isRsvpLocked ? (
                   <div className="py-6 text-center space-y-2 font-editorial text-base">
                     <Lock className="h-6 w-6 mx-auto opacity-70" />
-                    <h4 className="font-serif text-base font-semibold">{tr.rsvpClosedTitle}</h4>
+                    <h3 className="font-editorial text-lg font-semibold">{tr.rsvpClosedTitle}</h3>
                     <p className="text-sm opacity-70">
                       {event.rsvp_locked ? tr.rsvpLocked : tr.deadlinePassed} If you need
                       to make an adjustment, please contact the couple directly.
                     </p>
                   </div>
                 ) : rsvpStep === 5 ? (
-                  /* STEP 5: CONFIRMATION STATE */
-                  <div className="py-8 text-center space-y-4 font-editorial text-base">
-                    <CheckCircle2
-                      className="h-12 w-12 mx-auto motion-safe:animate-bounce"
-                      style={{ color: theme.accent_color }}
-                    />
-                    <h4 className="font-serif text-2xl sm:text-3xl font-semibold">
-                      {tr.thankYou}, {partyNames}!
-                    </h4>
-                    <p className="text-sm opacity-80 max-w-sm mx-auto leading-relaxed">
-                      {fill(tr.responseConfirmed, { couple: event.couple_names })}
+                  /* STEP 5: A short note from the couple, sealed */
+                  <div className="py-6 text-center space-y-5">
+                    <div className="mx-auto h-16 w-16 invite-rise" aria-hidden="true">
+                      <SealSvg initials={monogram(event.couple_names)} accent={accent} />
+                    </div>
+                    <p className="font-editorial text-2xl sm:text-3xl">
+                      {tr.dear} {partyNames},
+                    </p>
+                    <p className={`${scriptNames ? 'font-script text-4xl sm:text-5xl leading-tight' : 'font-editorial text-2xl italic leading-snug'} max-w-sm mx-auto`}>
+                      {allGuests.some((g) => partyState[g.id]?.rsvp_status === 'attending') ? tr.thankNoteAttending : tr.thankNoteDeclined}
+                    </p>
+                    <p className="italic text-[color:var(--muted)]">
+                      {tr.withLove} {event.couple_names}
                     </p>
 
-                    <div className="rounded-2xl border p-4 max-w-sm mx-auto text-left text-sm space-y-2 bg-[#FAF7F2]/60" style={{ borderColor: theme.border_color }}>
-                      <span className="font-semibold text-xs uppercase tracking-wider block opacity-70">
-                        {tr.recordedAttendance}
-                      </span>
+                    <span aria-hidden="true" className="mx-auto block h-px w-12 bg-[color:var(--line)]" />
+
+                    <ul className="space-y-1 text-base" aria-label={tr.recordedAttendance}>
                       {allGuests.map((g) => {
-                        const st = partyState[g.id];
+                        const st = partyState[g.id]?.rsvp_status;
                         return (
-                          <div key={g.id} className="flex items-center justify-between text-sm">
-                            <span>{g.first_name} {g.last_name || ''}</span>
-                            <span className="font-semibold capitalize" style={{ color: st?.rsvp_status === 'attending' ? theme.accent_color : theme.text_color }}>
-                              {st?.rsvp_status || tr.pending}
+                          <li key={g.id}>
+                            {g.first_name} {g.last_name || ''}
+                            <span className="italic text-[color:var(--muted)]">
+                              {' '}· {st === 'attending' ? tr.joyfullyAccept : st === 'declined' ? tr.regretfullyDecline : tr.pending}
                             </span>
-                          </div>
+                          </li>
                         );
                       })}
-                    </div>
+                    </ul>
 
-                    <div className="pt-2">
-                      <button
-                        type="button"
-                        onClick={() => setRsvpStep(1)}
-                        className="min-h-[44px] inline-flex items-center gap-1.5 text-base italic tracking-wide underline opacity-75 hover:opacity-100 cursor-pointer"
-                      >
-                        <span>{tr.editRsvp}</span>
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setRsvpStep(1)}
+                      className="min-h-[44px] inline-flex items-center text-base italic underline decoration-1 underline-offset-4 text-[color:var(--muted)] hover:text-[color:var(--ink)] cursor-pointer"
+                    >
+                      {tr.editRsvp}
+                    </button>
                   </div>
                 ) : (
                   /* WIZARD CONTAINER */
                   <div className="space-y-6 font-editorial text-base">
                     {rsvpStep === 1 && (
-                      <p className="font-serif text-2xl sm:text-3xl" style={{ color: ink }}>
+                      <p className="font-editorial text-2xl sm:text-3xl" style={{ color: ink }}>
                         {tr.dear} {partyNames},
                       </p>
                     )}
 
-                    {/* Step Progress */}
-                    <div className="space-y-3 border-b pb-4" style={{ borderColor: theme.border_color }}>
-                      <div className="flex items-center justify-between text-xs uppercase tracking-[0.3em]" style={{ color: theme.accent_color }}>
-                        <span>
-                          {rsvpStep === 1 && tr.stepWho}
-                          {rsvpStep === 2 && tr.stepEvents}
-                          {rsvpStep === 3 && tr.stepDetails}
-                          {rsvpStep === 4 && tr.stepReview}
-                        </span>
-                        <span style={{ color: theme.text_color }} className="opacity-60">{fill(tr.stepOf, { step: rsvpStep })}</span>
-                      </div>
-                      <div className="flex gap-1.5" role="progressbar" aria-valuemin={1} aria-valuemax={4} aria-valuenow={rsvpStep}>
-                        {[1, 2, 3, 4].map((n) => (
-                          <span
-                            key={n}
-                            className="h-px flex-1 transition-colors"
-                            style={{ backgroundColor: n <= rsvpStep ? theme.accent_color : theme.border_color }}
-                          />
-                        ))}
-                      </div>
-                    </div>
+                    <p className="sr-only" aria-live="polite">{fill(tr.stepOf, { step: rsvpStep })}</p>
 
                     {/* STEP 1: HOUSEHOLD PARTY ATTENDANCE */}
                     {rsvpStep === 1 && (
                       <div className="space-y-6">
                         <div className="space-y-1">
-                          <h4 className="font-serif text-lg font-semibold" style={{ color: theme.text_color }}>
+                          <h3 className="font-editorial text-xl font-semibold" style={{ color: theme.text_color }}>
                             {tr.willYouCelebrate}
-                          </h4>
+                          </h3>
                           <p className="italic opacity-75">
                             {tr.indicateAttendance}
                           </p>
@@ -1173,27 +1195,14 @@ export default function GuestPortalView({
                             return (
                               <div
                                 key={guest.id}
-                                className="rounded-2xl border p-4 space-y-3"
-                                style={{
-                                  backgroundColor: `${theme.accent_color}06`,
-                                  borderColor: theme.border_color || '#E8E0D7',
-                                }}
+                                className="space-y-3 border-t pt-5 first:border-t-0 first:pt-0"
+                                style={{ borderColor: theme.border_color || '#E8E0D7' }}
                               >
                                 <div className="flex items-center justify-between">
-                                  <span className="font-serif text-base font-semibold" style={{ color: theme.text_color }}>
+                                  <span className="font-editorial text-lg font-semibold" style={{ color: theme.text_color }}>
                                     {guest.first_name} {guest.last_name || ''}
                                   </span>
-                                  {guest.is_vip && (
-                                    <span
-                                      className="rounded-full px-2.5 py-0.5 text-xs uppercase tracking-[0.2em]"
-                                      style={{
-                                        backgroundColor: `${theme.accent_color}20`,
-                                        color: theme.accent_color,
-                                      }}
-                                    >
-                                      {tr.vipGuest}
-                                    </span>
-                                  )}
+                                  
                                 </div>
 
                                 <div className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-3">
@@ -1202,7 +1211,7 @@ export default function GuestPortalView({
                                     aria-pressed={gState.rsvp_status === 'attending'}
                                     onClick={() => handleStatusChange(guest.id, 'attending')}
                                     className={`min-h-[44px] flex items-center justify-center gap-2 rounded-full border py-3 text-base font-semibold tracking-wide transition-all cursor-pointer ${
-                                      gState.rsvp_status === 'attending' ? 'text-white shadow-sm' : 'hover:opacity-80'
+                                      gState.rsvp_status === 'attending' ? 'text-[color:var(--on-accent)] shadow-sm' : 'hover:opacity-80'
                                     }`}
                                     style={
                                       gState.rsvp_status === 'attending'
@@ -1219,7 +1228,7 @@ export default function GuestPortalView({
                                     aria-pressed={gState.rsvp_status === 'declined'}
                                     onClick={() => handleStatusChange(guest.id, 'declined')}
                                     className={`min-h-[44px] flex items-center justify-center gap-2 rounded-full border py-3 text-base font-semibold tracking-wide transition-all cursor-pointer ${
-                                      gState.rsvp_status === 'declined' ? 'text-white shadow-sm' : 'hover:opacity-80'
+                                      gState.rsvp_status === 'declined' ? 'text-[color:var(--on-ink)] shadow-sm' : 'hover:opacity-80'
                                     }`}
                                     style={
                                       gState.rsvp_status === 'declined'
@@ -1244,11 +1253,15 @@ export default function GuestPortalView({
                             type="button"
                             disabled={!allAnswered}
                             onClick={() => {
-                              if (hasAnyAttending) setRsvpStep(2);
+                              if (hasAnyAttending) setRsvpStep(3);
                               else setRsvpStep(4); // Skip to review if all declined
                             }}
-                            className="min-h-[44px] rounded-full px-6 py-3 text-sm font-semibold tracking-wide text-white shadow-md transition-all hover:opacity-95 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
-                            style={{ backgroundColor: theme.text_color }}
+                            className={`min-h-[44px] rounded-full border px-6 py-3 text-base font-semibold tracking-wide transition-all flex items-center gap-2 ${
+                              allAnswered
+                                ? 'text-[color:var(--on-ink)] shadow-md hover:opacity-95 cursor-pointer'
+                                : 'text-[color:var(--muted)] border-[color:var(--line)] cursor-not-allowed'
+                            }`}
+                            style={allAnswered ? { backgroundColor: ink, borderColor: ink } : undefined}
                           >
                             <span>{tr.continue}</span>
                             <ChevronRight className="h-4 w-4" />
@@ -1257,13 +1270,16 @@ export default function GuestPortalView({
                       </div>
                     )}
 
-                    {/* STEP 2: SUB-EVENTS ITINERARY SELECTION */}
-                    {rsvpStep === 2 && (
+                    {/* STEP 3: DINING PREFERENCES & CUSTOM QUESTIONS */}
+                    {rsvpStep === 3 && (
                       <div className="space-y-6">
+                        {/* Which events (folded in from its own step) */}
+                        {visibleSchedule.length > 0 && (
+                          <div className="space-y-6 border-b pb-6" style={{ borderColor: theme.border_color }}>
                         <div className="space-y-1">
-                          <h4 className="font-serif text-lg font-semibold" style={{ color: theme.text_color }}>
+                          <h3 className="font-editorial text-xl font-semibold" style={{ color: theme.text_color }}>
                             {tr.selectEvents}
-                          </h4>
+                          </h3>
                           <p className="text-sm opacity-75">
                             {tr.confirmEvents}
                           </p>
@@ -1273,10 +1289,10 @@ export default function GuestPortalView({
                           {attendingGuestsInParty.map((guest) => (
                             <div
                               key={guest.id}
-                              className="rounded-2xl border p-4 space-y-3"
+                              className="space-y-3 border-t pt-5 first:border-t-0 first:pt-0"
                               style={{ borderColor: theme.border_color }}
                             >
-                              <span className="font-serif text-base font-semibold block" style={{ color: theme.text_color }}>
+                              <span className="font-editorial text-lg font-semibold block" style={{ color: theme.text_color }}>
                                 {guest.first_name}’s Itinerary
                               </span>
 
@@ -1288,7 +1304,7 @@ export default function GuestPortalView({
                                   return (
                                     <div
                                       key={item.id}
-                                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-xl border bg-white text-sm"
+                                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 py-3 border-t first:border-t-0 text-base"
                                       style={{ borderColor: theme.border_color }}
                                     >
                                       <div>
@@ -1306,7 +1322,7 @@ export default function GuestPortalView({
                                           type="button"
                                           onClick={() => handleSubEventStatusChange(guest.id, item.id, 'attending')}
                                           className={`min-h-[44px] px-4 py-3 rounded-full border text-base font-semibold tracking-wide cursor-pointer ${
-                                            isAttendingItem ? 'text-white' : ''
+                                            isAttendingItem ? 'text-[color:var(--on-accent)]' : ''
                                           }`}
                                           style={
                                             isAttendingItem
@@ -1320,7 +1336,7 @@ export default function GuestPortalView({
                                           type="button"
                                           onClick={() => handleSubEventStatusChange(guest.id, item.id, 'declined')}
                                           className={`min-h-[44px] px-4 py-3 rounded-full border text-base font-semibold tracking-wide cursor-pointer ${
-                                            !isAttendingItem ? 'text-white' : ''
+                                            !isAttendingItem ? 'text-[color:var(--on-ink)]' : ''
                                           }`}
                                           style={
                                             !isAttendingItem
@@ -1339,37 +1355,13 @@ export default function GuestPortalView({
                           ))}
                         </div>
 
-                        <div className="pt-2 flex justify-between">
-                          <button
-                            type="button"
-                            onClick={() => setRsvpStep(1)}
-                            className="rounded-full px-5 py-3.5 text-sm font-semibold uppercase tracking-wider border flex items-center gap-1.5 opacity-80 hover:opacity-100 cursor-pointer min-h-[44px]"
-                            style={{ borderColor: theme.border_color }}
-                          >
-                            <ChevronLeft className="h-4 w-4" />
-                            <span>{tr.back}</span>
-                          </button>
+                          </div>
+                        )}
 
-                          <button
-                            type="button"
-                            onClick={() => setRsvpStep(3)}
-                            className="rounded-full px-6 py-3.5 text-sm font-semibold uppercase tracking-wider text-white shadow-md flex items-center gap-1.5 hover:opacity-95 cursor-pointer min-h-[44px]"
-                            style={{ backgroundColor: theme.text_color }}
-                          >
-                            <span>{tr.continue}</span>
-                            <ChevronRight className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* STEP 3: DINING PREFERENCES & CUSTOM QUESTIONS */}
-                    {rsvpStep === 3 && (
-                      <div className="space-y-6">
                         <div className="space-y-1">
-                          <h4 className="font-serif text-lg font-semibold" style={{ color: theme.text_color }}>
+                          <h3 className="font-editorial text-xl font-semibold" style={{ color: theme.text_color }}>
                             {tr.diningDetails}
-                          </h4>
+                          </h3>
                           <p className="text-sm opacity-75">
                             {tr.specifyDetails}
                           </p>
@@ -1389,16 +1381,17 @@ export default function GuestPortalView({
                             return (
                               <div
                                 key={guest.id}
-                                className="rounded-2xl border p-4 space-y-3"
+                                className="space-y-3 border-t pt-5 first:border-t-0 first:pt-0"
                                 style={{ borderColor: theme.border_color }}
                               >
-                                <span className="font-serif text-base font-semibold block" style={{ color: theme.text_color }}>
+                                <span className="font-editorial text-lg font-semibold block" style={{ color: theme.text_color }}>
                                   {guest.first_name}’s Dining Details
                                 </span>
 
-                                {/* Entrée Input */}
+                                {/* Entrée: only when the couple has set a menu */}
+                                {menuOptions.length > 0 && (
                                 <div>
-                                  <label className="block text-xs uppercase tracking-wider font-semibold mb-1 opacity-80">
+                                  <label className="block text-base italic mb-1 text-[color:var(--muted)]">
                                     {tr.entreePreference}
                                   </label>
                                   {menuOptions.length > 0 ? (
@@ -1420,7 +1413,7 @@ export default function GuestPortalView({
                                             className="w-full min-h-[44px] rounded-xl border p-3.5 text-left transition-colors cursor-pointer"
                                             style={{
                                               borderColor: isSelected ? theme.accent_color : theme.border_color,
-                                              backgroundColor: isSelected ? `${theme.accent_color}10` : '#FFFFFF',
+                                              backgroundColor: isSelected ? `color-mix(in srgb, ${accent} 10%, ${surface})` : surface,
                                             }}
                                           >
                                             <span className="block text-base font-semibold">{option.name}</span>
@@ -1431,29 +1424,23 @@ export default function GuestPortalView({
                                         );
                                       })}
                                     </div>
-                                  ) : (
-                                    <input
-                                      type="text"
-                                      placeholder={tr.entreePlaceholder}
-                                      value={gState.meal_choice}
-                                      onChange={(e) =>
-                                        setPartyState((prev) => ({
-                                          ...prev,
-                                          [guest.id]: {
-                                            ...prev[guest.id],
-                                            meal_choice: e.target.value,
-                                          },
-                                        }))
-                                      }
-                                      className="w-full rounded-xl border p-3.5 bg-white focus:outline-none text-base"
-                                      style={{ borderColor: theme.border_color }}
-                                    />
-                                  )}
+                                  ) : null}
                                 </div>
+                                )}
 
+                                {/* Dietary needs, tucked away until a guest has some */}
+                                <details
+                                  className="group"
+                                  open={(gState.dietary_tags || []).length > 0 || !!gState.dietary_notes}
+                                >
+                                  <summary className="min-h-[44px] flex items-center gap-2 cursor-pointer list-none italic text-[color:var(--muted)] hover:text-[color:var(--ink)]">
+                                    <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden="true" />
+                                    {tr.anyDietaryNeeds}
+                                  </summary>
+                                  <div className="space-y-4 pt-3">
                                 {/* Dietary Tag Selector */}
                                 <div>
-                                  <label className="block text-xs uppercase tracking-wider font-semibold mb-1.5 opacity-80">
+                                  <label className="block text-base italic mb-1.5 text-[color:var(--muted)]">
                                     {tr.dietaryRestrictions}
                                   </label>
                                   <div className="flex flex-wrap gap-1.5">
@@ -1466,8 +1453,8 @@ export default function GuestPortalView({
                                           onClick={() => handleToggleDietaryTag(guest.id, tag)}
                                           className={`min-h-[44px] rounded-full px-4 py-3 text-xs font-semibold transition-colors cursor-pointer ${
                                             isSelected
-                                              ? 'bg-aisle-terracotta text-white shadow-xs'
-                                              : 'border bg-white text-aisle-charcoal hover:bg-aisle-sand/40'
+                                              ? 'bg-[color:var(--accent)] text-[color:var(--on-accent)] shadow-xs'
+                                              : 'border bg-[color:var(--field-bg)] text-[color:var(--ink)] hover:bg-[color:var(--tint)]'
                                           }`}
                                           style={{ borderColor: isSelected ? 'transparent' : theme.border_color }}
                                         >
@@ -1480,7 +1467,7 @@ export default function GuestPortalView({
 
                                 {/* Dietary Notes Input */}
                                 <div>
-                                  <label className="block text-xs uppercase tracking-wider font-semibold mb-1 opacity-80">
+                                  <label className="block text-base italic mb-1 text-[color:var(--muted)]">
                                     {tr.allergyNotes}
                                   </label>
                                   <input
@@ -1496,21 +1483,18 @@ export default function GuestPortalView({
                                         },
                                       }))
                                     }
-                                    className="w-full rounded-xl border p-3.5 bg-white focus:outline-none text-base"
+                                    className="w-full rounded-xl border p-3.5 bg-[color:var(--field-bg)] focus:outline-none text-base"
                                     style={{ borderColor: theme.border_color }}
                                   />
                                 </div>
 
+                                  </div>
+                                </details>
+
                                 {/* Plus-One Form */}
                                 {guest.plus_one_allowed && (
-                                  <div
-                                    className="rounded-2xl border p-3.5 space-y-2 mt-2"
-                                    style={{
-                                      borderColor: theme.accent_color,
-                                      backgroundColor: `${theme.accent_color}08`,
-                                    }}
-                                  >
-                                    <span className="text-xs font-bold uppercase tracking-widest block" style={{ color: theme.accent_color }}>
+                                  <div className="space-y-2 border-t pt-4 mt-2" style={{ borderColor: theme.border_color }}>
+                                    <span className="text-base italic block" style={{ color: accent }}>
                                       {tr.plusOneDetails}
                                     </span>
                                     <input
@@ -1526,7 +1510,7 @@ export default function GuestPortalView({
                                           },
                                         }))
                                       }
-                                      className="w-full rounded-xl border p-3 bg-white focus:outline-none text-base"
+                                      className="w-full rounded-xl border p-3 bg-[color:var(--field-bg)] focus:outline-none text-base"
                                       style={{ borderColor: theme.border_color }}
                                     />
                                     {menuOptions.length > 0 ? (
@@ -1539,7 +1523,7 @@ export default function GuestPortalView({
                                             [guest.id]: { ...prev[guest.id], plus_one_meal: e.target.value },
                                           }))
                                         }
-                                        className="w-full min-h-[44px] rounded-xl border p-3 bg-white focus:outline-none text-base"
+                                        className="w-full min-h-[44px] rounded-xl border p-3 bg-[color:var(--field-bg)] focus:outline-none text-base"
                                         style={{ borderColor: theme.border_color }}
                                       >
                                         <option value="">{tr.plusOneMealChoice}</option>
@@ -1563,7 +1547,7 @@ export default function GuestPortalView({
                                             },
                                           }))
                                         }
-                                        className="w-full rounded-xl border p-3 bg-white focus:outline-none text-base"
+                                        className="w-full rounded-xl border p-3 bg-[color:var(--field-bg)] focus:outline-none text-base"
                                         style={{ borderColor: theme.border_color }}
                                       />
                                     )}
@@ -1577,17 +1561,17 @@ export default function GuestPortalView({
                         {/* Custom RSVP Questions */}
                         {customQuestions.length > 0 && (
                           <div className="space-y-4 pt-2">
-                            <h4 className="font-serif text-base font-semibold" style={{ color: theme.text_color }}>
+                            <h3 className="font-editorial text-lg font-semibold" style={{ color: theme.text_color }}>
                               {tr.extraDetails}
-                            </h4>
+                            </h3>
 
                             {customQuestions.map((q) => {
                               const val = customAnswers[q.id] || '';
 
                               return (
-                                <div key={q.id} className="space-y-1.5 rounded-2xl border p-4 bg-white/70" style={{ borderColor: theme.border_color }}>
+                                <div key={q.id} className="space-y-1.5 border-t pt-5" style={{ borderColor: theme.border_color }}>
                                   <label className="block text-sm font-semibold">
-                                    {q.prompt} {q.is_required && <span className="text-rose-500">*</span>}
+                                    {q.prompt} {q.is_required && <span className="text-[color:var(--accent)]">*</span>}
                                   </label>
 
                                   {q.question_type === 'single_choice' ? (
@@ -1603,12 +1587,12 @@ export default function GuestPortalView({
                                             }
                                             className={`min-h-[44px] rounded-xl p-3 text-sm text-left border transition-all cursor-pointer flex items-center justify-between ${
                                               isOptSelected
-                                                ? 'border-aisle-terracotta bg-aisle-sand/60 font-semibold'
-                                                : 'border-aisle-border bg-white hover:bg-aisle-sand/20'
+                                                ? 'border-[color:var(--accent)] bg-[color:var(--tint)] font-semibold'
+                                                : 'border-[color:var(--line)] bg-[color:var(--field-bg)] hover:bg-[color:var(--tint)]'
                                             }`}
                                           >
                                             <span>{opt}</span>
-                                            {isOptSelected && <Check className="h-3.5 w-3.5 text-aisle-terracotta" />}
+                                            {isOptSelected && <Check className="h-3.5 w-3.5 text-[color:var(--accent)]" />}
                                           </button>
                                         );
                                       })}
@@ -1630,12 +1614,12 @@ export default function GuestPortalView({
                                             }}
                                             className={`rounded-xl p-2.5 text-sm text-left border transition-all cursor-pointer flex items-center justify-between ${
                                               isChecked
-                                                ? 'border-aisle-terracotta bg-aisle-sand/60 font-semibold'
-                                                : 'border-aisle-border bg-white hover:bg-aisle-sand/20'
+                                                ? 'border-[color:var(--accent)] bg-[color:var(--tint)] font-semibold'
+                                                : 'border-[color:var(--line)] bg-[color:var(--field-bg)] hover:bg-[color:var(--tint)]'
                                             }`}
                                           >
                                             <span>{opt}</span>
-                                            {isChecked && <Check className="h-3.5 w-3.5 text-aisle-terracotta" />}
+                                            {isChecked && <Check className="h-3.5 w-3.5 text-[color:var(--accent)]" />}
                                           </button>
                                         );
                                       })}
@@ -1648,7 +1632,7 @@ export default function GuestPortalView({
                                       onChange={(e) =>
                                         setCustomAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))
                                       }
-                                      className="w-full rounded-xl border p-3.5 bg-white focus:outline-none text-base"
+                                      className="w-full rounded-xl border p-3.5 bg-[color:var(--field-bg)] focus:outline-none text-base"
                                       style={{ borderColor: theme.border_color }}
                                     />
                                   )}
@@ -1661,8 +1645,8 @@ export default function GuestPortalView({
                         <div className="pt-2 flex justify-between">
                           <button
                             type="button"
-                            onClick={() => setRsvpStep(2)}
-                            className="rounded-full px-5 py-3.5 text-sm font-semibold uppercase tracking-wider border flex items-center gap-1.5 opacity-80 hover:opacity-100 cursor-pointer min-h-[44px]"
+                            onClick={() => setRsvpStep(1)}
+                            className="rounded-full px-5 py-3.5 text-base font-semibold tracking-wide border flex items-center gap-1.5 opacity-80 hover:opacity-100 cursor-pointer min-h-[44px]"
                             style={{ borderColor: theme.border_color }}
                           >
                             <ChevronLeft className="h-4 w-4" />
@@ -1672,7 +1656,7 @@ export default function GuestPortalView({
                           <button
                             type="button"
                             onClick={() => setRsvpStep(4)}
-                            className="rounded-full px-6 py-3.5 text-sm font-semibold uppercase tracking-wider text-white shadow-md flex items-center gap-1.5 hover:opacity-95 cursor-pointer min-h-[44px]"
+                            className="rounded-full px-6 py-3.5 text-base font-semibold tracking-wide text-[color:var(--on-ink)] shadow-md flex items-center gap-1.5 hover:opacity-95 cursor-pointer min-h-[44px]"
                             style={{ backgroundColor: theme.text_color }}
                           >
                             <span>{tr.reviewSummary}</span>
@@ -1686,15 +1670,15 @@ export default function GuestPortalView({
                     {rsvpStep === 4 && (
                       <div className="space-y-6">
                         <div className="space-y-1">
-                          <h4 className="font-serif text-lg font-semibold" style={{ color: theme.text_color }}>
+                          <h3 className="font-editorial text-xl font-semibold" style={{ color: theme.text_color }}>
                             {tr.reviewTitle}
-                          </h4>
+                          </h3>
                           <p className="text-sm opacity-75">
                             {tr.reviewIntro}
                           </p>
                         </div>
 
-                        <div className="rounded-2xl border p-5 space-y-4 bg-[#FAF7F2]/50" style={{ borderColor: theme.border_color }}>
+                        <div className="border-y py-5 space-y-4" style={{ borderColor: theme.border_color }}>
                           {allGuests.map((guest) => {
                             const st = partyState[guest.id] || { rsvp_status: 'pending' };
                             const isAtt = st.rsvp_status === 'attending';
@@ -1704,7 +1688,7 @@ export default function GuestPortalView({
                                 <div className="flex items-center justify-between">
                                   <strong className="text-base font-semibold">{guest.first_name} {guest.last_name || ''}</strong>
                                   <span
-                                    className="px-2 py-0.5 rounded-full text-xs uppercase tracking-[0.2em]"
+                                    className="text-base italic"
                                     style={isAtt ? { backgroundColor: `${theme.accent_color}20`, color: theme.accent_color } : { color: theme.text_color, opacity: 0.7 }}
                                   >
                                     {st.rsvp_status}
@@ -1712,7 +1696,7 @@ export default function GuestPortalView({
                                 </div>
 
                                 {isAtt && (
-                                  <div className="text-xs opacity-80 space-y-0.5 pt-1 pl-2 border-l-2 border-aisle-gold/40">
+                                  <div className="text-xs opacity-80 space-y-0.5 pt-1 pl-2 border-l-2 border-[color:var(--line)]">
                                     {st.meal_choice && <p>🍽️ {tr.entree}: {st.meal_choice}</p>}
                                     {st.dietary_tags?.length > 0 && <p>🏷️ Dietary: {st.dietary_tags.join(', ')}</p>}
                                     {st.dietary_notes && <p>⚠️ Allergy Note: {st.dietary_notes}</p>}
@@ -1725,7 +1709,7 @@ export default function GuestPortalView({
 
                           {customQuestions.length > 0 && (
                             <div className="pt-2 border-t text-sm space-y-1" style={{ borderColor: theme.border_color }}>
-                              <span className="text-xs uppercase font-bold tracking-wider opacity-60">
+                              <span className="text-base italic text-[color:var(--muted)]">
                                 {tr.customAnswers}
                               </span>
                               {customQuestions.map((q) => {
@@ -1741,7 +1725,7 @@ export default function GuestPortalView({
                         </div>
 
                         {errorMessage && (
-                          <p className="text-sm text-rose-600 text-center font-semibold">
+                          <p className="text-sm text-[color:var(--error)] text-center font-semibold">
                             {errorMessage}
                           </p>
                         )}
@@ -1750,7 +1734,7 @@ export default function GuestPortalView({
                           <button
                             type="button"
                             onClick={() => setRsvpStep(hasAnyAttending ? 3 : 1)}
-                            className="rounded-full px-5 py-3.5 text-sm font-semibold uppercase tracking-wider border flex items-center gap-1.5 opacity-80 hover:opacity-100 cursor-pointer min-h-[44px]"
+                            className="rounded-full px-5 py-3.5 text-base font-semibold tracking-wide border flex items-center gap-1.5 opacity-80 hover:opacity-100 cursor-pointer min-h-[44px]"
                             style={{ borderColor: theme.border_color }}
                           >
                             <ChevronLeft className="h-4 w-4" />
@@ -1761,7 +1745,7 @@ export default function GuestPortalView({
                             type="button"
                             disabled={isSubmitting}
                             onClick={handleFinalRsvpSubmit}
-                            className="min-h-[44px] rounded-full px-8 py-3 text-sm font-semibold tracking-wide text-white shadow-md hover:opacity-90 disabled:opacity-50 cursor-pointer flex items-center gap-2"
+                            className="min-h-[44px] rounded-full px-8 py-3 text-sm font-semibold tracking-wide text-[color:var(--on-ink)] shadow-md hover:opacity-90 disabled:opacity-50 cursor-pointer flex items-center gap-2"
                             style={{ backgroundColor: theme.text_color }}
                           >
                             {isSubmitting ? (
@@ -1816,7 +1800,7 @@ export default function GuestPortalView({
                 />
                 <label
                   htmlFor="stream-upload"
-                  className="inline-flex cursor-pointer items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold uppercase tracking-wider transition-all hover:scale-105 shadow-sm text-white"
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-full px-6 py-3 text-base font-semibold tracking-wide transition-all hover:scale-105 shadow-sm text-[color:var(--on-ink)]"
                   style={{ backgroundColor: theme.text_color }}
                 >
                   <Camera className="h-4 w-4" />
@@ -1840,6 +1824,8 @@ export default function GuestPortalView({
                   >
                     <img
                       src={p.image_url}
+                      loading="lazy"
+                      decoding="async"
                       alt={p.caption || 'Wedding Photo'}
                       className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                     />
@@ -1879,9 +1865,9 @@ export default function GuestPortalView({
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <h4 className="font-serif text-base font-semibold" style={{ color: theme.text_color }}>
+                          <h3 className="font-editorial text-lg font-semibold" style={{ color: theme.text_color }}>
                             {item.title}
-                          </h4>
+                          </h3>
                           {item.description && (
                             <p className="text-sm opacity-75 mt-0.5">{item.description}</p>
                           )}
@@ -1890,7 +1876,7 @@ export default function GuestPortalView({
                         {item.is_cash_fund ? (
                           publicView ? null : <button
                             onClick={() => setActiveCashFund(item)}
-                            className="rounded-full px-4 py-3.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 cursor-pointer shrink-0 min-h-[44px]"
+                            className="rounded-full px-4 py-3.5 text-sm font-semibold text-[color:var(--on-accent)] transition-opacity hover:opacity-90 cursor-pointer shrink-0 min-h-[44px]"
                             style={{ backgroundColor: theme.accent_color }}
                           >
                             {tr.contribute}
@@ -1941,27 +1927,61 @@ export default function GuestPortalView({
     ),
   };
 
+  const floatingControls = (
+    <>
+      {musicUrl && hasOpened && (
+        <button
+          type="button"
+          onClick={toggleMusic}
+          aria-label={musicPlaying ? tr.pauseMusic : tr.playMusic}
+          className={`${previewMode ? 'absolute pointer-events-auto' : 'fixed bottom-5'} right-5 z-40 flex h-11 w-11 items-center justify-center rounded-full shadow-lg text-[color:var(--on-accent)]`}
+          style={{ backgroundColor: theme.accent_color || '#9E5A44' }}
+        >
+          {musicPlaying ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+        </button>
+      )}
+      {hasOpened && pastCalendar && !publicView && !isRsvpLocked && rsvpStep !== 5 && !rsvpInView && (
+        <a
+          href="#rsvp"
+          className={`${previewMode ? 'relative pointer-events-auto' : 'fixed bottom-5 left-1/2 -translate-x-1/2'} z-40 inline-flex min-h-[46px] items-center gap-3 whitespace-nowrap rounded-full px-6 shadow-lg transition-opacity hover:opacity-90`}
+          style={{ backgroundColor: accent, color: bandInk }}
+        >
+          <span className="font-editorial text-lg tracking-[0.12em]">RSVP</span>
+          {replyByShort && (
+            <span className="font-editorial text-sm italic">
+              {tr.replyBy} {replyByShort}
+            </span>
+          )}
+        </a>
+      )}
+    </>
+  );
+
   return (
     <div
       lang={portalLanguageOf(event.language)}
       style={{
+        ...paletteVars,
         backgroundColor: theme.bg_color || '#FAF7F2',
         color: theme.text_color || '#2C2523',
         ...(studioLayout ? pageBackgroundStyle(theme) : {}),
       }}
-      className={`min-h-screen selection:bg-aisle-terracotta selection:text-white pb-28 ${fontClass} transition-colors duration-500 ${theme.paper_texture ? 'paper-grain' : ''}`}
+      className={`invite-root ${theme.font_family === 'vintage-editorial' ? 'theme-vintage' : ''} min-h-screen selection:bg-[color:var(--accent)] selection:text-[color:var(--on-accent)] pb-28 ${fontClass} transition-colors duration-500 ${theme.paper_texture ? 'paper-grain relative' : ''}`}
     >
       {/* 1. Tactile Wax-Seal / Envelope Opening Reveal */}
       {!hasOpened && (
         <WaxSealOpening
           coupleNames={event.couple_names}
           openingStyle={theme.opening_style}
+          nameStyle={scriptNames ? 'script' : 'serif'}
           palette={{
             bg: theme.bg_color,
             surface: theme.surface_color || '#FFFFFF',
             text: theme.text_color,
             accent: theme.accent_color,
             border: theme.border_color,
+            paper: theme.envelope_paper,
+            liner: theme.envelope_liner,
           }}
           strings={tr}
           guestName={publicView ? undefined : partyNames}
@@ -1976,37 +1996,11 @@ export default function GuestPortalView({
         />
       )}
 
-      {musicUrl && (
-        <>
-          <audio ref={audioRef} src={musicUrl} loop preload="none" />
-          {hasOpened && (
-            <button
-              type="button"
-              onClick={toggleMusic}
-              aria-label={musicPlaying ? tr.pauseMusic : tr.playMusic}
-              className="fixed bottom-5 right-5 z-40 flex h-11 w-11 items-center justify-center rounded-full shadow-lg text-white"
-              style={{ backgroundColor: theme.accent_color || '#9E5A44' }}
-            >
-              {musicPlaying ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
-            </button>
-          )}
-        </>
-      )}
+      {musicUrl && <audio ref={audioRef} src={musicUrl} loop preload="none" />}
 
-      {hasOpened && !publicView && !isRsvpLocked && rsvpStep !== 5 && !rsvpInView && (
-        <a
-          href="#rsvp"
-          className="fixed bottom-5 left-1/2 z-40 inline-flex min-h-[46px] -translate-x-1/2 items-center gap-3 whitespace-nowrap rounded-full px-6 shadow-lg transition-opacity hover:opacity-90"
-          style={{ backgroundColor: accent, color: bandInk }}
-        >
-          <span className="font-serif text-base tracking-[0.12em]">RSVP</span>
-          {replyByShort && (
-            <span className="font-editorial text-sm italic opacity-85">
-              {tr.replyBy} {replyByShort}
-            </span>
-          )}
-        </a>
-      )}
+      {/* Floating music button and RSVP pill. On the live page they float over the window; in the dashboard's
+          preview pane (whose transform traps position: fixed) they sit in a sticky bar at the pane's foot instead. */}
+      {!previewMode && floatingControls}
 
       {/* 1. COVER: the couple's photo full-bleed, names over it. The page slides up over it like a curtain. */}
       {showPhotoHero && (
@@ -2020,14 +2014,15 @@ export default function GuestPortalView({
             className="absolute inset-0"
             style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.04) 38%, rgba(0,0,0,0.58) 100%)' }}
           />
+          <CoverFrame flair={theme.border_flair} accent={accent} />
           <div className="absolute inset-x-0 bottom-0 px-6 pb-[11svh] text-center text-white [text-shadow:0_1px_18px_rgba(0,0,0,0.35)]">
-            <p className="font-editorial text-sm uppercase tracking-[0.32em] opacity-90">
+            <p className="font-editorial text-xs sm:text-sm uppercase tracking-[0.22em] sm:tracking-[0.32em] opacity-90 [text-wrap:balance]">
               {onEditText ? editable('theme.eyebrow_text', theme.eyebrow_text, 'top line') : theme.eyebrow_text || tr.weddingCelebration}
             </p>
             <h1 className={`${nameClass} mt-3 ${scriptNames ? 'text-7xl sm:text-8xl' : 'text-5xl sm:text-6xl'}`}>{coupleNamesStacked}</h1>
             <div className="mt-5 flex items-center justify-center gap-3">
               <span className="h-px w-8 bg-white/60" />
-              <p className="font-editorial text-sm uppercase tracking-[0.28em]">
+              <p className="font-editorial text-sm uppercase tracking-[0.28em] [font-variant-numeric:lining-nums]">
                 {new Date(event.wedding_date).toLocaleDateString(locale, { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' })}
               </p>
               <span className="h-px w-8 bg-white/60" />
@@ -2045,23 +2040,26 @@ export default function GuestPortalView({
         {/* 2. THE INVITATION WORDING: framed stationery, or a quiet text block under the cover photo */}
         <div className={`mx-auto ${canvasMaxWidthClass} px-5 sm:px-8 pt-14 sm:pt-20 pb-4`}>
           {showPhotoHero ? (
-            <header className="text-center space-y-5 max-w-md mx-auto">
+            <header className="text-center space-y-5 max-w-md sm:max-w-xl mx-auto">
               {chapterMark}
-              <p className="font-editorial text-xl italic leading-relaxed" style={{ color: theme.muted_color }}>
-                &ldquo;{onEditText ? editable('theme.poetic_line', theme.poetic_line, 'poetic line') : theme.poetic_line || 'Two hearts, one horizon'}&rdquo;
-              </p>
-              <p className="font-editorial text-sm uppercase tracking-[0.28em]" style={{ color: accent }}>
+              <p className="font-editorial text-lg italic" style={{ color: muted }}>
                 {tr.togetherWithFamilies}
               </p>
-              <p className="font-editorial text-lg leading-relaxed [text-wrap:balance]">
+              <p className={`${nameClass} ${scriptNames ? 'text-5xl sm:text-6xl' : 'text-3xl sm:text-4xl'}`} style={{ color: ink }}>
+                {event.couple_names}
+              </p>
+              <p className="font-editorial text-lg sm:text-2xl leading-relaxed [text-wrap:balance]">
                 {onEditText ? editable('theme.invitation_phrase', theme.invitation_phrase, 'invitation line', true) : theme.invitation_phrase || 'request the honour of your presence at their marriage'}
               </p>
               <div className="pt-2 space-y-1">
-                <p className="font-serif text-lg">{weddingDateLong}</p>
-                <p className="font-editorial text-base italic" style={{ color: theme.muted_color }}>
+                <p className="font-editorial text-xl vintage-caps">{weddingDateLong}</p>
+                <p className="font-editorial text-base italic" style={{ color: muted }}>
                   {[event.venue_name, event.venue_address].filter(Boolean).join(' · ')}
                 </p>
               </div>
+              <p className="font-editorial text-lg sm:text-xl italic leading-relaxed" style={{ color: muted }}>
+                &ldquo;{onEditText ? editable('theme.poetic_line', theme.poetic_line, 'poetic line') : theme.poetic_line || 'Two hearts, one horizon'}&rdquo;
+              </p>
             </header>
           ) : (
             <header
@@ -2083,24 +2081,23 @@ export default function GuestPortalView({
                 <p className="font-editorial text-sm uppercase tracking-[0.3em]" style={{ color: accent }}>
                   {onEditText ? editable('theme.eyebrow_text', theme.eyebrow_text, 'top line') : theme.eyebrow_text || tr.weddingCelebration}
                 </p>
-                <p className="font-editorial text-lg italic" style={{ color: theme.muted_color }}>
-                  &ldquo;{onEditText ? editable('theme.poetic_line', theme.poetic_line, 'poetic line') : theme.poetic_line || 'Two hearts, one horizon'}&rdquo;
-                </p>
                 <div className="space-y-3">
-                  <p className="font-editorial text-sm uppercase tracking-[0.25em] opacity-75">{tr.togetherWithFamilies}</p>
                   <h1 className={`${nameClass} ${scriptNames ? 'text-6xl sm:text-7xl' : 'text-4xl sm:text-5xl'}`} style={{ color: ink }}>
                     {coupleNamesStacked}
                   </h1>
-                  <p className="font-editorial text-lg italic max-w-sm mx-auto leading-relaxed [text-wrap:balance]" style={{ color: theme.muted_color }}>
+                  <p className="font-editorial text-lg italic max-w-sm mx-auto leading-relaxed [text-wrap:balance]" style={{ color: muted }}>
                     {onEditText ? editable('theme.invitation_phrase', theme.invitation_phrase, 'invitation line', true) : theme.invitation_phrase || 'request the honour of your presence at their marriage'}
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <p className="font-serif text-lg">{weddingDateLong}</p>
-                  <p className="font-editorial text-base italic" style={{ color: theme.muted_color }}>
+                  <p className="font-editorial text-xl vintage-caps">{weddingDateLong}</p>
+                  <p className="font-editorial text-base italic" style={{ color: muted }}>
                     {[event.venue_name, event.venue_address].filter(Boolean).join(' · ')}
                   </p>
                 </div>
+                <p className="font-editorial text-lg italic" style={{ color: muted }}>
+                  &ldquo;{onEditText ? editable('theme.poetic_line', theme.poetic_line, 'poetic line') : theme.poetic_line || 'Two hearts, one horizon'}&rdquo;
+                </p>
               </div>
             </header>
           )}
@@ -2109,7 +2106,7 @@ export default function GuestPortalView({
           {!showPhotoHero && event.cover_image_url && (
             <div
               className={`relative mx-auto mt-12 aspect-[4/5] sm:aspect-[16/11] w-full overflow-hidden shadow-wedding ${
-                theme.border_flair === 'arch' ? 'rounded-t-[140px] rounded-b-2xl' : 'rounded-2xl'
+                theme.border_flair === 'arch' ? 'rounded-t-[140px] rounded-b-[2px]' : 'rounded-[2px]'
               }`}
             >
               <img src={event.cover_image_url} alt={event.couple_names} className="h-full w-full object-cover" />
@@ -2126,9 +2123,10 @@ export default function GuestPortalView({
           const monthLabel = new Date(Date.UTC(cal.year, cal.month, 1)).toLocaleDateString(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' });
           return (
             <section
+              id="save-the-date"
               aria-label={`${tr.saveTheDate}: ${weddingDateLong}`}
               className="mt-10 px-5 py-16 sm:py-20"
-              style={{ backgroundColor: `color-mix(in srgb, ${accent} 7%, ${pageBg})` }}
+              style={{ backgroundColor: darkTheme ? `color-mix(in srgb, ${accent} 4%, ${surface})` : `color-mix(in srgb, ${accent} 7%, ${pageBg})` }}
             >
               <div className="mx-auto max-w-sm text-center">
                 <p className="font-editorial text-sm uppercase tracking-[0.32em]" style={{ color: accent }}>
@@ -2137,7 +2135,7 @@ export default function GuestPortalView({
                 <h2 className={`${headingClass} mt-2 capitalize`}>{monthLabel}</h2>
                 <div aria-hidden="true" className="mt-8 grid grid-cols-7 gap-y-2 border-y py-5 font-editorial" style={{ borderColor: `color-mix(in srgb, ${accent} 25%, transparent)` }}>
                   {weekdays.map((w) => (
-                    <span key={w} className="pb-2 text-xs uppercase tracking-[0.15em] opacity-60">
+                    <span key={w} className="pb-2 text-xs uppercase tracking-[0.15em] text-[color:var(--muted)]">
                       {w.replace('.', '')}
                     </span>
                   ))}
@@ -2158,10 +2156,12 @@ export default function GuestPortalView({
                   ))}
                 </div>
                 <div className="mt-6 flex items-start justify-center">
-                  {(['days', 'hours', 'minutes'] as const).map((unit, i) => (
+                  {countdownUnits(timeLeft).map((unit, i) => (
                     <div key={unit} className={`px-5 sm:px-7 ${i > 0 ? 'border-l' : ''}`} style={{ borderColor: `color-mix(in srgb, ${accent} 25%, transparent)` }}>
                       <span className="font-editorial text-3xl italic leading-none block">{timeLeft[unit]}</span>
-                      <span className="mt-1 block text-xs uppercase tracking-[0.2em] opacity-60">{tr[unit]}</span>
+                      <span className="mt-1 block text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">
+                        {timeLeft[unit] === 1 ? tr[UNIT_SINGULAR[unit]] : tr[unit]}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -2188,7 +2188,17 @@ export default function GuestPortalView({
               <div
                 key={id}
                 className="my-8 px-5 sm:px-8 py-16 sm:py-24"
-                style={{ backgroundColor: accent, color: bandInk, ['--section-accent' as string]: bandInk } as React.CSSProperties}
+                style={
+                  (darkTheme
+                    ? // Night themes: a deeper shade of the page between accent hairlines, not a flat block of gold
+                      {
+                        backgroundColor: `color-mix(in srgb, ${pageBg} 72%, #000)`,
+                        color: ink,
+                        borderBlock: `1px solid color-mix(in srgb, ${accent} 45%, transparent)`,
+                        ['--section-accent' as string]: accent,
+                      }
+                    : { backgroundColor: accent, color: bandInk, ['--section-accent' as string]: bandInk }) as React.CSSProperties
+                }
               >
                 <div className={`mx-auto ${canvasMaxWidthClass}`}>{sectionBlocks[id]}</div>
               </div>
@@ -2211,7 +2221,7 @@ export default function GuestPortalView({
                 color: theme.text_color,
               }}
             >
-              <h3 className="font-serif text-xl font-semibold">
+              <h3 className="font-editorial text-2xl font-semibold">
                 {tr.contributeTo} {activeCashFund.title}
               </h3>
               <p className="text-sm opacity-75">
@@ -2219,9 +2229,9 @@ export default function GuestPortalView({
               </p>
 
               {pledgeSuccess ? (
-                <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-5 text-center text-emerald-900 text-sm space-y-2">
-                  <div className="text-xl">🎉</div>
-                  <h4 className="font-serif text-base font-semibold">{tr.giftRecorded}</h4>
+                <div className="rounded-2xl bg-[color:var(--tint)] border border-[color:var(--line)] p-5 text-center text-sm space-y-2">
+                  <CheckCircle2 className="mx-auto h-6 w-6 text-[color:var(--accent)]" aria-hidden="true" />
+                  <h3 className="font-editorial text-lg font-semibold">{tr.giftRecorded}</h3>
                   <p className="text-xs opacity-80 leading-relaxed">
                     Thank you {pledgeName}! Your gift and warm message have been recorded for {event.couple_names}.
                   </p>
@@ -2229,12 +2239,12 @@ export default function GuestPortalView({
               ) : (
                 <form onSubmit={handleCashFundPledge} className="space-y-4 text-sm">
                   {pledgeError && (
-                    <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+                    <p role="alert" className="rounded-xl border border-[color:var(--error)] px-4 py-3 text-sm text-[color:var(--error)]">
                       {pledgeError}
                     </p>
                   )}
                   <div>
-                    <label className="block uppercase tracking-wider text-xs font-semibold mb-1 opacity-80">
+                    <label className="block text-base italic mb-1 text-[color:var(--muted)]">
                       {tr.selectAmount}
                     </label>
                     <div className="grid grid-cols-4 gap-2 mb-2">
@@ -2245,8 +2255,8 @@ export default function GuestPortalView({
                           onClick={() => setPledgeAmount(preset)}
                           className={`min-h-[44px] rounded-xl py-3 text-sm font-semibold border transition-all cursor-pointer ${
                             pledgeAmount === preset
-                              ? 'bg-aisle-charcoal text-white border-aisle-charcoal'
-                              : 'bg-white border-aisle-border text-aisle-charcoal hover:bg-aisle-sand/30'
+                              ? 'bg-[color:var(--ink)] text-[color:var(--on-ink)] border-[color:var(--ink)]'
+                              : 'bg-[color:var(--field-bg)] border-[color:var(--line)] text-[color:var(--ink)] hover:bg-[color:var(--tint)]'
                           }`}
                         >
                           ${preset}
@@ -2260,15 +2270,15 @@ export default function GuestPortalView({
                       value={pledgeAmount}
                       onChange={(e) => setPledgeAmount(e.target.value)}
                       required
-                      className="w-full rounded-xl border p-3.5 bg-white/90 focus:outline-none text-base"
+                      className="w-full rounded-xl border p-3.5 bg-[color:var(--field-bg)] focus:outline-none text-base"
                       style={{ borderColor: theme.border_color }}
                     />
                   </div>
 
                   {/* Direct Payment Handles (Option 1) */}
                   {customSections.registry && (
-                    <div className="space-y-2 pt-2 border-t border-aisle-border/60">
-                      <label className="block uppercase tracking-wider text-xs font-semibold opacity-80">
+                    <div className="space-y-2 pt-2 border-t border-[color:var(--line)]">
+                      <label className="block text-base italic text-[color:var(--muted)]">
                         {tr.sendDirectly}
                       </label>
 
@@ -2279,7 +2289,7 @@ export default function GuestPortalView({
                             href={`https://venmo.com/${customSections.registry.venmo_handle.replace('@', '')}?txn=pay&amount=${pledgeAmount || '0'}&note=${encodeURIComponent(`Wedding Gift for ${event.couple_names}`)}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center justify-between p-2.5 rounded-xl border border-blue-200 bg-blue-50/60 text-blue-900 font-semibold hover:bg-blue-100/60 transition-colors shadow-xs"
+                            className="flex items-center justify-between p-2.5 rounded-xl border border-[color:var(--line)] bg-[color:var(--tint)] text-[color:var(--ink)] font-semibold hover:border-[color:var(--accent)] transition-colors shadow-xs"
                           >
                             <div className="flex items-center gap-1.5">
                               <span className="font-bold text-sm">Venmo</span>
@@ -2287,7 +2297,7 @@ export default function GuestPortalView({
                                 @{customSections.registry.venmo_handle.replace('@', '')}
                               </span>
                             </div>
-                            <span className="text-xs font-bold text-blue-700 bg-white px-2 py-0.5 rounded-full border border-blue-200">
+                            <span className="text-xs font-bold text-[color:var(--accent)] bg-[color:var(--field-bg)] px-2 py-0.5 rounded-full border border-[color:var(--line)]">
                               Open Venmo ↗
                             </span>
                           </a>
@@ -2295,7 +2305,7 @@ export default function GuestPortalView({
 
                         {/* Zelle */}
                         {customSections.registry.zelle_info && (
-                          <div className="flex items-center justify-between p-2.5 rounded-xl border border-purple-200 bg-purple-50/60 text-purple-900 font-semibold shadow-xs">
+                          <div className="flex items-center justify-between p-2.5 rounded-xl border border-[color:var(--line)] bg-[color:var(--tint)] text-[color:var(--ink)] font-semibold hover:border-[color:var(--accent)] shadow-xs">
                             <div className="flex items-center gap-1.5">
                               <span className="font-bold text-sm">Zelle</span>
                               <span className="text-xs font-mono font-normal opacity-90">
@@ -2309,7 +2319,7 @@ export default function GuestPortalView({
                                 setCopiedZelle(true);
                                 setTimeout(() => setCopiedZelle(false), 2000);
                               }}
-                              className="text-xs font-bold text-purple-800 bg-white px-2.5 py-3 rounded-full border border-purple-200 hover:bg-purple-50 cursor-pointer min-h-[44px]"
+                              className="text-xs font-bold text-[color:var(--accent)] bg-[color:var(--field-bg)] px-2.5 py-3 rounded-full border border-[color:var(--line)] cursor-pointer min-h-[44px]"
                             >
                               {copiedZelle ? 'Copied!' : tr.copy}
                             </button>
@@ -2322,7 +2332,7 @@ export default function GuestPortalView({
                             href={`https://cash.app/$${customSections.registry.cashapp_tag.replace('$', '')}/${pledgeAmount || ''}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center justify-between p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/60 text-emerald-900 font-semibold hover:bg-emerald-100/60 transition-colors shadow-xs"
+                            className="flex items-center justify-between p-2.5 rounded-xl border border-[color:var(--line)] bg-[color:var(--tint)] text-[color:var(--ink)] font-semibold hover:border-[color:var(--accent)] transition-colors shadow-xs"
                           >
                             <div className="flex items-center gap-1.5">
                               <span className="font-bold text-sm">Cash App</span>
@@ -2330,7 +2340,7 @@ export default function GuestPortalView({
                                 ${customSections.registry.cashapp_tag.replace('$', '')}
                               </span>
                             </div>
-                            <span className="text-xs font-bold text-emerald-700 bg-white px-2 py-0.5 rounded-full border border-emerald-200">
+                            <span className="text-xs font-bold text-[color:var(--accent)] bg-[color:var(--field-bg)] px-2 py-0.5 rounded-full border border-[color:var(--line)]">
                               Open Cash App ↗
                             </span>
                           </a>
@@ -2346,7 +2356,7 @@ export default function GuestPortalView({
                             }
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center justify-between p-2.5 rounded-xl border border-sky-200 bg-sky-50/60 text-sky-900 font-semibold hover:bg-sky-100/60 transition-colors shadow-xs"
+                            className="flex items-center justify-between p-2.5 rounded-xl border border-[color:var(--line)] bg-[color:var(--tint)] text-[color:var(--ink)] font-semibold hover:border-[color:var(--accent)] transition-colors shadow-xs"
                           >
                             <div className="flex items-center gap-1.5">
                               <span className="font-bold text-sm">PayPal</span>
@@ -2354,7 +2364,7 @@ export default function GuestPortalView({
                                 {customSections.registry.paypal_handle}
                               </span>
                             </div>
-                            <span className="text-xs font-bold text-sky-700 bg-white px-2 py-0.5 rounded-full border border-sky-200">
+                            <span className="text-xs font-bold text-[color:var(--accent)] bg-[color:var(--field-bg)] px-2 py-0.5 rounded-full border border-[color:var(--line)]">
                               Open PayPal ↗
                             </span>
                           </a>
@@ -2371,7 +2381,7 @@ export default function GuestPortalView({
                   )}
 
                   <div>
-                    <label className="block uppercase tracking-wider text-xs font-semibold mb-1 opacity-80">
+                    <label className="block text-base italic mb-1 text-[color:var(--muted)]">
                       {tr.yourName}
                     </label>
                     <input
@@ -2379,13 +2389,13 @@ export default function GuestPortalView({
                       value={pledgeName}
                       onChange={(e) => setPledgeName(e.target.value)}
                       required
-                      className="w-full rounded-xl border p-3.5 bg-white/90 focus:outline-none text-base"
+                      className="w-full rounded-xl border p-3.5 bg-[color:var(--field-bg)] focus:outline-none text-base"
                       style={{ borderColor: theme.border_color }}
                     />
                   </div>
 
                   <div>
-                    <label className="block uppercase tracking-wider text-xs font-semibold mb-1 opacity-80">
+                    <label className="block text-base italic mb-1 text-[color:var(--muted)]">
                       {tr.warmWishes}
                     </label>
                     <textarea
@@ -2393,7 +2403,7 @@ export default function GuestPortalView({
                       placeholder={tr.warmWishesPlaceholder}
                       value={pledgeMessage}
                       onChange={(e) => setPledgeMessage(e.target.value)}
-                      className="w-full rounded-xl border p-3.5 bg-white/90 focus:outline-none text-base"
+                      className="w-full rounded-xl border p-3.5 bg-[color:var(--field-bg)] focus:outline-none text-base"
                       style={{ borderColor: theme.border_color }}
                     />
                   </div>
@@ -2402,7 +2412,7 @@ export default function GuestPortalView({
                     <button
                       type="button"
                       onClick={() => setActiveCashFund(null)}
-                      className="flex-1 rounded-full border py-3.5 text-sm font-semibold uppercase tracking-wider opacity-75 hover:opacity-100 cursor-pointer min-h-[44px]"
+                      className="flex-1 rounded-full border py-3.5 text-base font-semibold tracking-wide opacity-75 hover:opacity-100 cursor-pointer min-h-[44px]"
                       style={{ borderColor: theme.border_color }}
                     >
                       {tr.cancel}
@@ -2410,7 +2420,7 @@ export default function GuestPortalView({
                     <button
                       type="submit"
                       disabled={isPledging}
-                      className="flex-1 rounded-full py-3.5 text-sm font-semibold uppercase tracking-wider text-white shadow-sm hover:opacity-90 disabled:opacity-50 cursor-pointer min-h-[44px]"
+                      className="flex-1 rounded-full py-3.5 text-base font-semibold tracking-wide text-[color:var(--on-accent)] shadow-sm hover:opacity-90 disabled:opacity-50 cursor-pointer min-h-[44px]"
                       style={{ backgroundColor: theme.accent_color }}
                     >
                       {isPledging ? tr.recordingGift : tr.recordGift}
@@ -2422,6 +2432,56 @@ export default function GuestPortalView({
           </div>
         )}
       </main>
+
+      {previewMode && showFloating && (
+        <div className="pointer-events-none sticky bottom-0 z-40 -mt-20 flex h-20 items-center justify-center">{floatingControls}</div>
+      )}
     </div>
   );
+}
+
+/** One hand-drawn detail over the photo cover, chosen by the preset's border_flair. */
+function CoverFrame({ flair, accent }: { flair?: string; accent: string }) {
+  const line = 'rgba(255,255,255,0.55)';
+  // Light accents (champagne, marigold) read on a photo; deep ones fall back to white
+  const tone = contrastRatio(accent, '#000000') > 7 ? accent : line;
+  switch (flair) {
+    case 'botanical-crest':
+      return (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-5">
+          {['left-0 top-0 border-l border-t', 'right-0 top-0 border-r border-t', 'left-0 bottom-0 border-l border-b', 'right-0 bottom-0 border-r border-b'].map((pos) => (
+            <span key={pos} className={`absolute h-10 w-10 ${pos}`} style={{ borderColor: line }} />
+          ))}
+        </div>
+      );
+    case 'double-line':
+      return (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-4 border p-1.5" style={{ borderColor: line }}>
+          <div className="h-full w-full border" style={{ borderColor: 'rgba(255,255,255,0.35)' }} />
+        </div>
+      );
+    case 'hairline-gold':
+      return <div aria-hidden="true" className="pointer-events-none absolute inset-5 border" style={{ borderColor: tone }} />;
+    case 'arch':
+      return <div aria-hidden="true" className="pointer-events-none absolute inset-x-6 top-8 bottom-6 rounded-t-full border" style={{ borderColor: line }} />;
+    case 'arabesque':
+      return (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-4 border p-1.5" style={{ borderColor: tone }}>
+          <div className="h-full w-full border" style={{ borderColor: tone, opacity: 0.6 }} />
+          <span className="absolute left-1/2 top-0 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45" style={{ backgroundColor: tone }} />
+        </div>
+      );
+    case 'stars':
+      return (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-5 border" style={{ borderColor: tone }}>
+          {[['12%', '9%', 11], ['78%', '6%', 8], ['88%', '22%', 13], ['20%', '28%', 7], ['64%', '15%', 9]].map(([l, t, size]) => (
+            <span key={`${l}${t}`} className="absolute" style={{ left: l as string, top: t as string, color: tone, fontSize: size as number }}>
+              ✦
+            </span>
+          ))}
+        </div>
+      );
+    default:
+      return null;
+  }
 }

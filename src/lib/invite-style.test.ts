@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calendarMonth, contrastRatio, monogram, readableOn } from './invite-style';
+import { calendarMonth, contrastRatio, ensureContrast, isDarkBackground, monogram, readableOn } from './invite-style';
 
 describe('monogram', () => {
   it('takes the first letter of each partner', () => {
@@ -37,5 +37,24 @@ describe('readableOn', () => {
 
   it('gives black on white a 21:1 ratio', () => {
     expect(contrastRatio('#000', '#fff')).toBeCloseTo(21, 0);
+  });
+});
+
+describe('ensureContrast', () => {
+  it('keeps a colour that already passes', () => {
+    expect(ensureContrast('#7D6E63', '#FBF7F0', 4.5, '#342820')).toBe('#7D6E63');
+  });
+
+  it('darkens a faint muted colour until it passes 4.5:1, toward the ink', () => {
+    const fixed = ensureContrast('#6E8798', '#F4F8FA', 4.5, '#162B3A');
+    expect(contrastRatio(fixed, '#F4F8FA')).toBeGreaterThanOrEqual(4.5);
+    expect(fixed).not.toBe('#162B3A');
+  });
+});
+
+describe('isDarkBackground', () => {
+  it('tells night from paper', () => {
+    expect(isDarkBackground('#0F141C')).toBe(true);
+    expect(isDarkBackground('#FAF7F2')).toBe(false);
   });
 });

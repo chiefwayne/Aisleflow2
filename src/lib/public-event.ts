@@ -1,7 +1,7 @@
 import type { EventRecord } from '@/lib/types';
 
 /** custom_sections the guest page shows; internal ones (planning, website) never leave the server. */
-const PUBLIC_SECTIONS = ['our_story', 'registry', 'travel', 'faq', 'local_recs', 'wedding_party', 'menu', 'music'] as const;
+const PUBLIC_SECTIONS = ['our_story', 'registry', 'travel', 'faq', 'local_recs', 'wedding_party', 'menu', 'music', 'dress_palette'] as const;
 
 /**
  * The event as guests may see it: an allowlist of fields, with admin, billing and internal
