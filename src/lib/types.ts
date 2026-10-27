@@ -431,6 +431,8 @@ export interface TemplateDesignRecord {
   envelope_detail?: 'gilt-edge' | 'stitch' | 'foil-stars' | 'bead-edge' | 'airmail' | 'tassel' | 'twine';
   /** A name face of the preset's own; otherwise script (Corinthia) or the theme serif. */
   name_font?: 'bodoni' | 'rozha' | 'belle-aurore' | 'italiana' | 'marcellus';
+  /** The RSVP letter's own shape and corner mark, so the one screen every guest uses belongs to the preset. */
+  rsvp_card?: 'gilt-corners' | 'square' | 'stitch' | 'stars' | 'beads' | 'girih' | 'stamp' | 'deckle';
   /** Colour of the stationery frame and monogram ring (e.g. gilt); defaults to the accent. */
   frame_color?: string;
   is_dark?: boolean;

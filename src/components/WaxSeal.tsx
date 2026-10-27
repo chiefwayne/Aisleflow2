@@ -131,7 +131,9 @@ function EnvelopeOpening({
           type="button"
           onClick={open}
           aria-label={tr.tapToOpen}
-          className="env rounded-xl cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-8"
+          className={`env rounded-xl cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-8 ${
+            palette.paper && isDarkBackground(palette.paper) ? 'env-paper-dark' : ''
+          }`}
         >
           <span className="env-stage" aria-hidden="true">
             <span className="env-layer env-back" />
