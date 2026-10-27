@@ -3037,13 +3037,14 @@ export default function AdminDashboardView({
                                   <span style={{ fontSize: 8, lineHeight: 1, color: thm.accent_color }}>{thm.floron || '✦'}</span>
                                   <span
                                     style={{
-                                      fontFamily:
-                                        thm.name_style === 'serif'
+                                      fontFamily: thm.name_font
+                                        ? `var(--font-${thm.name_font}), serif`
+                                        : thm.name_style === 'serif'
                                           ? thm.font_family === 'vintage-editorial'
                                             ? 'var(--font-cinzel), serif'
                                             : 'var(--font-playfair), serif'
                                           : 'var(--font-script), cursive',
-                                      fontSize: thm.name_style === 'serif' ? 13 : 20,
+                                      fontSize: thm.name_font === 'belle-aurore' ? 15 : thm.name_style === 'serif' ? 13 : 20,
                                       lineHeight: 1.1,
                                     }}
                                   >

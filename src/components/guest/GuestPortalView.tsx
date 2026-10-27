@@ -45,7 +45,7 @@ import {
   orderedVisibleSections,
   pageBackgroundStyle,
 } from '@/lib/portal-design';
-import WaxSealOpening, { BowSvg, SealSvg } from '@/components/WaxSeal';
+import WaxSealOpening, { BowSvg, SealSvg, TWINE } from '@/components/WaxSeal';
 import { BotanicalCorner, GoldHairlineDivider } from '@/components/MotifDecorations';
 import { buildIcs, downloadIcs } from '@/lib/ics';
 import EditableText from '@/components/guest/EditableText';
@@ -568,6 +568,8 @@ export default function GuestPortalView({
   // Premium layout settings (Builder → Presets / Typography)
   const accent = theme.accent_color || '#9E5A44';
   const pageBg = theme.bg_color || '#FAF7F2';
+  // The stationery frame and monogram ring: the preset's gilt when it has one, otherwise the accent
+  const frameColor = theme.frame_color || accent;
   const ink = theme.text_color || '#2C2523';
   const heroLayout = theme.hero_layout || (event.cover_image_url ? 'photo' : 'stationery');
   const showPhotoHero = heroLayout === 'photo' && !!event.cover_image_url;
@@ -653,7 +655,7 @@ export default function GuestPortalView({
       <div
         lang={portalLanguageOf(event.language)}
         style={{ ...paletteVars, backgroundColor: theme.bg_color || '#FAF7F2', color: theme.text_color || '#2C2523' }}
-        className={`invite-root ${theme.font_family === 'vintage-editorial' ? 'theme-vintage' : ''} ${theme.name_style === 'serif' ? 'names-serif' : ''} min-h-screen flex items-center justify-center px-5 py-12 ${fontClass}`}
+        className={`invite-root ${theme.font_family === 'vintage-editorial' ? 'theme-vintage' : ''} ${theme.name_style === 'serif' ? 'names-serif' : ''} ${theme.name_font ? `name-face-${theme.name_font}` : ''} min-h-screen flex items-center justify-center px-5 py-12 ${fontClass}`}
       >
         {windowBackdrop}
         <main className="max-w-md w-full text-center space-y-6">
@@ -1143,7 +1145,7 @@ export default function GuestPortalView({
                   <div className="py-6 text-center space-y-5">
                     {theme.opening_style === 'envelope' ? (
                       <div className="mx-auto h-12 w-20 invite-rise" aria-hidden="true">
-                        <BowSvg accent={accent} />
+                        <BowSvg accent={theme.envelope_detail === 'twine' ? TWINE : accent} twine={theme.envelope_detail === 'twine'} />
                       </div>
                     ) : (
                       <div className="mx-auto h-16 w-16 invite-rise" aria-hidden="true">
@@ -1955,7 +1957,7 @@ export default function GuestPortalView({
         color: theme.text_color || '#2C2523',
         ...(studioLayout ? pageBackgroundStyle(theme) : {}),
       }}
-      className={`invite-root ${theme.font_family === 'vintage-editorial' ? 'theme-vintage' : ''} ${theme.name_style === 'serif' ? 'names-serif' : ''} min-h-screen selection:bg-[color:var(--accent)] selection:text-[color:var(--on-accent)] pb-28 ${fontClass} transition-colors duration-500 ${theme.paper_texture ? 'paper-grain relative' : ''}`}
+      className={`invite-root ${theme.font_family === 'vintage-editorial' ? 'theme-vintage' : ''} ${theme.name_style === 'serif' ? 'names-serif' : ''} ${theme.name_font ? `name-face-${theme.name_font}` : ''} min-h-screen selection:bg-[color:var(--accent)] selection:text-[color:var(--on-accent)] pb-28 ${fontClass} transition-colors duration-500 ${theme.paper_texture ? 'paper-grain relative' : ''}`}
     >
       {windowBackdrop}
       {/* 1. Tactile Wax-Seal / Envelope Opening Reveal */}
@@ -1972,6 +1974,7 @@ export default function GuestPortalView({
             border: theme.border_color,
             paper: theme.envelope_paper,
             liner: theme.envelope_liner,
+            detail: theme.envelope_detail,
           }}
           strings={tr}
           guestName={publicView ? undefined : partyNames}
@@ -2005,7 +2008,7 @@ export default function GuestPortalView({
             style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.04) 38%, rgba(0,0,0,0.58) 100%)' }}
           />
           <CoverFrame flair={theme.border_flair} accent={accent} />
-          <div className="absolute inset-x-0 bottom-0 px-6 pb-[11svh] text-center text-white [text-shadow:0_1px_18px_rgba(0,0,0,0.35)]">
+          <div className="absolute inset-x-0 bottom-0 px-6 pb-[calc(5.5rem+4svh)] text-center text-white [text-shadow:0_1px_18px_rgba(0,0,0,0.35)]">
             <p className="font-editorial text-xs sm:text-sm uppercase tracking-[0.22em] sm:tracking-[0.32em] opacity-90 [text-wrap:balance]">
               {onEditText ? editable('theme.eyebrow_text', theme.eyebrow_text, 'top line') : theme.eyebrow_text || tr.weddingCelebration}
             </p>
@@ -2054,16 +2057,16 @@ export default function GuestPortalView({
           ) : (
             <header
               className={heroStyle ? `text-center ${containerClassName(heroStyle)}` : 'mx-auto max-w-lg p-1.5'}
-              style={heroStyle ? containerInlineStyle(heroStyle) : { border: `1px solid color-mix(in srgb, ${accent} 55%, transparent)` }}
+              style={heroStyle ? containerInlineStyle(heroStyle) : { border: `1px solid color-mix(in srgb, ${frameColor} 55%, transparent)` }}
             >
               <div
                 className="text-center space-y-6 px-6 py-12 sm:px-10 sm:py-16"
-                style={heroStyle ? undefined : { border: `1px solid color-mix(in srgb, ${accent} 30%, transparent)` }}
+                style={heroStyle ? undefined : { border: `1px solid color-mix(in srgb, ${frameColor} 30%, transparent)` }}
               >
                 {/* Monogram */}
                 <div
                   className="mx-auto grid h-16 w-16 place-items-center rounded-full border font-editorial text-lg tracking-[0.12em]"
-                  style={{ borderColor: `color-mix(in srgb, ${accent} 60%, transparent)`, color: accent, boxShadow: `inset 0 0 0 3px ${pageBg}, inset 0 0 0 4px color-mix(in srgb, ${accent} 30%, transparent)` }}
+                  style={{ borderColor: `color-mix(in srgb, ${frameColor} 60%, transparent)`, color: accent, boxShadow: `inset 0 0 0 3px ${pageBg}, inset 0 0 0 4px color-mix(in srgb, ${frameColor} 30%, transparent)` }}
                   aria-hidden="true"
                 >
                   {monogram(event.couple_names).split('').join(' & ')}
@@ -2443,7 +2446,9 @@ export function CoverFrame({ flair, accent }: { flair?: string; accent: string }
         const u = 1 - t;
         const at = (i: 0 | 1) => u ** 3 * p0[i] + 3 * u * u * t * p1[i] + 3 * u * t * t * p2[i] + t ** 3 * p3[i];
         const d = (i: 0 | 1) => 3 * u * u * (p1[i] - p0[i]) + 6 * u * t * (p2[i] - p1[i]) + 3 * t * t * (p3[i] - p2[i]);
-        return { x: at(0), y: at(1), angle: (Math.atan2(d(1), d(0)) * 180) / Math.PI };
+        // Rounded so server and browser render identical numbers
+        const r = (n: number) => Math.round(n * 100) / 100;
+        return { x: r(at(0)), y: r(at(1)), angle: r((Math.atan2(d(1), d(0)) * 180) / Math.PI) };
       };
       const leaves = [0.14, 0.26, 0.38, 0.5, 0.62, 0.74, 0.86].map(branch);
       return (
@@ -2470,9 +2475,10 @@ export function CoverFrame({ flair, accent }: { flair?: string; accent: string }
         </svg>
       );
     }
+    // Frames stop 5.5rem above the cover's foot, clear of the floating RSVP button
     case 'double-line':
       return (
-        <div aria-hidden="true" className="pointer-events-none absolute inset-4 border p-1.5" style={{ borderColor: line }}>
+        <div aria-hidden="true" className="pointer-events-none absolute inset-x-4 top-4 bottom-[5.5rem] border p-1.5" style={{ borderColor: line }}>
           <div className="h-full w-full border" style={{ borderColor: 'rgba(255,255,255,0.35)' }} />
         </div>
       );
@@ -2480,7 +2486,7 @@ export function CoverFrame({ flair, accent }: { flair?: string; accent: string }
       // A true gold hairline with a single wave at its head; champagne gold reads on any photo
       const gold = '#D9C08A';
       return (
-        <div aria-hidden="true" className="pointer-events-none absolute inset-5 border" style={{ borderColor: gold }}>
+        <div aria-hidden="true" className="pointer-events-none absolute inset-x-5 top-5 bottom-[5.5rem] border" style={{ borderColor: gold }}>
           <svg viewBox="0 0 80 12" className="absolute left-1/2 top-3 h-4 w-24 -translate-x-1/2" fill="none" stroke={gold} strokeWidth="1.3" strokeLinecap="round">
             <path d="M2 6 C 10 0, 18 0, 26 6 S 42 12, 50 6 S 66 0, 78 6" />
           </svg>
@@ -2490,7 +2496,7 @@ export function CoverFrame({ flair, accent }: { flair?: string; accent: string }
     case 'arch':
       // An arched window with a grapevine sprig at its crown
       return (
-        <div aria-hidden="true" className="pointer-events-none absolute inset-x-6 top-8 bottom-6 rounded-t-full border" style={{ borderColor: line }}>
+        <div aria-hidden="true" className="pointer-events-none absolute inset-x-6 top-8 bottom-[5.5rem] rounded-t-full border" style={{ borderColor: line }}>
           <svg viewBox="0 0 90 40" className="absolute left-1/2 top-0 h-10 w-24 -translate-x-1/2 -translate-y-1/2" fill="none" stroke={line} strokeWidth="1.2" strokeLinecap="round">
             <path d="M8 20 C 25 10, 45 10, 82 20" />
             <ellipse cx="22" cy="12" rx="6" ry="3" transform="rotate(-25 22 12)" />
@@ -2504,7 +2510,7 @@ export function CoverFrame({ flair, accent }: { flair?: string; accent: string }
     case 'arabesque':
       // A double rule with an outlined lotus at its head
       return (
-        <div aria-hidden="true" className="pointer-events-none absolute inset-4 border p-1.5" style={{ borderColor: tone }}>
+        <div aria-hidden="true" className="pointer-events-none absolute inset-x-4 top-4 bottom-[5.5rem] border p-1.5" style={{ borderColor: tone }}>
           <div className="h-full w-full border" style={{ borderColor: tone, opacity: 0.6 }} />
           <svg viewBox="0 0 48 28" className="absolute left-1/2 top-4 h-7 w-12 -translate-x-1/2" fill="none" stroke={tone} strokeWidth="1.2" strokeLinejoin="round">
             <path d="M24 4 C 30 10, 30 18, 24 24 C 18 18, 18 10, 24 4 Z" />
@@ -2525,7 +2531,7 @@ export function CoverFrame({ flair, accent }: { flair?: string; accent: string }
     case 'stars':
       // A gold hairline with a small constellation drawn in its corner
       return (
-        <div aria-hidden="true" className="pointer-events-none absolute inset-5 border" style={{ borderColor: tone }}>
+        <div aria-hidden="true" className="pointer-events-none absolute inset-x-5 top-5 bottom-[5.5rem] border" style={{ borderColor: tone }}>
           <svg viewBox="0 0 100 60" className="absolute right-3 top-3 h-24 w-40" fill="none" stroke={tone} strokeWidth="1.2">
             <polyline points="8,40 30,22 52,30 70,10 92,18" opacity="0.85" />
             {[[8, 40, 2.8], [30, 22, 3.4], [52, 30, 2.6], [70, 10, 3.8], [92, 18, 2.8]].map(([cx, cy, r]) => (
@@ -2539,24 +2545,59 @@ export function CoverFrame({ flair, accent }: { flair?: string; accent: string }
           ))}
         </div>
       );
-    case 'sprig':
-      // A hand-drawn eucalyptus spray reaching in from the top-left corner,
-      // sized with the cover so it stays a spray on a wide screen rather than a scribble
+    case 'sprig': {
+      // A hand-drawn eucalyptus spray reaching in from the top-left corner: a curved stem with a side branch,
+      // round tapered leaves on short stalks, alternating sides and sizes. Sized with the cover, so it stays a
+      // spray on a wide screen rather than a scribble.
+      const along = (p: number[][], t: number) => {
+        const u = 1 - t;
+        const at = (i: number) => u ** 3 * p[0][i] + 3 * u * u * t * p[1][i] + 3 * u * t * t * p[2][i] + t ** 3 * p[3][i];
+        const d = (i: number) => 3 * u * u * (p[1][i] - p[0][i]) + 6 * u * t * (p[2][i] - p[1][i]) + 3 * t * t * (p[3][i] - p[2][i]);
+        // Rounded so server and browser render identical numbers
+        const r = (n: number) => Math.round(n * 100) / 100;
+        return { x: r(at(0)), y: r(at(1)), angle: r((Math.atan2(d(1), d(0)) * 180) / Math.PI) };
+      };
+      const stem = [[6, 8], [44, 16], [78, 46], [126, 104]];
+      const branch = [[52, 28], [62, 16], [80, 10], [102, 12]];
+      const leaves = [
+        ...[0.12, 0.24, 0.36, 0.48, 0.6, 0.72, 0.84, 0.96].map((t, i) => ({ ...along(stem, t), side: i % 2 ? 1 : -1, size: 7 + ((i * 3) % 4) })),
+        ...[0.3, 0.55, 0.8, 1].map((t, i) => ({ ...along(branch, t), side: i % 2 ? 1 : -1, size: 6 + ((i * 2) % 3) })),
+      ];
       return (
-        <svg aria-hidden="true" viewBox="0 0 160 120" className="pointer-events-none absolute left-3 top-3 aspect-[4/3] h-auto w-[52%] max-w-[24rem] sm:w-[34%]" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="1.2" strokeLinecap="round">
-          <path d="M4 8 C 30 20, 70 40, 118 92" />
-          <path d="M40 26 C 52 14, 66 10, 80 12" />
-          {[[14, 14, 20], [28, 24, -30], [44, 32, 28], [58, 46, -24], [74, 58, 34], [88, 72, -20], [102, 82, 36], [54, 16, -10], [68, 12, 12]].map(([cx, cy, rot]) => (
-            <ellipse key={`${cx}-${cy}`} cx={cx} cy={cy} rx="8" ry="4" transform={`rotate(${rot} ${cx} ${cy})`} />
-          ))}
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 160 120"
+          className="pointer-events-none absolute left-3 top-3 aspect-[4/3] h-auto w-[52%] max-w-[24rem] sm:w-[34%] [filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.3))]"
+          fill="none"
+          stroke="rgba(241,230,212,0.85)"
+          strokeWidth="1.1"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M6 8 C 44 16, 78 46, 126 104" />
+          <path d="M52 28 C 62 16, 80 10, 102 12" />
+          {leaves.map(({ x, y, angle, side, size }, i) => {
+            // Each leaf sits on a short stalk, angled off the stem, round at the shoulder and tapered to a tip
+            const a = angle + side * 55;
+            const L = size * 2;
+            const w = size * 0.95;
+            return (
+              <g key={i} transform={`translate(${x} ${y}) rotate(${a})`}>
+                <path d="M0 0 L 3 0" />
+                <path d={`M3 0 C ${3 + L * 0.2} ${-w}, ${3 + L * 0.85} ${-w * 0.7}, ${3 + L} 0 C ${3 + L * 0.85} ${w * 0.7}, ${3 + L * 0.2} ${w}, 3 0 Z`} />
+                <path d={`M3 0 L ${3 + L * 0.8} 0`} strokeWidth="0.6" opacity="0.7" />
+              </g>
+            );
+          })}
         </svg>
       );
+    }
     case 'deboss':
       // Blind-debossed rules above and below the names: pressed into the paper, no ink
       return (
-        <div aria-hidden="true" className="pointer-events-none absolute inset-x-8 inset-y-6">
-          <span className="absolute inset-x-0 top-0 h-px bg-white/45 shadow-[0_1px_0_rgba(0,0,0,0.18)]" />
-          <span className="absolute inset-x-0 bottom-0 h-px bg-white/45 shadow-[0_1px_0_rgba(0,0,0,0.18)]" />
+        <div aria-hidden="true" className="pointer-events-none absolute inset-x-8 top-6 bottom-[5.5rem]">
+          <span className="absolute inset-x-0 top-0 h-px bg-white/70 shadow-[0_1px_0_rgba(0,0,0,0.35)]" />
+          <span className="absolute inset-x-0 bottom-0 h-px bg-white/70 shadow-[0_1px_0_rgba(0,0,0,0.35)]" />
         </div>
       );
     default:

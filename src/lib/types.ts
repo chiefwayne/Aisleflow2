@@ -427,6 +427,12 @@ export interface TemplateDesignRecord {
   envelope_paper?: string;
   /** Pattern inside the envelope, seen as the flap lifts. */
   envelope_liner?: 'stripes' | 'dots' | 'stars' | 'lattice' | 'sunburst' | 'sailcloth' | 'plain' | 'leaf';
+  /** The one physical detail a preset's envelope owns, so no two openings are the same object. */
+  envelope_detail?: 'gilt-edge' | 'stitch' | 'foil-stars' | 'bead-edge' | 'airmail' | 'tassel' | 'twine';
+  /** A name face of the preset's own; otherwise script (Corinthia) or the theme serif. */
+  name_font?: 'bodoni' | 'rozha' | 'belle-aurore';
+  /** Colour of the stationery frame and monogram ring (e.g. gilt); defaults to the accent. */
+  frame_color?: string;
   is_dark?: boolean;
   /** Invitation hero: couple photo full-bleed with names over it, or names on framed stationery. */
   hero_layout?: 'photo' | 'stationery';

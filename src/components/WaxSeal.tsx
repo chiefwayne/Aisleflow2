@@ -13,10 +13,17 @@ interface WaxSealOpeningProps {
   /** Wording in the invitation's language; English when not given. */
   strings?: PortalStrings;
   /** The invitation's colours; when given, the opening matches the invite instead of its default look. */
-  palette?: { bg: string; surface: string; text: string; accent: string; border?: string; paper?: string; liner?: string };
+  palette?: { bg: string; surface: string; text: string; accent: string; border?: string; paper?: string; liner?: string; detail?: EnvelopeDetail };
   /** Names in the script face (default) or the theme's serif, to match the invitation. */
   nameStyle?: 'script' | 'serif';
 }
+
+/** The one physical detail a preset's envelope owns (see TemplateDesignRecord.envelope_detail). */
+type EnvelopeDetail = 'gilt-edge' | 'stitch' | 'foil-stars' | 'bead-edge' | 'airmail' | 'tassel' | 'twine';
+
+/** Gilt for edges and tassels, and the clay of Boho's twine: fixed materials, whatever the accent. */
+const GILT = '#B8994E';
+export const TWINE = '#A9785A';
 
 const DEFAULT_PALETTE = { bg: '#FAF7F2', surface: '#FFFFFF', text: '#2C2523', accent: '#9E5A44', border: '#E8E0D7' };
 
@@ -132,13 +139,40 @@ function EnvelopeOpening({
             <span className="env-layer env-fold-left" />
             <span className="env-layer env-fold-right" />
             <span className="env-layer env-fold-bottom" />
-            <span className="env-layer env-flap" />
+            {palette.detail === 'foil-stars' && <span className="env-layer env-foil-stars" />}
+            <span className="env-layer env-flap">
+              {/* Edges drawn along the flap: a gilt edge, a running stitch, or a row of marigold beads */}
+              {(palette.detail === 'gilt-edge' || palette.detail === 'stitch' || palette.detail === 'bead-edge') && (
+                <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full" fill="none">
+                  {palette.detail === 'gilt-edge' && (
+                    <polyline points="0,0 50,100 100,0" stroke={GILT} strokeWidth="4" vectorEffect="non-scaling-stroke" />
+                  )}
+                  {palette.detail === 'stitch' && (
+                    <polyline points="7,0 50,86 93,0" stroke={palette.accent} strokeWidth="1.4" strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />
+                  )}
+                  {palette.detail === 'bead-edge' && (
+                    <polyline points="5,0 50,90 95,0" stroke={palette.accent} strokeWidth="5" strokeLinecap="round" strokeDasharray="0 9" vectorEffect="non-scaling-stroke" />
+                  )}
+                </svg>
+              )}
+            </span>
+            {palette.detail === 'airmail' && <span className="env-layer env-airmail" />}
             {fastening === 'ribbon' ? (
               <>
-                <span className="env-ribbon" />
+                <span className={`env-ribbon ${palette.detail === 'twine' ? 'env-twine' : ''}`} />
                 <span className="env-bow">
-                  <BowSvg accent={palette.accent} />
+                  <BowSvg accent={palette.detail === 'twine' ? TWINE : palette.accent} twine={palette.detail === 'twine'} />
                 </span>
+                {palette.detail === 'tassel' && (
+                  <span className="env-tassel">
+                    <svg viewBox="0 0 20 60" className="h-full w-full" fill="none">
+                      <path d="M10 0 C 8 10, 12 16, 10 24" stroke={GILT} strokeWidth="1.6" strokeLinecap="round" />
+                      <circle cx="10" cy="27" r="3.6" fill={GILT} />
+                      <path d="M10 30 L 4 58 L 16 58 Z" fill={GILT} />
+                      <path d="M7 34 L 6 57 M10 34 L 10 57 M13 34 L 14 57" stroke="rgba(0,0,0,0.18)" strokeWidth="0.6" />
+                    </svg>
+                  </span>
+                )}
               </>
             ) : (
               <span className="env-seal">
@@ -150,7 +184,7 @@ function EnvelopeOpening({
 
         <div className="space-y-3">
           {guestName && (
-            <p className={nameStyle === 'serif' ? 'couple-names font-serif text-3xl sm:text-4xl font-medium tracking-tight' : 'font-script text-4xl sm:text-5xl leading-tight'}>
+            <p className={nameStyle === 'serif' ? 'couple-names font-serif text-3xl sm:text-4xl font-medium tracking-tight' : 'couple-names font-script text-4xl sm:text-5xl leading-tight'}>
               {guestName}
             </p>
           )}
@@ -256,7 +290,7 @@ function CardOpening({
           </p>
           {/* The couple first; the guest is the greeting beneath them */}
           <h2
-            className={nameStyle === 'serif' ? 'couple-names font-serif text-3xl sm:text-4xl font-medium tracking-tight [text-wrap:balance]' : 'font-script text-5xl leading-tight [text-wrap:balance]'}
+            className={nameStyle === 'serif' ? 'couple-names font-serif text-3xl sm:text-4xl font-medium tracking-tight [text-wrap:balance]' : 'couple-names font-script text-5xl leading-tight [text-wrap:balance]'}
           >
             {coupleNames}
           </h2>
@@ -285,7 +319,19 @@ function CardOpening({
 }
 
 /** The ribbon's bow, shared by the envelope and the thank-you so a ribbon opening closes with a ribbon too. */
-export function BowSvg({ accent }: { accent: string }) {
+export function BowSvg({ accent, twine = false }: { accent: string; twine?: boolean }) {
+  if (twine) {
+    // Twine tied in a loose bow: outlined loops and frayed ends, no satin
+    return (
+      <svg viewBox="0 0 60 36" className="h-full w-full" fill="none" stroke={accent} strokeWidth="2.2" strokeLinecap="round">
+        <path d="M30 18 C 22 6, 8 8, 10 16 C 12 24, 24 22, 30 18" />
+        <path d="M30 18 C 38 6, 52 8, 50 16 C 48 24, 36 22, 30 18" />
+        <path d="M29 19 C 26 26, 22 30, 18 34 M31 19 C 34 26, 38 30, 42 34" />
+        <path d="M18 34 l -2 1 M18 34 l -1 2 M42 34 l 2 1 M42 34 l 1 2" strokeWidth="1" />
+        <circle cx="30" cy="18" r="2.6" fill={accent} stroke="none" />
+      </svg>
+    );
+  }
   return (
     <svg viewBox="0 0 60 36" className="h-full w-full" fill="none">
       <path d="M30 18 C 20 4, 4 6, 6 16 C 8 26, 22 24, 30 18 Z" fill={accent} />
