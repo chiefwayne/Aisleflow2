@@ -2982,40 +2982,70 @@ export default function AdminDashboardView({
                                 )}
                               </div>
                               <span className="text-xs text-aisle-muted block mt-0.5">{thm.taxonomy}</span>
-                              {/* A tiny open envelope in the preset's paper, lining and seal, on its page colour */}
-                              <span
-                                className="mt-2 flex h-12 items-center justify-center rounded-lg"
-                                style={{ backgroundColor: thm.bg_color }}
-                                aria-hidden="true"
-                              >
-                                {thm.opening_style === 'minimal-fade' || thm.opening_style === 'curtain' ? (
-                                  // Presets that open on a stationery sheet show a sheet, not an envelope
-                                  <span
-                                    className="block h-8 w-7 rounded-[1px] p-[2px] shadow-sm"
-                                    style={{ backgroundColor: thm.surface_color }}
-                                  >
-                                    <span className="flex h-full w-full items-center justify-center border" style={{ borderColor: thm.accent_color }}>
-                                      <span className="h-px w-3" style={{ backgroundColor: thm.accent_color }} />
-                                    </span>
-                                  </span>
-                                ) : (
-                                <span
-                                  className="relative block h-7 w-10 rounded-[2px] shadow-sm"
-                                  style={
-                                    {
-                                      '--env-paper': thm.envelope_paper || thm.surface_color,
-                                      '--env-accent': thm.accent_color,
-                                      backgroundColor: thm.envelope_paper || thm.surface_color,
-                                    } as React.CSSProperties
-                                  }
-                                >
-                                  <span
-                                    className={`absolute inset-x-0 top-0 h-[70%] env-liner-${thm.envelope_liner || 'stripes'}`}
-                                    style={{ clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }}
-                                  />
-                                  <span className="absolute left-1/2 top-[62%] h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full" style={{ backgroundColor: thm.accent_color }} />
+                              {/* The preset at a glance: its colours, and a tiny opening (envelope or sheet) on its page colour.
+                                  Sizes and positions are inline so the preview never depends on generated utility classes. */}
+                              <span className="mt-2 flex items-center justify-between gap-2" aria-hidden="true">
+                                <span className="flex items-center gap-1">
+                                  {[thm.bg_color, thm.accent_color, thm.text_color].map((c) => (
+                                    <span key={c} className="rounded-full border border-black/10" style={{ width: 16, height: 16, backgroundColor: c }} />
+                                  ))}
                                 </span>
-                                )}
+                                <span
+                                  className="flex items-center justify-center rounded-lg"
+                                  style={{ width: 64, height: 40, backgroundColor: thm.bg_color, border: '1px solid rgba(0,0,0,0.06)' }}
+                                >
+                                  {thm.opening_style === 'minimal-fade' || thm.opening_style === 'curtain' ? (
+                                    <span style={{ width: 22, height: 28, padding: 2, backgroundColor: thm.surface_color, boxShadow: '0 1px 3px rgba(0,0,0,0.15)' }}>
+                                      <span
+                                        style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', border: `1px solid ${thm.accent_color}` }}
+                                      >
+                                        <span style={{ width: 10, height: 1, backgroundColor: thm.accent_color }} />
+                                      </span>
+                                    </span>
+                                  ) : (
+                                    <span
+                                      style={
+                                        {
+                                          position: 'relative',
+                                          width: 40,
+                                          height: 28,
+                                          borderRadius: 2,
+                                          boxShadow: '0 1px 3px rgba(0,0,0,0.18)',
+                                          backgroundColor: thm.envelope_paper || thm.surface_color,
+                                          '--env-paper': thm.envelope_paper || thm.surface_color,
+                                          '--env-accent': thm.accent_color,
+                                        } as React.CSSProperties
+                                      }
+                                    >
+                                      {/* Open flap showing the lining: a tint always, the pattern when its styles are loaded */}
+                                      <span
+                                        style={{
+                                          position: 'absolute',
+                                          left: 0,
+                                          right: 0,
+                                          top: 0,
+                                          height: 19,
+                                          clipPath: 'polygon(0 0, 100% 0, 50% 100%)',
+                                          backgroundColor: `color-mix(in srgb, ${thm.accent_color} 30%, ${thm.envelope_paper || thm.surface_color})`,
+                                        }}
+                                      >
+                                        <span className={`env-liner-${thm.envelope_liner || 'stripes'}`} style={{ position: 'absolute', inset: 0 }} />
+                                      </span>
+                                      <span
+                                        style={{
+                                          position: 'absolute',
+                                          left: 15,
+                                          top: 12,
+                                          width: 10,
+                                          height: 10,
+                                          borderRadius: 9999,
+                                          backgroundColor: thm.accent_color,
+                                          boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
+                                        }}
+                                      />
+                                    </span>
+                                  )}
+                                </span>
                               </span>
                             </button>
                           ))}
