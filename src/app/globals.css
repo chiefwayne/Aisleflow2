@@ -293,8 +293,9 @@ body {
 /* "Vintage editorial" themes. With serif names, Cinzel's stone-cut capitals set the couple's names
    (everywhere they appear) and the date and venue lines, and section headings fall back to Cormorant italic.
    With script names, Cinzel stays out (two faces only) and the date and venue take Cormorant small capitals. */
-.theme-vintage.names-serif .couple-names.font-serif,
-.theme-vintage.names-serif .vintage-caps {
+/* A preset with a name face of its own (name-face-*) sets names and headings in it instead */
+.theme-vintage.names-serif:not([class*='name-face-']) .couple-names.font-serif,
+.theme-vintage.names-serif:not([class*='name-face-']) .vintage-caps {
   font-family: var(--font-cinzel), Georgia, serif;
   letter-spacing: 0.05em;
   font-style: normal;
@@ -310,7 +311,7 @@ body {
   letter-spacing: 0;
 }
 /* With stone-cut names, headings carry the same capitals, so the page has one display voice */
-.theme-vintage.names-serif h2.font-serif {
+.theme-vintage.names-serif:not([class*='name-face-']) h2.font-serif {
   font-family: var(--font-cinzel), Georgia, serif;
   font-weight: 500;
   letter-spacing: 0.04em;
@@ -330,7 +331,26 @@ body {
 .name-face-belle-aurore .couple-names {
   font-family: var(--font-belle-aurore), cursive;
   line-height: 1.15;
+  /* Tall ascenders: room so they never touch the line above */
+  padding-top: 0.22em;
 }
+.name-face-italiana .couple-names {
+  font-family: var(--font-italiana), Georgia, serif;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+.name-face-marcellus .couple-names,
+.name-face-marcellus .vintage-caps {
+  font-family: var(--font-marcellus), Georgia, serif;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  font-style: normal;
+}
+/* Serif headings follow the preset's own name face, so a page has one display voice */
+.name-face-bodoni h2.font-serif { font-family: var(--font-bodoni), Georgia, serif; font-weight: 400; }
+.name-face-rozha h2.font-serif { font-family: var(--font-rozha), Georgia, serif; font-weight: 400; }
+.name-face-italiana h2.font-serif { font-family: var(--font-italiana), Georgia, serif; font-weight: 400; letter-spacing: 0.02em; }
+.name-face-marcellus h2.font-serif { font-family: var(--font-marcellus), Georgia, serif; font-weight: 400; letter-spacing: 0.03em; }
 
 /* Envelope linings: each preset's pattern, seen as the flap lifts */
 .env-liner-dots {
@@ -400,6 +420,15 @@ body {
   transform: translate(-50%, -50%);
   filter: drop-shadow(0 3px 4px color-mix(in srgb, var(--env-shadow, #000) 30%, transparent));
 }
+/* Riviera's cover: only a 5px striped border shows; the stripes inside are masked away */
+.cover-airmail {
+  padding: 5px;
+  opacity: 0.9;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+
 /* Each preset's own envelope detail */
 .env-twine {
   top: 67.5%;
@@ -429,14 +458,6 @@ body {
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
   opacity: 0.85;
-}
-.env-foil-stars {
-  background:
-    radial-gradient(circle, var(--env-accent) 1.1px, transparent 1.7px) 11px 17px / 71px 53px,
-    radial-gradient(circle, color-mix(in srgb, var(--env-accent) 75%, transparent) 0.8px, transparent 1.4px) 37px 5px / 59px 47px,
-    radial-gradient(circle, color-mix(in srgb, var(--env-accent) 55%, transparent) 0.6px, transparent 1.1px) 23px 31px / 43px 67px;
-  border-radius: 10px;
-  opacity: 0.8;
 }
 .env-open .env-ribbon {
   animation: ribbon-off 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;

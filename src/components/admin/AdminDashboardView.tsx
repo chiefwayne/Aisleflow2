@@ -3010,7 +3010,7 @@ export default function AdminDashboardView({
                                       style={{
                                         position: 'absolute',
                                         inset: thm.border_flair === 'deboss' ? '5px 8px 11px' : '4px 6px 10px',
-                                        border: thm.border_flair === 'deboss' ? 'none' : `${['double-line', 'arabesque'].includes(thm.border_flair) ? '3px double' : '1px solid'} ${thm.accent_color}`,
+                                        border: thm.border_flair === 'deboss' ? 'none' : `${['double-line', 'arabesque'].includes(thm.border_flair) ? '3px double' : thm.border_flair === 'airmail' ? '2px dashed' : '1px solid'} ${thm.accent_color}`,
                                         borderTop: thm.border_flair === 'deboss' ? `1px solid ${thm.border_color}` : undefined,
                                         borderBottom: thm.border_flair === 'deboss' ? `1px solid ${thm.border_color}` : undefined,
                                         borderRadius: thm.border_flair === 'arch' ? '999px 999px 0 0' : 0,

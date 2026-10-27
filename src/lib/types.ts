@@ -420,7 +420,7 @@ export interface TemplateDesignRecord {
   poetic_line?: string;
   invitation_phrase?: string;
   floron?: string;
-  border_flair?: 'double-line' | 'hairline-gold' | 'arch' | 'clean' | 'arabesque' | 'botanical-crest' | 'stars' | 'sprig' | 'deboss';
+  border_flair?: 'double-line' | 'hairline-gold' | 'arch' | 'clean' | 'arabesque' | 'botanical-crest' | 'stars' | 'sprig' | 'deboss' | 'airmail';
   /** The RSVP band: the accent colour, or a deeper shade of the page (default on dark themes). */
   rsvp_band?: 'accent' | 'deep';
   /** Envelope paper colour; defaults to a mix of the card and page colours. */
@@ -430,7 +430,7 @@ export interface TemplateDesignRecord {
   /** The one physical detail a preset's envelope owns, so no two openings are the same object. */
   envelope_detail?: 'gilt-edge' | 'stitch' | 'foil-stars' | 'bead-edge' | 'airmail' | 'tassel' | 'twine';
   /** A name face of the preset's own; otherwise script (Corinthia) or the theme serif. */
-  name_font?: 'bodoni' | 'rozha' | 'belle-aurore';
+  name_font?: 'bodoni' | 'rozha' | 'belle-aurore' | 'italiana' | 'marcellus';
   /** Colour of the stationery frame and monogram ring (e.g. gilt); defaults to the accent. */
   frame_color?: string;
   is_dark?: boolean;

@@ -177,10 +177,13 @@ export default function GuestPortalView({
   const [pastCalendar, setPastCalendar] = useState(false);
   useEffect(() => {
     const el = document.getElementById('save-the-date');
-    if (!el || typeof IntersectionObserver === 'undefined') return;
-    const io = new IntersectionObserver(([entry]) => setPastCalendar(!entry.isIntersecting && entry.boundingClientRect.top < 0));
-    io.observe(el);
-    return () => io.disconnect();
+    if (!el) return;
+    // Read from the scroll position rather than an intersection crossing, so a jump straight past the
+    // calendar (an anchor link, a restored scroll) still shows the pill
+    const check = () => setPastCalendar(el.getBoundingClientRect().bottom < 0);
+    check();
+    window.addEventListener('scroll', check, { passive: true });
+    return () => window.removeEventListener('scroll', check);
   }, [hasOpened]);
   useEffect(() => {
     const el = document.getElementById('rsvp');
@@ -613,6 +616,8 @@ export default function GuestPortalView({
   // Secondary text keeps the couple's hue but is nudged until it reads comfortably on the page; 5:1 leaves
   // room for the tinted calendar band and the RSVP card, which sit a shade off the page colour
   const muted = ensureContrast(theme.muted_color || '#7D746D', pageBg, 5, ink);
+  // Outlines of the RSVP choices must be seen (3:1, WCAG non-text contrast) on the page and on cards
+  const choiceLine = ensureContrast(ensureContrast(theme.border_color || '#E8E0D7', pageBg, 3, ink), surface, 3, ink);
   const darkTheme = isDarkBackground(pageBg);
   // Every colour on the invitation comes from the theme through these variables, so dark themes work too
   const paletteVars = {
@@ -1236,7 +1241,7 @@ export default function GuestPortalView({
                                     style={
                                       gState.rsvp_status === 'attending'
                                         ? { backgroundColor: theme.accent_color, borderColor: theme.accent_color }
-                                        : { borderColor: theme.border_color, color: theme.text_color }
+                                        : { borderColor: choiceLine, color: theme.text_color }
                                     }
                                   >
                                     <span>{tr.joyfullyAccept}</span>
@@ -1252,7 +1257,7 @@ export default function GuestPortalView({
                                     style={
                                       gState.rsvp_status === 'declined'
                                         ? { backgroundColor: theme.text_color, borderColor: theme.text_color }
-                                        : { borderColor: theme.border_color, color: theme.text_color }
+                                        : { borderColor: choiceLine, color: theme.text_color }
                                     }
                                   >
                                     <span>{tr.regretfullyDecline}</span>
@@ -2519,7 +2524,7 @@ export function CoverFrame({ flair, accent }: { flair?: string; accent: string }
             <path d="M8 25 L 40 25" />
           </svg>
           {/* A marigold garland (toran) swagged across the top */}
-          <svg viewBox="0 0 300 30" preserveAspectRatio="none" className="absolute inset-x-3 top-12 h-6" fill={tone} stroke="none">
+          <svg viewBox="0 0 300 30" preserveAspectRatio="none" className="absolute left-3 top-12 h-6 w-[calc(100%-1.5rem)]" fill={tone} stroke="none">
             {Array.from({ length: 25 }, (_, i) => {
               const x = 6 + i * 12;
               const y = 6 + Math.sin((i / 24) * Math.PI) * 14;
@@ -2569,7 +2574,7 @@ export function CoverFrame({ flair, accent }: { flair?: string; accent: string }
           viewBox="0 0 160 120"
           className="pointer-events-none absolute left-3 top-3 aspect-[4/3] h-auto w-[52%] max-w-[24rem] sm:w-[34%] [filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.3))]"
           fill="none"
-          stroke="rgba(241,230,212,0.85)"
+          stroke="rgba(226,234,214,0.9)"
           strokeWidth="1.1"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -2577,19 +2582,37 @@ export function CoverFrame({ flair, accent }: { flair?: string; accent: string }
           <path d="M6 8 C 44 16, 78 46, 126 104" />
           <path d="M52 28 C 62 16, 80 10, 102 12" />
           {leaves.map(({ x, y, angle, side, size }, i) => {
-            // Each leaf sits on a short stalk, angled off the stem, round at the shoulder and tapered to a tip
+            // Eucalyptus "coins": round leaves on short stalks, angled off the stem
             const a = angle + side * 55;
-            const L = size * 2;
-            const w = size * 0.95;
+            const rr = size * 0.72;
             return (
               <g key={i} transform={`translate(${x} ${y}) rotate(${a})`}>
-                <path d="M0 0 L 3 0" />
-                <path d={`M3 0 C ${3 + L * 0.2} ${-w}, ${3 + L * 0.85} ${-w * 0.7}, ${3 + L} 0 C ${3 + L * 0.85} ${w * 0.7}, ${3 + L * 0.2} ${w}, 3 0 Z`} />
-                <path d={`M3 0 L ${3 + L * 0.8} 0`} strokeWidth="0.6" opacity="0.7" />
+                <path d={`M0 0 L ${3 + rr * 0.15} 0`} />
+                <circle cx={3 + rr} cy="0" r={rr} />
+                <path d={`M${3 + rr * 0.3} 0 L ${3 + rr * 1.3} 0`} strokeWidth="0.5" opacity="0.5" />
               </g>
             );
           })}
         </svg>
+      );
+    }
+    case 'airmail': {
+      // Riviera: the airmail envelope carried onto the cover, a striped border with a postmark at its corner
+      const red = '#C0463A';
+      return (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-x-4 top-4 bottom-[5.5rem]">
+          <div
+            className="cover-airmail absolute inset-0"
+            style={{ background: `repeating-linear-gradient(-45deg, ${accent} 0 9px, #FFFFFF 9px 15px, ${red} 15px 24px, #FFFFFF 24px 30px)` }}
+          />
+          <svg viewBox="0 0 80 50" className="absolute right-5 top-6 h-12 w-20" fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth="1.2">
+            <circle cx="22" cy="25" r="17" />
+            <circle cx="22" cy="25" r="13" strokeWidth="0.6" />
+            {[15, 21, 27, 33].map((y) => (
+              <path key={y} d={`M42 ${y} C 50 ${y - 3}, 58 ${y + 3}, 66 ${y} S 76 ${y - 3}, 80 ${y}`} />
+            ))}
+          </svg>
+        </div>
       );
     }
     case 'deboss':

@@ -139,13 +139,31 @@ function EnvelopeOpening({
             <span className="env-layer env-fold-left" />
             <span className="env-layer env-fold-right" />
             <span className="env-layer env-fold-bottom" />
-            {palette.detail === 'foil-stars' && <span className="env-layer env-foil-stars" />}
+            {palette.detail === 'foil-stars' && (
+              <span className="env-layer">
+                <FoilStars accent={palette.accent} viewBox="0 0 145 100" stars={FOLD_STARS} />
+              </span>
+            )}
             <span className="env-layer env-flap">
+              {palette.detail === 'foil-stars' && <FoilStars accent={palette.accent} viewBox="0 0 145 72" stars={FLAP_STARS} />}
               {/* Edges drawn along the flap: a gilt edge, a running stitch, or a row of marigold beads */}
               {(palette.detail === 'gilt-edge' || palette.detail === 'stitch' || palette.detail === 'bead-edge') && (
                 <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full" fill="none">
                   {palette.detail === 'gilt-edge' && (
-                    <polyline points="0,0 50,100 100,0" stroke={GILT} strokeWidth="4" vectorEffect="non-scaling-stroke" />
+                    // Metal, not a line: a light-catching gradient with a bright hairline along its crest
+                    <>
+                      <defs>
+                        <linearGradient id="env-gilt" x1="0" y1="0" x2="100" y2="0" gradientUnits="userSpaceOnUse">
+                          <stop offset="0" stopColor="#8A6A2E" />
+                          <stop offset="0.3" stopColor="#E3C98A" />
+                          <stop offset="0.5" stopColor="#A9863F" />
+                          <stop offset="0.72" stopColor="#F0DDA6" />
+                          <stop offset="1" stopColor="#8A6A2E" />
+                        </linearGradient>
+                      </defs>
+                      <polyline points="0,0 50,100 100,0" stroke="url(#env-gilt)" strokeWidth="7" vectorEffect="non-scaling-stroke" />
+                      <polyline points="0,0 50,100 100,0" stroke="#FFF4D6" strokeOpacity="0.55" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                    </>
                   )}
                   {palette.detail === 'stitch' && (
                     <polyline points="7,0 50,86 93,0" stroke={palette.accent} strokeWidth="1.4" strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />
@@ -315,6 +333,29 @@ function CardOpening({
         </div>
       </motion.div>
     </motion.div>
+  );
+}
+
+/** Celestial's foil: a scatter of four-point stars, pressed in a champagne gradient. [x, y, size] in envelope units. */
+const FOLD_STARS = [[16, 58, 4.5], [30, 86, 3], [52, 74, 2.4], [96, 82, 3.6], [118, 64, 2.6], [132, 88, 4], [12, 30, 2.2], [136, 34, 3]];
+const FLAP_STARS = [[28, 10, 3.4], [58, 22, 2.2], [104, 12, 4], [86, 38, 2.6], [120, 6, 2]];
+function FoilStars({ accent, viewBox, stars }: { accent: string; viewBox: string; stars: number[][] }) {
+  return (
+    <svg viewBox={viewBox} className="absolute inset-0 h-full w-full" aria-hidden="true">
+      <defs>
+        <linearGradient id={`foil-${viewBox.split(' ')[3]}`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#F6E7BF" />
+          <stop offset="1" stopColor={accent} />
+        </linearGradient>
+      </defs>
+      {stars.map(([x, y, r]) => (
+        <path
+          key={`${x}-${y}`}
+          d={`M${x} ${y - r} Q ${x} ${y}, ${x + r} ${y} Q ${x} ${y}, ${x} ${y + r} Q ${x} ${y}, ${x - r} ${y} Q ${x} ${y}, ${x} ${y - r} Z`}
+          fill={`url(#foil-${viewBox.split(' ')[3]})`}
+        />
+      ))}
+    </svg>
   );
 }
 
