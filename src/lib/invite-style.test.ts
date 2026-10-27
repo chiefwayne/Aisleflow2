@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calendarMonth, contrastRatio, ensureContrast, isDarkBackground, monogram, readableOn } from './invite-style';
+import { calendarMonth, contrastRatio, ensureContrast, isDarkBackground, monogram, readableOn, readablePalette } from './invite-style';
 
 describe('monogram', () => {
   it('takes the first letter of each partner', () => {
@@ -56,5 +56,25 @@ describe('isDarkBackground', () => {
   it('tells night from paper', () => {
     expect(isDarkBackground('#0F141C')).toBe(true);
     expect(isDarkBackground('#FAF7F2')).toBe(false);
+  });
+});
+
+describe('readablePalette', () => {
+  it('leaves a working palette alone', () => {
+    const p = { bg: '#FBF7F0', text: '#2A221E', accent: '#7A5A22', surface: '#FFFDF8' };
+    expect(readablePalette(p)).toEqual({ text: p.text, surface: p.surface, accent: p.accent });
+  });
+
+  it('repairs a dark preset mixed with a custom cream page and dark text', () => {
+    // Celestial's navy cards and champagne accent under a couple's own cream page and dark ink
+    const fixed = readablePalette({ bg: '#FFF2D5', text: '#2C2523', accent: '#CDB073', surface: '#142036' });
+    expect(fixed.text).toBe('#2C2523');
+    expect(fixed.surface).toBe('#FFF2D5');
+    expect(contrastRatio(fixed.accent, '#FFF2D5')).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('replaces text that cannot be read on its page', () => {
+    const fixed = readablePalette({ bg: '#0D1526', text: '#1A1A1A', accent: '#CDB073', surface: '#142036' });
+    expect(contrastRatio(fixed.text, '#0D1526')).toBeGreaterThanOrEqual(4.5);
   });
 });

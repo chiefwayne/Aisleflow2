@@ -1143,6 +1143,23 @@ export default function AdminDashboardView({
     }
   };
 
+  // Picking a preset while custom colours are saved: ask whether to use the preset's colours. Custom colours
+  // layered on a different preset can clash (dark text on navy cards); everything else the couple chose is kept.
+  const handleChoosePreset = (thm: TemplateDesignRecord) => {
+    if (isStudioDesign(customTheme)) return handleApplyTheme(thm.id, {});
+    const config = event.theme_config && typeof event.theme_config === 'object' ? (event.theme_config as Record<string, any>) : {};
+    const colourKeys = ['bg_color', 'text_color', 'accent_color', 'muted_color', 'surface_color', 'border_color', 'shadow_color'];
+    const customColours = colourKeys.filter((k) => k in config);
+    if (
+      customColours.length > 0 &&
+      window.confirm(`Use ${thm.name}'s colours?\n\nYour own colour changes will be replaced by the preset's. Your layout, names, opening and chapters stay as they are.`)
+    ) {
+      const kept = Object.fromEntries(Object.entries(config).filter(([k]) => !colourKeys.includes(k)));
+      return handleApplyTheme(thm.id, kept);
+    }
+    return handleUpdateDesignSlot('theme_id', thm.id);
+  };
+
   const handleApplyStudioDesign = (design: TemplateDesignRecord) => {
     const { created_at, updated_at, status, ...snapshot } = design;
     handleApplyTheme(design.slug || design.id, snapshot);
@@ -2899,11 +2916,7 @@ export default function AdminDashboardView({
                             <button
                               key={thm.id}
                               type="button"
-                              onClick={() =>
-                                isStudioDesign(customTheme)
-                                  ? handleApplyTheme(thm.id, {})
-                                  : handleUpdateDesignSlot('theme_id', thm.id)
-                              }
+                              onClick={() => handleChoosePreset(thm)}
                               className={`rounded-xl border p-3 text-left transition-all cursor-pointer ${
                                 customTheme.id === thm.id
                                   ? 'border-aisle-terracotta bg-aisle-sand/50 shadow-sm'

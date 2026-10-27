@@ -393,6 +393,11 @@ body {
 }
 
 /* RSVP band: the heading is a full-width strip of colour; the letter sits beneath it on the page */
+/* clip (not hidden): the strip's wide bleed must never become sideways-scrollable, or scrollIntoView
+   on a step change nudges the letter off its left edge */
+.rsvp-band {
+  overflow-x: clip;
+}
 .rsvp-band .rsvp-head {
   position: relative;
   color: var(--band-ink);

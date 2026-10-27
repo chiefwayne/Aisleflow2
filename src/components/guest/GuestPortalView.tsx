@@ -54,7 +54,7 @@ import EditableText from '@/components/guest/EditableText';
 import { getMenuOptions } from '@/lib/menu';
 import { fill, PORTAL_LANGUAGES, portalLanguageOf, portalStrings } from '@/lib/portal-i18n';
 import { hasFeature } from '@/lib/plans';
-import { calendarMonth, contrastRatio, ensureContrast, isDarkBackground, monogram, readableOn } from '@/lib/invite-style';
+import { calendarMonth, contrastRatio, ensureContrast, isDarkBackground, monogram, readableOn, readablePalette } from '@/lib/invite-style';
 import { submitRsvpAction, uploadPhotoAction, contributeToRegistryAction } from '@/app/actions/wedding-actions';
 
 
@@ -131,9 +131,23 @@ export default function GuestPortalView({
     );
   const locale = PORTAL_LANGUAGES[portalLanguageOf(event?.language)].locale;
 
-  const theme: TemplateDesignRecord = {
+  const mergedTheme: TemplateDesignRecord = {
     ...baseTheme,
     ...(event?.theme_config && typeof event.theme_config === 'object' ? event.theme_config : {}),
+  };
+  // A preset mixed with a couple's own colours can produce unreadable pairs (dark text on a navy card,
+  // champagne on cream); repair just those, so every guest can read the invitation whatever was chosen
+  const repaired = readablePalette({
+    bg: mergedTheme.bg_color || '#FAF7F2',
+    text: mergedTheme.text_color || '#2C2523',
+    accent: mergedTheme.accent_color || '#9E5A44',
+    surface: mergedTheme.surface_color || '#FFFFFF',
+  });
+  const theme: TemplateDesignRecord = {
+    ...mergedTheme,
+    text_color: repaired.text,
+    surface_color: repaired.surface,
+    accent_color: repaired.accent,
   };
 
   const fallbackGuest: GuestRecord = {
@@ -2162,7 +2176,7 @@ export default function GuestPortalView({
             id === 'rsvp' && !publicView ? (
               <div
                 key={id}
-                className="rsvp-band my-8 overflow-hidden isolate px-5 sm:px-8 pb-12 sm:pb-16"
+                className="rsvp-band my-8 isolate px-5 sm:px-8 pb-12 sm:pb-16"
                 style={
                   ((theme.rsvp_band ?? (darkTheme ? 'deep' : 'accent')) === 'deep'
                     ? // Night themes: a deeper shade of the page between accent hairlines, not a flat block of gold

@@ -88,3 +88,16 @@ export function ensureContrast(color: string, background: string, min: number, t
 export function isDarkBackground(background: string): boolean {
   return contrastRatio(background, '#FFFFFF') > contrastRatio(background, '#000000');
 }
+
+/**
+ * Makes any mix of preset and custom colours readable: text that fails on its page is replaced, cards fall
+ * back to the page colour when the text can't be read on them, and a faint accent is nudged until it reads.
+ * Colours that already work are returned unchanged.
+ */
+export function readablePalette(p: { bg: string; text: string; accent: string; surface: string }) {
+  const text = contrastRatio(p.text, p.bg) >= 4.5 ? p.text : readableOn(p.bg, [p.text, '#1A1A1A', '#FFFFFF']);
+  const surface = contrastRatio(text, p.surface) >= 4.5 ? p.surface : p.bg;
+  // 5:1 leaves room for the tinted calendar band, a shade off the page colour
+  const accent = ensureContrast(p.accent, p.bg, 5, text);
+  return { text, surface, accent };
+}
