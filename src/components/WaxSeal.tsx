@@ -137,13 +137,7 @@ function EnvelopeOpening({
               <>
                 <span className="env-ribbon" />
                 <span className="env-bow">
-                  <svg viewBox="0 0 60 36" className="h-full w-full" fill="none">
-                    <path d="M30 18 C 20 4, 4 6, 6 16 C 8 26, 22 24, 30 18 Z" fill={palette.accent} />
-                    <path d="M30 18 C 40 4, 56 6, 54 16 C 52 26, 38 24, 30 18 Z" fill={palette.accent} />
-                    <path d="M28 19 L 20 34 M32 19 L 40 34" stroke={palette.accent} strokeWidth="3" strokeLinecap="round" />
-                    <circle cx="30" cy="18" r="4" fill={palette.accent} stroke="rgba(0,0,0,0.2)" />
-                    <path d="M12 14 C 18 12, 24 14, 28 17 M48 14 C 42 12, 36 14, 32 17" stroke="rgba(255,255,255,0.35)" strokeWidth="1" />
-                  </svg>
+                  <BowSvg accent={palette.accent} />
                 </span>
               </>
             ) : (
@@ -156,7 +150,7 @@ function EnvelopeOpening({
 
         <div className="space-y-3">
           {guestName && (
-            <p className={nameStyle === 'serif' ? 'font-serif text-3xl sm:text-4xl font-medium tracking-tight' : 'font-script text-4xl sm:text-5xl leading-tight'}>
+            <p className={nameStyle === 'serif' ? 'couple-names font-serif text-3xl sm:text-4xl font-medium tracking-tight' : 'font-script text-4xl sm:text-5xl leading-tight'}>
               {guestName}
             </p>
           )}
@@ -262,7 +256,7 @@ function CardOpening({
           </p>
           {/* The couple first; the guest is the greeting beneath them */}
           <h2
-            className={nameStyle === 'serif' ? 'font-serif text-3xl sm:text-4xl font-medium tracking-tight [text-wrap:balance]' : 'font-script text-5xl leading-tight [text-wrap:balance]'}
+            className={nameStyle === 'serif' ? 'couple-names font-serif text-3xl sm:text-4xl font-medium tracking-tight [text-wrap:balance]' : 'font-script text-5xl leading-tight [text-wrap:balance]'}
           >
             {coupleNames}
           </h2>
@@ -287,5 +281,18 @@ function CardOpening({
         </div>
       </motion.div>
     </motion.div>
+  );
+}
+
+/** The ribbon's bow, shared by the envelope and the thank-you so a ribbon opening closes with a ribbon too. */
+export function BowSvg({ accent }: { accent: string }) {
+  return (
+    <svg viewBox="0 0 60 36" className="h-full w-full" fill="none">
+      <path d="M30 18 C 20 4, 4 6, 6 16 C 8 26, 22 24, 30 18 Z" fill={accent} />
+      <path d="M30 18 C 40 4, 56 6, 54 16 C 52 26, 38 24, 30 18 Z" fill={accent} />
+      <path d="M28 19 L 20 34 M32 19 L 40 34" stroke={accent} strokeWidth="3" strokeLinecap="round" />
+      <circle cx="30" cy="18" r="4" fill={accent} stroke="rgba(0,0,0,0.2)" />
+      <path d="M12 14 C 18 12, 24 14, 28 17 M48 14 C 42 12, 36 14, 32 17" stroke="rgba(255,255,255,0.35)" strokeWidth="1" />
+    </svg>
   );
 }

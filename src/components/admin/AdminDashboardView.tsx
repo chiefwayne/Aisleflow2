@@ -2999,11 +2999,41 @@ export default function AdminDashboardView({
                                     </span>
                                   )}
                                 </span>
-                                {/* The invitation itself in miniature: the preset's paper, name typeface and ornament */}
+                                {/* The invitation itself in miniature: the preset's paper, its cover frame, name typeface and
+                                    ornament, with the RSVP band's colour along the foot */}
                                 <span
-                                  className="flex flex-1 flex-col items-center justify-center rounded-lg"
+                                  className="relative flex flex-1 flex-col items-center justify-center overflow-hidden rounded-lg"
                                   style={{ height: 52, backgroundColor: thm.bg_color, color: thm.text_color, border: '1px solid rgba(0,0,0,0.06)' }}
                                 >
+                                  {thm.border_flair && thm.border_flair !== 'clean' && thm.border_flair !== 'sprig' && (
+                                    <span
+                                      style={{
+                                        position: 'absolute',
+                                        inset: thm.border_flair === 'deboss' ? '5px 8px 11px' : '4px 6px 10px',
+                                        border: thm.border_flair === 'deboss' ? 'none' : `${['double-line', 'arabesque'].includes(thm.border_flair) ? '3px double' : '1px solid'} ${thm.accent_color}`,
+                                        borderTop: thm.border_flair === 'deboss' ? `1px solid ${thm.border_color}` : undefined,
+                                        borderBottom: thm.border_flair === 'deboss' ? `1px solid ${thm.border_color}` : undefined,
+                                        borderRadius: thm.border_flair === 'arch' ? '999px 999px 0 0' : 0,
+                                        opacity: 0.55,
+                                      }}
+                                    />
+                                  )}
+                                  {thm.border_flair === 'sprig' && (
+                                    <span style={{ position: 'absolute', left: 4, top: 2, fontSize: 11, lineHeight: 1, color: thm.accent_color, opacity: 0.7 }}>❧</span>
+                                  )}
+                                  <span
+                                    style={{
+                                      position: 'absolute',
+                                      left: 0,
+                                      right: 0,
+                                      bottom: 0,
+                                      height: 6,
+                                      backgroundColor:
+                                        (thm.rsvp_band ?? (thm.is_dark ? 'deep' : 'accent')) === 'deep'
+                                          ? `color-mix(in srgb, ${thm.bg_color} 72%, #000)`
+                                          : thm.accent_color,
+                                    }}
+                                  />
                                   <span style={{ fontSize: 8, lineHeight: 1, color: thm.accent_color }}>{thm.floron || '✦'}</span>
                                   <span
                                     style={{
@@ -3025,6 +3055,10 @@ export default function AdminDashboardView({
                             </button>
                           ))}
                         </div>
+                        {/* What makes the chosen preset its own, in its own words */}
+                        {BUILTIN_THEMES[customTheme.id]?.description && (
+                          <p className="mt-2 text-xs leading-relaxed text-aisle-muted">{BUILTIN_THEMES[customTheme.id].description}</p>
+                        )}
                       </div>
 
                       {/* Invitation layout: cover, names, paper and chapter labels (every plan) */}

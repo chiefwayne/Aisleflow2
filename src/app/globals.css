@@ -303,11 +303,17 @@ body {
   font-variant: small-caps;
   letter-spacing: 0.06em;
 }
-.theme-vintage h2.font-serif {
+.theme-vintage:not(.names-serif) h2.font-serif {
   font-family: var(--font-cormorant), Georgia, serif;
   font-style: italic;
   font-weight: 500;
   letter-spacing: 0;
+}
+/* With stone-cut names, headings carry the same capitals, so the page has one display voice */
+.theme-vintage.names-serif h2.font-serif {
+  font-family: var(--font-cinzel), Georgia, serif;
+  font-weight: 500;
+  letter-spacing: 0.04em;
 }
 
 /* Envelope linings: each preset's pattern, seen as the flap lifts */
