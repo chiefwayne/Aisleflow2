@@ -7,7 +7,6 @@ import {
   Calendar,
   Clock,
   MapPin,
-  Camera,
   Gift,
   CheckCircle2,
   ExternalLink,
@@ -25,7 +24,6 @@ import {
   Hotel,
   HelpCircle,
   Check,
-  CalendarPlus
 } from 'lucide-react';
 import {
   EventRecord,
@@ -574,7 +572,7 @@ export default function GuestPortalView({
   const heroLayout = theme.hero_layout || (event.cover_image_url ? 'photo' : 'stationery');
   const showPhotoHero = heroLayout === 'photo' && !!event.cover_image_url;
   const scriptNames = theme.name_style !== 'serif';
-  const nameClass = `couple-names ${scriptNames ? 'font-script font-normal leading-[0.95]' : 'font-serif font-medium tracking-tight leading-[1.08]'}`;
+  const nameClass = `couple-names ${scriptNames ? 'font-script font-normal leading-[0.95]' : 'font-serif font-normal tracking-tight leading-[1.08]'}`;
   // Script is kept for the couple's names; section headings are set large in the text face
   const headingClass = scriptNames
     ? 'font-editorial text-3xl sm:text-4xl font-medium leading-tight tracking-[0.01em] [text-wrap:balance]'
@@ -741,9 +739,6 @@ export default function GuestPortalView({
                 <div className="text-center space-y-2">
                   {chapterMark}
                   <h2 className={headingClass}>{tr.theItinerary}</h2>
-                  <p className="text-sm font-editorial italic opacity-75">
-                    Curated for {partyNames}
-                  </p>
                 </div>
 
                 {/* Seamless Vertical Timeline */}
@@ -869,16 +864,10 @@ export default function GuestPortalView({
                       )}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-sm font-semibold px-4 py-1.5 rounded-full border transition-all shadow-sm hover:opacity-80 cursor-pointer"
-                      style={{
-                        borderColor: theme.border_color || '#E8E0D7',
-                        backgroundColor: theme.surface_color || '#FFFFFF',
-                        color: theme.accent_color || '#9E5A44',
-                      }}
+                      className="inline-flex min-h-[44px] items-center text-lg italic underline decoration-1 underline-offset-4 hover:opacity-80 cursor-pointer"
+                      style={{ color: accent }}
                     >
-                      <MapPin className="h-3 w-3" />
-                      <span>{tr.getDirections}</span>
-                      <ExternalLink className="h-3 w-3 opacity-60" />
+                      {tr.getDirections}
                     </a>
                   </div>
                 )}
@@ -939,15 +928,10 @@ export default function GuestPortalView({
                   <button
                     type="button"
                     onClick={handleAddToCalendar}
-                    className="min-h-[44px] inline-flex items-center gap-2 rounded-full border px-5 py-3 text-sm font-semibold transition-all hover:opacity-80 shadow-sm cursor-pointer"
-                    style={{
-                      backgroundColor: theme.surface_color || '#FFFFFF',
-                      borderColor: theme.border_color || '#E8E0D7',
-                      color: theme.text_color,
-                    }}
+                    className="min-h-[44px] inline-flex items-center text-lg italic underline decoration-1 underline-offset-4 hover:opacity-80 cursor-pointer"
+                    style={{ color: accent }}
                   >
-                    <CalendarPlus className="h-4 w-4" style={{ color: theme.accent_color }} />
-                    <span>{visibleSchedule.length > 0 ? tr.addItineraryToCalendar : tr.addToMyCalendar}</span>
+                    {visibleSchedule.length > 0 ? tr.addItineraryToCalendar : tr.addToMyCalendar}
                   </button>
                 </div>
               </div>
@@ -1679,7 +1663,7 @@ export default function GuestPortalView({
                                   <strong className="text-base font-semibold">{guest.first_name} {guest.last_name || ''}</strong>
                                   <span
                                     className="text-base italic"
-                                    style={isAtt ? { backgroundColor: `${theme.accent_color}20`, color: theme.accent_color } : { color: theme.text_color, opacity: 0.7 }}
+                                    style={{ color: isAtt ? accent : muted }}
                                   >
                                     {st.rsvp_status}
                                   </span>
@@ -1792,7 +1776,6 @@ export default function GuestPortalView({
                   className="inline-flex cursor-pointer items-center gap-2 rounded-full px-6 py-3 text-base font-semibold tracking-wide transition-all hover:scale-105 shadow-sm text-[color:var(--on-accent)]"
                   style={{ backgroundColor: accent }}
                 >
-                  <Camera className="h-4 w-4" />
                   <span>{isUploadingPhoto ? tr.uploadingPhoto : tr.addPhoto}</span>
                 </label>
                 {uploadMessage && (
@@ -2433,12 +2416,11 @@ export function CoverFrame({ flair, accent }: { flair?: string; accent: string }
   const line = 'rgba(255,255,255,0.6)';
   // Light accents (champagne, marigold) read on a photo; deep ones fall back to white
   const tone = contrastRatio(accent, '#000000') > 7 ? accent : line;
-  const gold = contrastRatio(accent, '#000000') > 7 ? accent : '#C9A961';
   switch (flair) {
     case 'botanical-crest':
       // A laurel crest: two leafy branches meeting beneath a small rule
       return (
-        <svg aria-hidden="true" viewBox="0 0 140 70" className="pointer-events-none absolute left-1/2 top-6 h-16 w-32 -translate-x-1/2" fill="none" stroke={line} strokeWidth="1.2" strokeLinecap="round">
+        <svg aria-hidden="true" viewBox="0 0 140 70" className="pointer-events-none absolute left-1/2 top-6 h-24 w-48 -translate-x-1/2" fill="none" stroke={line} strokeWidth="1" strokeLinecap="round">
           <path d="M70 62 C 46 58, 30 42, 28 14" />
           <path d="M70 62 C 94 58, 110 42, 112 14" />
           {[0, 1, 2, 3, 4, 5].map((i) => {
@@ -2464,8 +2446,8 @@ export function CoverFrame({ flair, accent }: { flair?: string; accent: string }
     case 'hairline-gold':
       // A true gold hairline with a single wave at its head
       return (
-        <div aria-hidden="true" className="pointer-events-none absolute inset-5 border" style={{ borderColor: gold }}>
-          <svg viewBox="0 0 80 12" className="absolute left-1/2 top-3 h-3 w-20 -translate-x-1/2" fill="none" stroke={gold} strokeWidth="1.3" strokeLinecap="round">
+        <div aria-hidden="true" className="pointer-events-none absolute inset-5 border" style={{ borderColor: line }}>
+          <svg viewBox="0 0 80 12" className="absolute left-1/2 top-3 h-4 w-24 -translate-x-1/2" fill="none" stroke={line} strokeWidth="1.3" strokeLinecap="round">
             <path d="M2 6 C 10 0, 18 0, 26 6 S 42 12, 50 6 S 66 0, 78 6" />
           </svg>
         </div>
@@ -2495,15 +2477,23 @@ export function CoverFrame({ flair, accent }: { flair?: string; accent: string }
             <path d="M24 24 C 30 22, 38 18, 41 10 C 34 10, 28 14, 24 24 Z" />
             <path d="M8 25 L 40 25" />
           </svg>
+          {/* A marigold garland (toran) swagged across the top */}
+          <svg viewBox="0 0 300 30" preserveAspectRatio="none" className="absolute inset-x-3 top-12 h-6" fill={tone} stroke="none">
+            {Array.from({ length: 25 }, (_, i) => {
+              const x = 6 + i * 12;
+              const y = 6 + Math.sin((i / 24) * Math.PI) * 14;
+              return <circle key={i} cx={x} cy={y} r={i % 2 ? 3 : 4} opacity={i % 2 ? 0.75 : 1} />;
+            })}
+          </svg>
         </div>
       );
     case 'stars':
       // A gold hairline with a small constellation drawn in its corner
       return (
         <div aria-hidden="true" className="pointer-events-none absolute inset-5 border" style={{ borderColor: tone }}>
-          <svg viewBox="0 0 100 60" className="absolute right-4 top-4 h-16 w-28" fill="none" stroke={tone} strokeWidth="0.8">
-            <polyline points="8,40 30,22 52,30 70,10 92,18" opacity="0.7" />
-            {[[8, 40, 2.2], [30, 22, 2.8], [52, 30, 2], [70, 10, 3], [92, 18, 2.2]].map(([cx, cy, r]) => (
+          <svg viewBox="0 0 100 60" className="absolute right-3 top-3 h-24 w-40" fill="none" stroke={tone} strokeWidth="1.2">
+            <polyline points="8,40 30,22 52,30 70,10 92,18" opacity="0.85" />
+            {[[8, 40, 2.8], [30, 22, 3.4], [52, 30, 2.6], [70, 10, 3.8], [92, 18, 2.8]].map(([cx, cy, r]) => (
               <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={r} fill={tone} />
             ))}
           </svg>
@@ -2515,24 +2505,15 @@ export function CoverFrame({ flair, accent }: { flair?: string; accent: string }
         </div>
       );
     case 'sprig':
-      // A hand-drawn eucalyptus sprig at the top, with a few pressed leaves fallen to the corners
+      // A hand-drawn eucalyptus spray reaching in from the top-left corner
       return (
-        <>
-          <svg aria-hidden="true" viewBox="0 0 120 60" className="pointer-events-none absolute left-1/2 top-6 h-20 w-40 -translate-x-1/2" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.2" strokeLinecap="round">
-            <path d="M10 40 C 40 34, 80 34, 110 22" />
-            {[18, 32, 46, 60, 74, 88, 100].map((x, i) => (
-              <ellipse key={x} cx={x} cy={i % 2 ? 31 - i : 44 - i * 1.6} rx="6" ry="3.2" transform={`rotate(${i % 2 ? -28 : 24} ${x} ${i % 2 ? 31 - i : 44 - i * 1.6})`} />
-            ))}
-          </svg>
-          <svg aria-hidden="true" viewBox="0 0 40 40" className="pointer-events-none absolute left-6 top-1/3 h-8 w-8" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.1">
-            <ellipse cx="20" cy="20" rx="12" ry="5" transform="rotate(-40 20 20)" />
-            <path d="M10 28 L 30 12" />
-          </svg>
-          <svg aria-hidden="true" viewBox="0 0 40 40" className="pointer-events-none absolute right-8 top-[42%] h-7 w-7" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="1.1">
-            <ellipse cx="20" cy="20" rx="11" ry="4.5" transform="rotate(30 20 20)" />
-            <path d="M10 14 L 30 26" />
-          </svg>
-        </>
+        <svg aria-hidden="true" viewBox="0 0 160 120" className="pointer-events-none absolute left-0 top-0 h-36 w-48" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="1.2" strokeLinecap="round">
+          <path d="M-4 6 C 30 20, 70 40, 118 92" />
+          <path d="M40 26 C 52 14, 66 10, 80 12" />
+          {[[14, 14, 20], [28, 24, -30], [44, 32, 28], [58, 46, -24], [74, 58, 34], [88, 72, -20], [102, 82, 36], [54, 16, -10], [68, 12, 12]].map(([cx, cy, rot]) => (
+            <ellipse key={`${cx}-${cy}`} cx={cx} cy={cy} rx="8" ry="4" transform={`rotate(${rot} ${cx} ${cy})`} />
+          ))}
+        </svg>
       );
     default:
       return null;

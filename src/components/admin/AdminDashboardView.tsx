@@ -72,7 +72,7 @@ import {
 import { BUILTIN_THEMES } from '@/lib/theme-presets';
 import { generateQrDataUrl } from '@/lib/qrcode';
 import PortalPreviewPane from '@/components/admin/PortalPreviewPane';
-import GuestPortalView, { CoverFrame } from '@/components/guest/GuestPortalView';
+import GuestPortalView from '@/components/guest/GuestPortalView';
 import { ImagePickerUploader } from '@/components/common/ImagePickerUploader';
 import PublishReadinessPanel from '@/components/admin/PublishReadinessPanel';
 import PlanCard from '@/components/admin/PlanCard';
@@ -2999,22 +2999,27 @@ export default function AdminDashboardView({
                                     </span>
                                   )}
                                 </span>
-                                {/* The cover's signature detail, drawn at full size over a photo-like gradient and scaled down */}
-                                <span className="relative flex-1 overflow-hidden rounded-lg" style={{ height: 52 }}>
+                                {/* The invitation itself in miniature: the preset's paper, name typeface and ornament */}
+                                <span
+                                  className="flex flex-1 flex-col items-center justify-center rounded-lg"
+                                  style={{ height: 52, backgroundColor: thm.bg_color, color: thm.text_color, border: '1px solid rgba(0,0,0,0.06)' }}
+                                >
+                                  <span style={{ fontSize: 8, lineHeight: 1, color: thm.accent_color }}>{thm.floron || '✦'}</span>
                                   <span
                                     style={{
-                                      position: 'absolute',
-                                      left: 0,
-                                      top: 0,
-                                      width: 230,
-                                      height: 158,
-                                      transform: 'scale(0.33)',
-                                      transformOrigin: 'top left',
-                                      background: `linear-gradient(160deg, color-mix(in srgb, ${thm.accent_color} 35%, #6b5a4a) 0%, #2a2420 100%)`,
+                                      fontFamily:
+                                        thm.name_style === 'serif'
+                                          ? thm.font_family === 'vintage-editorial'
+                                            ? 'var(--font-cinzel), serif'
+                                            : 'var(--font-playfair), serif'
+                                          : 'var(--font-script), cursive',
+                                      fontSize: thm.name_style === 'serif' ? 13 : 20,
+                                      lineHeight: 1.1,
                                     }}
                                   >
-                                    <CoverFrame flair={thm.border_flair} accent={thm.accent_color} />
+                                    A &amp; B
                                   </span>
+                                  <span style={{ marginTop: 3, height: 1, width: 22, backgroundColor: thm.accent_color, opacity: 0.6 }} />
                                 </span>
                               </span>
                             </button>

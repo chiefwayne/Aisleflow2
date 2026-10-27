@@ -416,3 +416,9 @@ body {
     padding-block: 5.5rem 3rem;
   }
 }
+
+/* Garamond has a small x-height: on the invitation, "small" text is set at 17px so it reads on a phone */
+.invite-root.font-editorial .text-sm {
+  font-size: 1.0625rem;
+  line-height: 1.55;
+}
