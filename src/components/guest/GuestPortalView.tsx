@@ -1092,8 +1092,9 @@ export default function GuestPortalView({
     ) : (
       <>
             {/* 8. FORMAL STATIONERY RESPONSE CARD (4-STEP TACTILE RSVP WIZARD) */}
-            <section id="rsvp" className="space-y-6 pt-4">
-              <div className="text-center space-y-2">
+            <section id="rsvp" className="space-y-8 pt-4">
+              {/* On the colour band this heading is the strip of colour; the letter sits below it on the page */}
+              <div className="rsvp-head text-center space-y-2">
                 {keyMark}
                 <h2 className={headingClass}>
                   {tr.rsvpTitle}
@@ -1114,10 +1115,9 @@ export default function GuestPortalView({
                 ref={rsvpCardRef}
                 className="relative overflow-hidden rounded-[2px] p-7 sm:p-11 scroll-mt-20"
                 style={{
-                  backgroundColor: surface,
                   color: ink,
-                  // A sheet of stationery: a fine double rule inside the edge and a soft paper shadow
-                  boxShadow: `inset 0 0 0 7px ${surface}, inset 0 0 0 8px color-mix(in srgb, ${accent} 40%, transparent), 0 24px 40px -28px rgba(0,0,0,${darkTheme ? 0.7 : 0.35}), 0 2px 6px -3px rgba(0,0,0,0.15)`,
+                  // The letter: a fine double rule on the page itself, no card fill or shadow
+                  boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${accent} 45%, transparent), inset 0 0 0 6px ${pageBg}, inset 0 0 0 7px color-mix(in srgb, ${accent} 30%, transparent)`,
                 }}
               >
                 {isRsvpLocked ? (
@@ -1281,81 +1281,50 @@ export default function GuestPortalView({
                           <h3 className="font-editorial text-xl font-semibold" style={{ color: theme.text_color }}>
                             {tr.selectEvents}
                           </h3>
-                          <p className="text-sm opacity-75">
-                            {tr.confirmEvents}
-                          </p>
                         </div>
 
-                        <div className="space-y-4">
-                          {attendingGuestsInParty.map((guest) => (
-                            <div
-                              key={guest.id}
-                              className="space-y-3 border-t pt-5 first:border-t-0 first:pt-0"
-                              style={{ borderColor: theme.border_color }}
-                            >
-                              <span className="font-editorial text-lg font-semibold block" style={{ color: theme.text_color }}>
-                                {guest.first_name}
-                              </span>
-
-                              <div className="space-y-2">
+                        {/* Everyone is down for all of it; only a guest who'll miss something opens the list */}
+                        <p className="italic text-[color:var(--muted)]">
+                          {tr.allOfIt} {visibleSchedule.map((item) => item.title).join(' · ')}
+                        </p>
+                        <details
+                          className="group"
+                          open={attendingGuestsInParty.some((g) => visibleSchedule.some((item) => subEventRsvps[g.id]?.[item.id] === 'declined'))}
+                        >
+                          <summary className="min-h-[44px] flex items-center gap-2 cursor-pointer list-none italic text-[color:var(--muted)] hover:text-[color:var(--ink)]">
+                            <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden="true" />
+                            {tr.missPartOfDay}
+                          </summary>
+                          <div className="space-y-4 pt-3">
+                            {attendingGuestsInParty.map((guest) => (
+                              <fieldset key={guest.id} className="space-y-1">
+                                {attendingGuestsInParty.length > 1 && (
+                                  <legend className="font-editorial text-lg font-semibold">{guest.first_name}</legend>
+                                )}
                                 {visibleSchedule.map((item) => {
-                                  const isAttendingItem =
-                                    subEventRsvps[guest.id]?.[item.id] !== 'declined';
-
+                                  const isAttendingItem = subEventRsvps[guest.id]?.[item.id] !== 'declined';
                                   return (
-                                    <div
-                                      key={item.id}
-                                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 py-3 border-t first:border-t-0 text-base"
-                                      style={{ borderColor: theme.border_color }}
-                                    >
-                                      <div>
-                                        <strong className="block font-medium">{item.title}</strong>
-                                        <span className="text-xs opacity-70">
-                                          {new Date(item.start_time).toLocaleTimeString(locale, {
-                                            hour: 'numeric',
-                                            minute: '2-digit',
-                                          })}
+                                    <label key={item.id} className="flex min-h-[44px] items-center gap-3 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={isAttendingItem}
+                                        onChange={(e) => handleSubEventStatusChange(guest.id, item.id, e.target.checked ? 'attending' : 'declined')}
+                                        className="h-5 w-5 shrink-0 cursor-pointer"
+                                        style={{ accentColor: accent }}
+                                      />
+                                      <span>
+                                        {item.title}
+                                        <span className="italic text-[color:var(--muted)]">
+                                          {' '}· {new Date(item.start_time).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}
                                         </span>
-                                      </div>
-
-                                      <div className="grid grid-cols-2 sm:flex gap-2">
-                                        <button
-                                          type="button"
-                                          onClick={() => handleSubEventStatusChange(guest.id, item.id, 'attending')}
-                                          className={`min-h-[44px] px-4 py-3 rounded-full border text-base font-semibold tracking-wide cursor-pointer ${
-                                            isAttendingItem ? 'text-[color:var(--on-accent)]' : ''
-                                          }`}
-                                          style={
-                                            isAttendingItem
-                                              ? { backgroundColor: theme.accent_color, borderColor: theme.accent_color }
-                                              : { borderColor: theme.border_color, color: theme.text_color }
-                                          }
-                                        >
-                                          {tr.attending}
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleSubEventStatusChange(guest.id, item.id, 'declined')}
-                                          className={`min-h-[44px] px-4 py-3 rounded-full border text-base font-semibold tracking-wide cursor-pointer ${
-                                            !isAttendingItem ? 'text-[color:var(--on-ink)]' : ''
-                                          }`}
-                                          style={
-                                            !isAttendingItem
-                                              ? { backgroundColor: theme.text_color, borderColor: theme.text_color }
-                                              : { borderColor: theme.border_color, color: theme.text_color }
-                                          }
-                                        >
-                                          {tr.decline}
-                                        </button>
-                                      </div>
-                                    </div>
+                                      </span>
+                                    </label>
                                   );
                                 })}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
+                              </fieldset>
+                            ))}
+                          </div>
+                        </details>
                           </div>
                         )}
 
@@ -1498,9 +1467,11 @@ export default function GuestPortalView({
                                     <span className="text-base italic block" style={{ color: accent }}>
                                       {tr.plusOneDetails}
                                     </span>
-                                    <input
+                                    <label className="block space-y-1">
+                                      <span className="block text-base italic text-[color:var(--muted)]">{tr.plusOneName}</span>
+                                      <input
                                       type="text"
-                                      placeholder={tr.plusOneName}
+                                      
                                       value={gState.plus_one_name}
                                       onChange={(e) =>
                                         setPartyState((prev) => ({
@@ -1514,6 +1485,7 @@ export default function GuestPortalView({
                                       className="w-full rounded-xl border p-3 bg-[color:var(--field-bg)] focus:outline-none text-base"
                                       style={{ borderColor: theme.border_color }}
                                     />
+                                    </label>
                                     {menuOptions.length > 0 ? (
                                       <select
                                         aria-label={tr.plusOneMeal}
@@ -1535,9 +1507,11 @@ export default function GuestPortalView({
                                         ))}
                                       </select>
                                     ) : (
-                                      <input
+                                      <label className="block space-y-1">
+                                        <span className="block text-base italic text-[color:var(--muted)]">{tr.plusOneMealText}</span>
+                                        <input
                                         type="text"
-                                        placeholder={tr.plusOneMealText}
+                                        
                                         value={gState.plus_one_meal}
                                         onChange={(e) =>
                                           setPartyState((prev) => ({
@@ -1551,6 +1525,7 @@ export default function GuestPortalView({
                                         className="w-full rounded-xl border p-3 bg-[color:var(--field-bg)] focus:outline-none text-base"
                                         style={{ borderColor: theme.border_color }}
                                       />
+                                      </label>
                                     )}
                                   </div>
                                 )}
@@ -2078,7 +2053,7 @@ export default function GuestPortalView({
                 >
                   {monogram(event.couple_names).split('').join(' & ')}
                 </div>
-                <p className="font-editorial text-sm uppercase tracking-[0.3em]" style={{ color: accent }}>
+                <p className="font-editorial text-xs sm:text-sm uppercase tracking-[0.2em] sm:tracking-[0.3em] [text-wrap:balance]" style={{ color: accent }}>
                   {onEditText ? editable('theme.eyebrow_text', theme.eyebrow_text, 'top line') : theme.eyebrow_text || tr.weddingCelebration}
                 </p>
                 <div className="space-y-3">
@@ -2129,7 +2104,7 @@ export default function GuestPortalView({
               style={{ backgroundColor: darkTheme ? `color-mix(in srgb, ${accent} 4%, ${surface})` : `color-mix(in srgb, ${accent} 7%, ${pageBg})` }}
             >
               <div className="mx-auto max-w-sm text-center">
-                <p className="font-editorial text-sm uppercase tracking-[0.32em]" style={{ color: accent }}>
+                <p className="font-editorial text-xl italic" style={{ color: accent }}>
                   {tr.saveTheDate}
                 </p>
                 <h2 className={`${headingClass} mt-2 capitalize`}>{monthLabel}</h2>
@@ -2159,7 +2134,7 @@ export default function GuestPortalView({
                   {countdownUnits(timeLeft).map((unit, i) => (
                     <div key={unit} className={`px-5 sm:px-7 ${i > 0 ? 'border-l' : ''}`} style={{ borderColor: `color-mix(in srgb, ${accent} 25%, transparent)` }}>
                       <span className="font-editorial text-3xl italic leading-none block">{timeLeft[unit]}</span>
-                      <span className="mt-1 block text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">
+                      <span className="mt-1 block text-base italic lowercase text-[color:var(--muted)]">
                         {timeLeft[unit] === 1 ? tr[UNIT_SINGULAR[unit]] : tr[unit]}
                       </span>
                     </div>
@@ -2187,17 +2162,16 @@ export default function GuestPortalView({
             id === 'rsvp' && !publicView ? (
               <div
                 key={id}
-                className="my-8 px-5 sm:px-8 py-16 sm:py-24"
+                className="rsvp-band my-8 overflow-hidden isolate px-5 sm:px-8 pb-12 sm:pb-16"
                 style={
                   ((theme.rsvp_band ?? (darkTheme ? 'deep' : 'accent')) === 'deep'
                     ? // Night themes: a deeper shade of the page between accent hairlines, not a flat block of gold
                       {
-                        backgroundColor: `color-mix(in srgb, ${pageBg} 72%, #000)`,
-                        color: ink,
-                        borderBlock: `1px solid color-mix(in srgb, ${accent} 45%, transparent)`,
-                        ['--section-accent' as string]: accent,
+                        '--band-bg': `color-mix(in srgb, ${pageBg} 72%, #000)`,
+                        '--band-ink': ink,
+                        '--band-line': `color-mix(in srgb, ${accent} 45%, transparent)`,
                       }
-                    : { backgroundColor: accent, color: bandInk, ['--section-accent' as string]: bandInk }) as React.CSSProperties
+                    : { '--band-bg': accent, '--band-ink': bandInk, '--band-line': 'transparent', ['--section-accent' as string]: bandInk }) as React.CSSProperties
                 }
               >
                 <div className={`mx-auto ${canvasMaxWidthClass}`}>{sectionBlocks[id]}</div>
@@ -2440,19 +2414,32 @@ export default function GuestPortalView({
   );
 }
 
-/** One hand-drawn detail over the photo cover, chosen by the preset's border_flair. */
-function CoverFrame({ flair, accent }: { flair?: string; accent: string }) {
-  const line = 'rgba(255,255,255,0.55)';
+/** One hand-drawn signature detail over the photo cover, chosen by the preset's border_flair. */
+export function CoverFrame({ flair, accent }: { flair?: string; accent: string }) {
+  const line = 'rgba(255,255,255,0.6)';
   // Light accents (champagne, marigold) read on a photo; deep ones fall back to white
   const tone = contrastRatio(accent, '#000000') > 7 ? accent : line;
+  const gold = contrastRatio(accent, '#000000') > 7 ? accent : '#C9A961';
   switch (flair) {
     case 'botanical-crest':
+      // A laurel crest: two leafy branches meeting beneath a small rule
       return (
-        <div aria-hidden="true" className="pointer-events-none absolute inset-5">
-          {['left-0 top-0 border-l border-t', 'right-0 top-0 border-r border-t', 'left-0 bottom-0 border-l border-b', 'right-0 bottom-0 border-r border-b'].map((pos) => (
-            <span key={pos} className={`absolute h-10 w-10 ${pos}`} style={{ borderColor: line }} />
-          ))}
-        </div>
+        <svg aria-hidden="true" viewBox="0 0 140 70" className="pointer-events-none absolute left-1/2 top-6 h-16 w-32 -translate-x-1/2" fill="none" stroke={line} strokeWidth="1.2" strokeLinecap="round">
+          <path d="M70 62 C 46 58, 30 42, 28 14" />
+          <path d="M70 62 C 94 58, 110 42, 112 14" />
+          {[0, 1, 2, 3, 4, 5].map((i) => {
+            const t = i / 5;
+            const x = 70 - 42 * t ** 0.9;
+            const y = 62 - 48 * t ** 1.2;
+            return (
+              <g key={i}>
+                <ellipse cx={x - 5} cy={y} rx="5.5" ry="2.4" transform={`rotate(${-35 - i * 8} ${x - 5} ${y})`} />
+                <ellipse cx={140 - x + 5} cy={y} rx="5.5" ry="2.4" transform={`rotate(${35 + i * 8} ${140 - x + 5} ${y})`} />
+              </g>
+            );
+          })}
+          <path d="M60 8 L 70 3 L 80 8" />
+        </svg>
       );
     case 'double-line':
       return (
@@ -2461,20 +2448,52 @@ function CoverFrame({ flair, accent }: { flair?: string; accent: string }) {
         </div>
       );
     case 'hairline-gold':
-      return <div aria-hidden="true" className="pointer-events-none absolute inset-5 border" style={{ borderColor: tone }} />;
+      // A true gold hairline with a single wave at its head
+      return (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-5 border" style={{ borderColor: gold }}>
+          <svg viewBox="0 0 80 12" className="absolute left-1/2 top-3 h-3 w-20 -translate-x-1/2" fill="none" stroke={gold} strokeWidth="1.3" strokeLinecap="round">
+            <path d="M2 6 C 10 0, 18 0, 26 6 S 42 12, 50 6 S 66 0, 78 6" />
+          </svg>
+        </div>
+      );
     case 'arch':
-      return <div aria-hidden="true" className="pointer-events-none absolute inset-x-6 top-8 bottom-6 rounded-t-full border" style={{ borderColor: line }} />;
+      // An arched window with a grapevine sprig at its crown
+      return (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-x-6 top-8 bottom-6 rounded-t-full border" style={{ borderColor: line }}>
+          <svg viewBox="0 0 90 40" className="absolute left-1/2 top-0 h-10 w-24 -translate-x-1/2 -translate-y-1/2" fill="none" stroke={line} strokeWidth="1.2" strokeLinecap="round">
+            <path d="M8 20 C 25 10, 45 10, 82 20" />
+            <ellipse cx="22" cy="12" rx="6" ry="3" transform="rotate(-25 22 12)" />
+            <ellipse cx="66" cy="12" rx="6" ry="3" transform="rotate(25 66 12)" />
+            {[[42, 18], [48, 18], [45, 23], [39, 23], [51, 23], [45, 28]].map(([cx, cy]) => (
+              <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="2.6" />
+            ))}
+          </svg>
+        </div>
+      );
     case 'arabesque':
+      // A double rule with an outlined lotus at its head
       return (
         <div aria-hidden="true" className="pointer-events-none absolute inset-4 border p-1.5" style={{ borderColor: tone }}>
           <div className="h-full w-full border" style={{ borderColor: tone, opacity: 0.6 }} />
-          <span className="absolute left-1/2 top-3 h-2.5 w-2.5 -translate-x-1/2 rotate-45" style={{ backgroundColor: tone }} />
+          <svg viewBox="0 0 48 28" className="absolute left-1/2 top-4 h-7 w-12 -translate-x-1/2" fill="none" stroke={tone} strokeWidth="1.2" strokeLinejoin="round">
+            <path d="M24 4 C 30 10, 30 18, 24 24 C 18 18, 18 10, 24 4 Z" />
+            <path d="M24 24 C 18 22, 10 18, 7 10 C 14 10, 20 14, 24 24 Z" />
+            <path d="M24 24 C 30 22, 38 18, 41 10 C 34 10, 28 14, 24 24 Z" />
+            <path d="M8 25 L 40 25" />
+          </svg>
         </div>
       );
     case 'stars':
+      // A gold hairline with a small constellation drawn in its corner
       return (
         <div aria-hidden="true" className="pointer-events-none absolute inset-5 border" style={{ borderColor: tone }}>
-          {[['12%', '9%', 11], ['78%', '6%', 8], ['88%', '22%', 13], ['20%', '28%', 7], ['64%', '15%', 9]].map(([l, t, size]) => (
+          <svg viewBox="0 0 100 60" className="absolute right-4 top-4 h-16 w-28" fill="none" stroke={tone} strokeWidth="0.8">
+            <polyline points="8,40 30,22 52,30 70,10 92,18" opacity="0.7" />
+            {[[8, 40, 2.2], [30, 22, 2.8], [52, 30, 2], [70, 10, 3], [92, 18, 2.2]].map(([cx, cy, r]) => (
+              <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={r} fill={tone} />
+            ))}
+          </svg>
+          {[['14%', '12%', 10], ['22%', '30%', 7], ['70%', '72%', 8]].map(([l, t, size]) => (
             <span key={`${l}${t}`} className="absolute" style={{ left: l as string, top: t as string, color: tone, fontSize: size as number }}>
               ✦
             </span>
@@ -2482,14 +2501,24 @@ function CoverFrame({ flair, accent }: { flair?: string; accent: string }) {
         </div>
       );
     case 'sprig':
-      // A hand-drawn eucalyptus sprig at the top of the photo
+      // A hand-drawn eucalyptus sprig at the top, with a few pressed leaves fallen to the corners
       return (
-        <svg aria-hidden="true" viewBox="0 0 120 60" className="pointer-events-none absolute left-1/2 top-6 h-14 w-28 -translate-x-1/2" fill="none" stroke={line} strokeWidth="1.2" strokeLinecap="round">
-          <path d="M10 40 C 40 34, 80 34, 110 22" />
-          {[18, 32, 46, 60, 74, 88, 100].map((x, i) => (
-            <ellipse key={x} cx={x} cy={i % 2 ? 31 - i : 44 - i * 1.6} rx="6" ry="3.2" transform={`rotate(${i % 2 ? -28 : 24} ${x} ${i % 2 ? 31 - i : 44 - i * 1.6})`} />
-          ))}
-        </svg>
+        <>
+          <svg aria-hidden="true" viewBox="0 0 120 60" className="pointer-events-none absolute left-1/2 top-6 h-20 w-40 -translate-x-1/2" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.2" strokeLinecap="round">
+            <path d="M10 40 C 40 34, 80 34, 110 22" />
+            {[18, 32, 46, 60, 74, 88, 100].map((x, i) => (
+              <ellipse key={x} cx={x} cy={i % 2 ? 31 - i : 44 - i * 1.6} rx="6" ry="3.2" transform={`rotate(${i % 2 ? -28 : 24} ${x} ${i % 2 ? 31 - i : 44 - i * 1.6})`} />
+            ))}
+          </svg>
+          <svg aria-hidden="true" viewBox="0 0 40 40" className="pointer-events-none absolute left-6 top-1/3 h-8 w-8" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.1">
+            <ellipse cx="20" cy="20" rx="12" ry="5" transform="rotate(-40 20 20)" />
+            <path d="M10 28 L 30 12" />
+          </svg>
+          <svg aria-hidden="true" viewBox="0 0 40 40" className="pointer-events-none absolute right-8 top-[42%] h-7 w-7" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="1.1">
+            <ellipse cx="20" cy="20" rx="11" ry="4.5" transform="rotate(30 20 20)" />
+            <path d="M10 14 L 30 26" />
+          </svg>
+        </>
       );
     default:
       return null;

@@ -337,16 +337,77 @@ body {
   background: color-mix(in srgb, var(--env-accent) 16%, var(--env-paper));
 }
 
-/* Pressed leaves: small offset leaf shapes on kraft */
+/* Pressed leaves: a few leaves scattered at different angles on kraft */
 .env-liner-leaf {
-  background:
-    radial-gradient(ellipse 5px 2.2px at 50% 50%, color-mix(in srgb, var(--env-accent) 70%, transparent) 98%, transparent) 0 0 / 18px 14px,
-    radial-gradient(ellipse 2.2px 5px at 50% 50%, color-mix(in srgb, var(--env-accent) 55%, transparent) 98%, transparent) 9px 7px / 18px 14px,
-    color-mix(in srgb, var(--env-accent) 14%, var(--env-paper));
+  background: color-mix(in srgb, var(--env-accent) 12%, var(--env-paper));
+}
+.env-liner-leaf::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--env-accent) 75%, transparent);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='36' viewBox='0 0 44 36'%3E%3Cg fill='black'%3E%3Cellipse cx='9' cy='9' rx='6' ry='2.4' transform='rotate(-35 9 9)'/%3E%3Cellipse cx='30' cy='7' rx='5' ry='2' transform='rotate(20 30 7)'/%3E%3Cellipse cx='20' cy='24' rx='6.5' ry='2.6' transform='rotate(55 20 24)'/%3E%3Cellipse cx='38' cy='27' rx='5' ry='2' transform='rotate(-15 38 27)'/%3E%3C/g%3E%3C/svg%3E") 0 0 / 44px 36px repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='36' viewBox='0 0 44 36'%3E%3Cg fill='black'%3E%3Cellipse cx='9' cy='9' rx='6' ry='2.4' transform='rotate(-35 9 9)'/%3E%3Cellipse cx='30' cy='7' rx='5' ry='2' transform='rotate(20 30 7)'/%3E%3Cellipse cx='20' cy='24' rx='6.5' ry='2.6' transform='rotate(55 20 24)'/%3E%3Cellipse cx='38' cy='27' rx='5' ry='2' transform='rotate(-15 38 27)'/%3E%3C/g%3E%3C/svg%3E") 0 0 / 44px 36px repeat;
 }
 
 .env-liner-stripes {
   background:
     repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--env-accent) 32%, transparent) 6px 8px),
     color-mix(in srgb, var(--env-accent) 24%, var(--env-paper));
+}
+
+/* Ribbon fastening ("envelope" opening): a satin band across the envelope, tied in a bow */
+.env-ribbon {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 66%;
+  height: 7%;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--env-accent) 80%, white) 0%,
+    var(--env-accent) 45%,
+    color-mix(in srgb, var(--env-accent) 80%, black) 100%);
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--env-shadow, #000) 25%, transparent);
+}
+.env-bow {
+  position: absolute;
+  left: 50%;
+  top: 69.5%;
+  width: 26%;
+  aspect-ratio: 60 / 36;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 3px 4px color-mix(in srgb, var(--env-shadow, #000) 30%, transparent));
+}
+.env-open .env-ribbon {
+  animation: ribbon-off 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+.env-open .env-bow {
+  animation: bow-off 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+@keyframes ribbon-off {
+  to { opacity: 0; transform: scaleX(0.4); }
+}
+@keyframes bow-off {
+  20% { transform: translate(-50%, -50%) scale(1.08) rotate(-4deg); }
+  to { opacity: 0; transform: translate(-50%, -80%) scale(0.5) rotate(8deg); }
+}
+
+/* RSVP band: the heading is a full-width strip of colour; the letter sits beneath it on the page */
+.rsvp-band .rsvp-head {
+  position: relative;
+  color: var(--band-ink);
+  padding-block: 4rem 2.5rem;
+}
+.rsvp-band .rsvp-head::before {
+  content: '';
+  position: absolute;
+  inset: 0 -100vw;
+  z-index: -1;
+  background: var(--band-bg);
+  border-block: 1px solid var(--band-line);
+}
+@media (min-width: 640px) {
+  .rsvp-band .rsvp-head {
+    padding-block: 5.5rem 3rem;
+  }
 }

@@ -60,7 +60,7 @@ const en = {
   goodToKnow: 'Good to Know',
   questionsAnswers: 'Questions & Answers',
   // RSVP
-  rsvpTitle: "Répondez S'il Vous Plaît",
+  rsvpTitle: 'Répondez s’il vous plaît',
   usePersonalLink: 'Received an invitation? Use the personal link we sent you to reply.',
   kindlyReplyBy: 'Kindly reply by',
   rsvpClosedTitle: 'RSVP Window Concluded',
@@ -99,9 +99,9 @@ const en = {
   dietaryRestrictions: 'Dietary Restrictions (Select all that apply)',
   allergyNotes: 'Specific Allergy Notes',
   allergyPlaceholder: 'e.g. Severe peanut allergy; requires separate prep',
-  plusOneDetails: 'Accompanied Plus-One Details',
-  plusOneName: 'Plus-One Full Name',
-  plusOneMealText: 'Plus-One Meal Choice & Dietary',
+  plusOneDetails: 'Your guest',
+  plusOneName: 'Their name',
+  plusOneMealText: 'Their meal, and any allergies',
   plusOneMeal: 'Plus-one meal',
   plusOneMealChoice: 'Plus-one meal choice',
   extraDetails: 'A Few Extra Details',
@@ -163,6 +163,8 @@ const en = {
   thankNoteDeclined: 'We’ll miss you, and thank you for letting us know.',
   withLove: 'with love,',
   anyDietaryNeeds: 'Any dietary needs?',
+  allOfIt: 'You’re down for all of it:',
+  missPartOfDay: 'I’ll miss part of the day',
 };
 
 export type PortalStrings = typeof en;
@@ -309,6 +311,8 @@ const es: PortalStrings = {
   thankNoteDeclined: 'Te echaremos de menos. Gracias por avisarnos.',
   withLove: 'con cariño,',
   anyDietaryNeeds: '¿Alguna necesidad alimentaria?',
+  allOfIt: 'Contamos contigo para todo:',
+  missPartOfDay: 'Me perderé parte del día',
 };
 
 const fr: PortalStrings = {
@@ -453,6 +457,8 @@ const fr: PortalStrings = {
   thankNoteDeclined: 'Vous allez nous manquer. Merci de nous avoir prévenus.',
   withLove: 'avec amour,',
   anyDietaryNeeds: 'Des besoins alimentaires ?',
+  allOfIt: 'Vous êtes attendu à tout :',
+  missPartOfDay: 'Je manquerai une partie de la journée',
 };
 
 const it: PortalStrings = {
@@ -597,6 +603,8 @@ const it: PortalStrings = {
   thankNoteDeclined: 'Ci mancherai. Grazie per avercelo fatto sapere.',
   withLove: 'con affetto,',
   anyDietaryNeeds: 'Esigenze alimentari?',
+  allOfIt: 'Ci sei per tutto:',
+  missPartOfDay: 'Perderò parte della giornata',
 };
 
 const pt: PortalStrings = {
@@ -741,6 +749,8 @@ const pt: PortalStrings = {
   thankNoteDeclined: 'Vamos sentir a sua falta. Obrigado por nos avisar.',
   withLove: 'com carinho,',
   anyDietaryNeeds: 'Alguma necessidade alimentar?',
+  allOfIt: 'Contamos consigo para tudo:',
+  missPartOfDay: 'Vou faltar a parte do dia',
 };
 
 const de: PortalStrings = {
@@ -885,6 +895,8 @@ const de: PortalStrings = {
   thankNoteDeclined: 'Du wirst uns fehlen. Danke, dass du Bescheid gibst.',
   withLove: 'in Liebe,',
   anyDietaryNeeds: 'Besondere Ernährungswünsche?',
+  allOfIt: 'Du bist bei allem dabei:',
+  missPartOfDay: 'Ich verpasse einen Teil des Tages',
 };
 
 const STRINGS: Record<PortalLanguage, PortalStrings> = { en, es, fr, it, pt, de };

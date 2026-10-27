@@ -72,7 +72,7 @@ import {
 import { BUILTIN_THEMES } from '@/lib/theme-presets';
 import { generateQrDataUrl } from '@/lib/qrcode';
 import PortalPreviewPane from '@/components/admin/PortalPreviewPane';
-import GuestPortalView from '@/components/guest/GuestPortalView';
+import GuestPortalView, { CoverFrame } from '@/components/guest/GuestPortalView';
 import { ImagePickerUploader } from '@/components/common/ImagePickerUploader';
 import PublishReadinessPanel from '@/components/admin/PublishReadinessPanel';
 import PlanCard from '@/components/admin/PlanCard';
@@ -2890,6 +2890,125 @@ export default function AdminDashboardView({
                   {/* SUB-TAB 1: PRESETS */}
                   {builderSubTab === 'presets' && (
                     <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-aisle-muted mb-2">
+                          Select Aesthetic Preset
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {Object.values(BUILTIN_THEMES).map((thm) => (
+                            <button
+                              key={thm.id}
+                              type="button"
+                              onClick={() =>
+                                isStudioDesign(customTheme)
+                                  ? handleApplyTheme(thm.id, {})
+                                  : handleUpdateDesignSlot('theme_id', thm.id)
+                              }
+                              className={`rounded-xl border p-3 text-left transition-all cursor-pointer ${
+                                customTheme.id === thm.id
+                                  ? 'border-aisle-terracotta bg-aisle-sand/50 shadow-sm'
+                                  : 'border-aisle-border hover:bg-aisle-sand/20'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-serif text-xs font-semibold text-aisle-charcoal block">{thm.name}</span>
+                                {customTheme.id === thm.id && (
+                                  <span className="h-2 w-2 rounded-full bg-aisle-terracotta" />
+                                )}
+                              </div>
+                              <span className="text-xs text-aisle-muted block mt-0.5">{thm.taxonomy}</span>
+                              {/* The preset at a glance: its colours, and a tiny opening (envelope or sheet) on its page colour.
+                                  Sizes and positions are inline so the preview never depends on generated utility classes. */}
+                              <span className="mt-1.5 flex items-center gap-1" aria-hidden="true">
+                                {[thm.bg_color, thm.accent_color, thm.text_color].map((c) => (
+                                  <span key={c} className="rounded-full border border-black/10" style={{ width: 12, height: 12, backgroundColor: c }} />
+                                ))}
+                              </span>
+                              <span className="mt-2 flex items-center gap-1.5" aria-hidden="true">
+                                <span
+                                  className="flex flex-1 items-center justify-center rounded-lg"
+                                  style={{ height: 52, backgroundColor: thm.bg_color, border: '1px solid rgba(0,0,0,0.06)' }}
+                                >
+                                  {thm.opening_style === 'minimal-fade' || thm.opening_style === 'curtain' ? (
+                                    <span style={{ width: 22, height: 28, padding: 2, backgroundColor: thm.surface_color, boxShadow: '0 1px 3px rgba(0,0,0,0.15)' }}>
+                                      <span
+                                        style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', border: `1px solid ${thm.accent_color}` }}
+                                      >
+                                        <span style={{ width: 10, height: 1, backgroundColor: thm.accent_color }} />
+                                      </span>
+                                    </span>
+                                  ) : (
+                                    <span
+                                      style={
+                                        {
+                                          position: 'relative',
+                                          width: 40,
+                                          height: 28,
+                                          borderRadius: 2,
+                                          boxShadow: '0 1px 3px rgba(0,0,0,0.18)',
+                                          backgroundColor: thm.envelope_paper || thm.surface_color,
+                                          '--env-paper': thm.envelope_paper || thm.surface_color,
+                                          '--env-accent': thm.accent_color,
+                                        } as React.CSSProperties
+                                      }
+                                    >
+                                      {/* Open flap showing the lining: a tint always, the pattern when its styles are loaded */}
+                                      <span
+                                        style={{
+                                          position: 'absolute',
+                                          left: 0,
+                                          right: 0,
+                                          top: 0,
+                                          height: 19,
+                                          clipPath: 'polygon(0 0, 100% 0, 50% 100%)',
+                                          backgroundColor: `color-mix(in srgb, ${thm.accent_color} 30%, ${thm.envelope_paper || thm.surface_color})`,
+                                        }}
+                                      >
+                                        <span className={`env-liner-${thm.envelope_liner || 'stripes'}`} style={{ position: 'absolute', inset: 0 }} />
+                                      </span>
+                                      {thm.opening_style === 'envelope' ? (
+                                        // Ribbon-tied presets: a band across the envelope
+                                        <span style={{ position: 'absolute', left: 0, right: 0, top: 17, height: 3, backgroundColor: thm.accent_color }} />
+                                      ) : (
+                                        <span
+                                          style={{
+                                            position: 'absolute',
+                                            left: 15,
+                                            top: 12,
+                                            width: 10,
+                                            height: 10,
+                                            borderRadius: 9999,
+                                            backgroundColor: thm.accent_color,
+                                            boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
+                                          }}
+                                        />
+                                      )}
+                                    </span>
+                                  )}
+                                </span>
+                                {/* The cover's signature detail, drawn at full size over a photo-like gradient and scaled down */}
+                                <span className="relative flex-1 overflow-hidden rounded-lg" style={{ height: 52 }}>
+                                  <span
+                                    style={{
+                                      position: 'absolute',
+                                      left: 0,
+                                      top: 0,
+                                      width: 230,
+                                      height: 158,
+                                      transform: 'scale(0.33)',
+                                      transformOrigin: 'top left',
+                                      background: `linear-gradient(160deg, color-mix(in srgb, ${thm.accent_color} 35%, #6b5a4a) 0%, #2a2420 100%)`,
+                                    }}
+                                  >
+                                    <CoverFrame flair={thm.border_flair} accent={thm.accent_color} />
+                                  </span>
+                                </span>
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
                       {/* Invitation layout: cover, names, paper and chapter labels (every plan) */}
                       <div className="space-y-3 rounded-2xl border border-aisle-border p-4 text-xs">
                         <h4 className="font-semibold uppercase tracking-wider text-aisle-charcoal">Invitation layout</h4>
@@ -2955,103 +3074,6 @@ export default function AdminDashboardView({
                           </button>
                         )}
                       </div>
-                      <div>
-                        <label className="block text-xs font-semibold uppercase tracking-wider text-aisle-muted mb-2">
-                          Select Aesthetic Preset
-                        </label>
-                        <div className="grid grid-cols-2 gap-2">
-                          {Object.values(BUILTIN_THEMES).map((thm) => (
-                            <button
-                              key={thm.id}
-                              type="button"
-                              onClick={() =>
-                                isStudioDesign(customTheme)
-                                  ? handleApplyTheme(thm.id, {})
-                                  : handleUpdateDesignSlot('theme_id', thm.id)
-                              }
-                              className={`rounded-xl border p-3 text-left transition-all cursor-pointer ${
-                                customTheme.id === thm.id
-                                  ? 'border-aisle-terracotta bg-aisle-sand/50 shadow-sm'
-                                  : 'border-aisle-border hover:bg-aisle-sand/20'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between">
-                                <span className="font-serif text-xs font-semibold text-aisle-charcoal block">{thm.name}</span>
-                                {customTheme.id === thm.id && (
-                                  <span className="h-2 w-2 rounded-full bg-aisle-terracotta" />
-                                )}
-                              </div>
-                              <span className="text-xs text-aisle-muted block mt-0.5">{thm.taxonomy}</span>
-                              {/* The preset at a glance: its colours, and a tiny opening (envelope or sheet) on its page colour.
-                                  Sizes and positions are inline so the preview never depends on generated utility classes. */}
-                              <span className="mt-2 flex items-center justify-between gap-2" aria-hidden="true">
-                                <span className="flex items-center gap-1">
-                                  {[thm.bg_color, thm.accent_color, thm.text_color].map((c) => (
-                                    <span key={c} className="rounded-full border border-black/10" style={{ width: 16, height: 16, backgroundColor: c }} />
-                                  ))}
-                                </span>
-                                <span
-                                  className="flex items-center justify-center rounded-lg"
-                                  style={{ width: 64, height: 40, backgroundColor: thm.bg_color, border: '1px solid rgba(0,0,0,0.06)' }}
-                                >
-                                  {thm.opening_style === 'minimal-fade' || thm.opening_style === 'curtain' ? (
-                                    <span style={{ width: 22, height: 28, padding: 2, backgroundColor: thm.surface_color, boxShadow: '0 1px 3px rgba(0,0,0,0.15)' }}>
-                                      <span
-                                        style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', border: `1px solid ${thm.accent_color}` }}
-                                      >
-                                        <span style={{ width: 10, height: 1, backgroundColor: thm.accent_color }} />
-                                      </span>
-                                    </span>
-                                  ) : (
-                                    <span
-                                      style={
-                                        {
-                                          position: 'relative',
-                                          width: 40,
-                                          height: 28,
-                                          borderRadius: 2,
-                                          boxShadow: '0 1px 3px rgba(0,0,0,0.18)',
-                                          backgroundColor: thm.envelope_paper || thm.surface_color,
-                                          '--env-paper': thm.envelope_paper || thm.surface_color,
-                                          '--env-accent': thm.accent_color,
-                                        } as React.CSSProperties
-                                      }
-                                    >
-                                      {/* Open flap showing the lining: a tint always, the pattern when its styles are loaded */}
-                                      <span
-                                        style={{
-                                          position: 'absolute',
-                                          left: 0,
-                                          right: 0,
-                                          top: 0,
-                                          height: 19,
-                                          clipPath: 'polygon(0 0, 100% 0, 50% 100%)',
-                                          backgroundColor: `color-mix(in srgb, ${thm.accent_color} 30%, ${thm.envelope_paper || thm.surface_color})`,
-                                        }}
-                                      >
-                                        <span className={`env-liner-${thm.envelope_liner || 'stripes'}`} style={{ position: 'absolute', inset: 0 }} />
-                                      </span>
-                                      <span
-                                        style={{
-                                          position: 'absolute',
-                                          left: 15,
-                                          top: 12,
-                                          width: 10,
-                                          height: 10,
-                                          borderRadius: 9999,
-                                          backgroundColor: thm.accent_color,
-                                          boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
-                                        }}
-                                      />
-                                    </span>
-                                  )}
-                                </span>
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
                       {studioDesigns.length > 0 && (
                         <div>
                           <label className="block text-xs font-semibold uppercase tracking-wider text-aisle-muted mb-2">

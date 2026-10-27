@@ -53,6 +53,7 @@ export default function WaxSealOpening({
       strings={strings}
       palette={palette || DEFAULT_PALETTE}
       nameStyle={nameStyle}
+      fastening={openingStyle === 'envelope' ? 'ribbon' : 'seal'}
     />
   );
 }
@@ -65,12 +66,15 @@ function EnvelopeOpening({
   strings: tr,
   palette,
   nameStyle,
+  fastening,
 }: {
   coupleNames: string;
   onOpen: () => void;
   guestName?: string;
   strings: PortalStrings;
   palette: NonNullable<WaxSealOpeningProps['palette']>;
+  /** A wax seal with the couple's initials, or a ribbon tied in a bow across the envelope. */
+  fastening: 'seal' | 'ribbon';
   nameStyle: 'script' | 'serif';
 }) {
   const [opening, setOpening] = useState(false);
@@ -129,9 +133,24 @@ function EnvelopeOpening({
             <span className="env-layer env-fold-right" />
             <span className="env-layer env-fold-bottom" />
             <span className="env-layer env-flap" />
-            <span className="env-seal">
-              <SealSvg initials={monogram(coupleNames)} accent={palette.accent} />
-            </span>
+            {fastening === 'ribbon' ? (
+              <>
+                <span className="env-ribbon" />
+                <span className="env-bow">
+                  <svg viewBox="0 0 60 36" className="h-full w-full" fill="none">
+                    <path d="M30 18 C 20 4, 4 6, 6 16 C 8 26, 22 24, 30 18 Z" fill={palette.accent} />
+                    <path d="M30 18 C 40 4, 56 6, 54 16 C 52 26, 38 24, 30 18 Z" fill={palette.accent} />
+                    <path d="M28 19 L 20 34 M32 19 L 40 34" stroke={palette.accent} strokeWidth="3" strokeLinecap="round" />
+                    <circle cx="30" cy="18" r="4" fill={palette.accent} stroke="rgba(0,0,0,0.2)" />
+                    <path d="M12 14 C 18 12, 24 14, 28 17 M48 14 C 42 12, 36 14, 32 17" stroke="rgba(255,255,255,0.35)" strokeWidth="1" />
+                  </svg>
+                </span>
+              </>
+            ) : (
+              <span className="env-seal">
+                <SealSvg initials={monogram(coupleNames)} accent={palette.accent} />
+              </span>
+            )}
           </span>
         </button>
 
