@@ -422,6 +422,13 @@ body {
   transform: translate(-50%, -50%);
   filter: drop-shadow(0 3px 4px color-mix(in srgb, var(--env-shadow, #000) 30%, transparent));
 }
+/* Modern Minimal: square corners on every card and photo, to match its square letter */
+.corners-square .rounded-2xl,
+.corners-square .rounded-3xl,
+.corners-square .rounded-xl {
+  border-radius: 0;
+}
+
 /* Riviera's cover: only a 5px striped border shows; the stripes inside are masked away */
 .cover-airmail {
   padding: 5px;
