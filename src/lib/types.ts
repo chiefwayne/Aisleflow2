@@ -433,8 +433,9 @@ export interface TemplateDesignRecord {
   name_font?: 'bodoni' | 'rozha' | 'belle-aurore' | 'italiana' | 'marcellus';
   /** The RSVP letter's own shape and corner mark, so the one screen every guest uses belongs to the preset. */
   rsvp_card?: 'gilt-corners' | 'square' | 'stitch' | 'stars' | 'beads' | 'girih' | 'stamp' | 'deckle';
-  /** The itinerary as a timeline (default), a menu card, a harbour timetable, an order of service or a ledger. */
-  schedule_style?: 'menu' | 'timetable' | 'programme' | 'ledger';
+  /** The itinerary as a timeline (default), a menu card, a harbour timetable, an order of service, a ledger,
+   *  a constellation, garlanded ceremonies, gilt panels or handwritten times. */
+  schedule_style?: 'menu' | 'timetable' | 'programme' | 'ledger' | 'constellation' | 'garland' | 'panels' | 'handwritten';
   /** The mark drawn round the wedding day in the calendar: a heart (default) or the preset's own. */
   date_mark?: 'square' | 'star' | 'beads' | 'girih' | 'ring';
   /** Colour of the stationery frame and monogram ring (e.g. gilt); defaults to the accent. */

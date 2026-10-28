@@ -425,7 +425,8 @@ body {
 /* Modern Minimal: square corners on every card and photo, to match its square letter */
 .corners-square .rounded-2xl,
 .corners-square .rounded-3xl,
-.corners-square .rounded-xl {
+.corners-square .rounded-xl,
+.corners-square .rsvp-pill {
   border-radius: 0;
 }
 
