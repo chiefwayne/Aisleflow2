@@ -420,7 +420,7 @@ export interface TemplateDesignRecord {
   poetic_line?: string;
   invitation_phrase?: string;
   floron?: string;
-  border_flair?: 'double-line' | 'hairline-gold' | 'arch' | 'clean' | 'arabesque' | 'botanical-crest' | 'stars' | 'sprig' | 'deboss' | 'airmail';
+  border_flair?: 'double-line' | 'hairline-gold' | 'arch' | 'clean' | 'arabesque' | 'botanical-crest' | 'stars' | 'deboss' | 'airmail';
   /** The RSVP band: the accent colour, or a deeper shade of the page (default on dark themes). */
   rsvp_band?: 'accent' | 'deep';
   /** Envelope paper colour; defaults to a mix of the card and page colours. */
@@ -433,6 +433,10 @@ export interface TemplateDesignRecord {
   name_font?: 'bodoni' | 'rozha' | 'belle-aurore' | 'italiana' | 'marcellus';
   /** The RSVP letter's own shape and corner mark, so the one screen every guest uses belongs to the preset. */
   rsvp_card?: 'gilt-corners' | 'square' | 'stitch' | 'stars' | 'beads' | 'girih' | 'stamp' | 'deckle';
+  /** The itinerary as a timeline (default), a menu card, or a harbour timetable. */
+  schedule_style?: 'menu' | 'timetable';
+  /** The mark drawn round the wedding day in the calendar: a heart (default) or the preset's own. */
+  date_mark?: 'square' | 'star' | 'beads' | 'girih' | 'ring';
   /** Colour of the stationery frame and monogram ring (e.g. gilt); defaults to the accent. */
   frame_color?: string;
   is_dark?: boolean;

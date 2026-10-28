@@ -587,8 +587,10 @@ export default function GuestPortalView({
       : rsvpCard === 'stitch'
         ? { boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${accent} 35%, transparent)`, outline: `1.5px dashed color-mix(in srgb, ${accent} 70%, transparent)`, outlineOffset: '-9px' }
         : rsvpCard === 'deckle'
-          ? { border: `1px solid ${theme.border_color || '#E8E0D7'}`, borderRadius: '3px 18px 4px 15px / 15px 4px 18px 3px' }
-          : rsvpCard === 'girih'
+          ? { border: `1px solid ${theme.border_color || '#E8E0D7'}`, borderRadius: '18px' }
+          : rsvpCard === 'gilt-corners'
+            ? {}
+            : rsvpCard === 'girih'
             ? { boxShadow: `inset 0 0 0 1px ${frameColor}, inset 0 0 0 6px ${pageBg}, inset 0 0 0 7px color-mix(in srgb, ${frameColor} 65%, transparent)` }
             : { boxShadow: doubleRule(accent) };
   const heroLayout = theme.hero_layout || (event.cover_image_url ? 'photo' : 'stationery');
@@ -776,7 +778,45 @@ export default function GuestPortalView({
                   <h2 className={headingClass}>{tr.theItinerary}</h2>
                 </div>
 
-                {/* Seamless Vertical Timeline */}
+                {theme.schedule_style === 'menu' ? (
+                  // Tuscan: the day set like a menu card, course by course
+                  <div className="mx-auto max-w-sm border-y py-8 text-center" style={{ borderColor: `color-mix(in srgb, ${accent} 35%, transparent)` }}>
+                    {visibleSchedule.map((item, idx) => (
+                      <div key={item.id}>
+                        {idx > 0 && (
+                          <p aria-hidden="true" className="my-5 text-base leading-none" style={{ color: accent }}>
+                            {theme.floron || '✦'}
+                          </p>
+                        )}
+                        <p className="font-editorial text-xl vintage-caps">{item.title}</p>
+                        <p className="mt-1 font-editorial text-base italic" style={{ color: accent }}>
+                          {new Date(item.start_time).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}
+                          {item.location_name ? ` · ${item.location_name}` : ''}
+                        </p>
+                        {item.description && <p className="mt-1 text-sm leading-relaxed text-[color:var(--muted)]">{item.description}</p>}
+                        {item.dress_code && <p className="mt-1 text-sm italic text-[color:var(--muted)]">{item.dress_code}</p>}
+                      </div>
+                    ))}
+                  </div>
+                ) : theme.schedule_style === 'timetable' ? (
+                  // Riviera: a harbour timetable, departure times down the left
+                  <div className="border-y-2" style={{ borderColor: accent }}>
+                    {visibleSchedule.map((item) => (
+                      <div key={item.id} className="grid grid-cols-[5.5rem_1fr] gap-4 border-b border-dashed py-4 last:border-b-0" style={{ borderColor: 'var(--line)' }}>
+                        <span className="pt-0.5 font-editorial text-lg font-semibold [font-variant-numeric:tabular-nums]" style={{ color: accent }}>
+                          {new Date(item.start_time).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}
+                        </span>
+                        <div className="space-y-0.5">
+                          <p className="font-editorial text-lg font-semibold">{item.title}</p>
+                          {item.location_name && <p className="text-sm text-[color:var(--muted)]">{item.location_name}</p>}
+                          {item.description && <p className="text-sm leading-relaxed text-[color:var(--muted)]">{item.description}</p>}
+                          {item.dress_code && <p className="text-sm italic text-[color:var(--muted)]">{item.dress_code}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                // Seamless vertical timeline (the default)
                 <div className="relative pl-6 sm:pl-8 space-y-8 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-px before:bg-gradient-to-b before:from-transparent before:via-[color:var(--line)] before:to-transparent">
                   {visibleSchedule.map((item, idx) => (
                     <div key={item.id} className="relative group">
@@ -834,6 +874,7 @@ export default function GuestPortalView({
                     </div>
                   ))}
                 </div>
+                )}
               </section>
             )}
 
@@ -1660,11 +1701,11 @@ export default function GuestPortalView({
                           </div>
                         )}
 
-                        <div className="pt-2 flex justify-between">
+                        <div className="pt-2 flex flex-col-reverse gap-3 min-[420px]:flex-row min-[420px]:justify-between">
                           <button
                             type="button"
                             onClick={() => setRsvpStep(1)}
-                            className={`${btnShape} px-5 py-3.5 text-base font-semibold tracking-wide border flex items-center gap-1.5 opacity-80 hover:opacity-100 cursor-pointer min-h-[44px]`}
+                            className={`${btnShape} justify-center whitespace-nowrap px-5 py-3.5 text-base font-semibold tracking-wide border flex items-center gap-1.5 opacity-80 hover:opacity-100 cursor-pointer min-h-[44px]`}
                             style={{ borderColor: theme.border_color }}
                           >
                             <ChevronLeft className="h-4 w-4" />
@@ -1674,7 +1715,7 @@ export default function GuestPortalView({
                           <button
                             type="button"
                             onClick={() => setRsvpStep(4)}
-                            className={`${btnShape} px-6 py-3.5 text-base font-semibold tracking-wide text-[color:var(--on-accent)] shadow-md flex items-center gap-1.5 hover:opacity-95 cursor-pointer min-h-[44px]`}
+                            className={`${btnShape} justify-center whitespace-nowrap px-6 py-3.5 text-base font-semibold tracking-wide text-[color:var(--on-accent)] shadow-md flex items-center gap-1.5 hover:opacity-95 cursor-pointer min-h-[44px]`}
                             style={{ backgroundColor: accent }}
                           >
                             <span>{tr.reviewSummary}</span>
@@ -1748,11 +1789,11 @@ export default function GuestPortalView({
                           </p>
                         )}
 
-                        <div className="pt-2 flex justify-between">
+                        <div className="pt-2 flex flex-col-reverse gap-3 min-[420px]:flex-row min-[420px]:justify-between">
                           <button
                             type="button"
                             onClick={() => setRsvpStep(hasAnyAttending ? 3 : 1)}
-                            className={`${btnShape} px-5 py-3.5 text-base font-semibold tracking-wide border flex items-center gap-1.5 opacity-80 hover:opacity-100 cursor-pointer min-h-[44px]`}
+                            className={`${btnShape} justify-center whitespace-nowrap px-5 py-3.5 text-base font-semibold tracking-wide border flex items-center gap-1.5 opacity-80 hover:opacity-100 cursor-pointer min-h-[44px]`}
                             style={{ borderColor: theme.border_color }}
                           >
                             <ChevronLeft className="h-4 w-4" />
@@ -1763,7 +1804,7 @@ export default function GuestPortalView({
                             type="button"
                             disabled={isSubmitting}
                             onClick={handleFinalRsvpSubmit}
-                            className={`min-h-[44px] ${btnShape} px-8 py-3 text-sm font-semibold tracking-wide text-[color:var(--on-accent)] shadow-md hover:opacity-90 disabled:opacity-50 cursor-pointer flex items-center gap-2`}
+                            className={`min-h-[44px] ${btnShape} justify-center whitespace-nowrap px-8 py-3 text-sm font-semibold tracking-wide text-[color:var(--on-accent)] shadow-md hover:opacity-90 disabled:opacity-50 cursor-pointer flex items-center gap-2`}
                             style={{ backgroundColor: accent }}
                           >
                             {isSubmitting ? (
@@ -1963,10 +2004,14 @@ export default function GuestPortalView({
           style={{ backgroundColor: accent, color: bandInk }}
         >
           <span className="font-editorial text-lg tracking-[0.12em]">RSVP</span>
-          {replyByShort && (
-            <span className="font-editorial text-sm italic">
-              {tr.replyBy} {replyByShort}
-            </span>
+          {hasReplied ? (
+            <span className="font-editorial text-sm italic">{tr.editRsvp}</span>
+          ) : (
+            replyByShort && (
+              <span className="font-editorial text-sm italic">
+                {tr.replyBy} {replyByShort}
+              </span>
+            )
           )}
         </a>
       )}
@@ -2037,7 +2082,7 @@ export default function GuestPortalView({
             accent={accent}
             postmark={{
               place: (event.venue_name || '').slice(0, 26),
-              date: new Date(event.wedding_date).toLocaleDateString(locale, { timeZone: 'UTC', day: 'numeric', month: 'short', year: '2-digit' }),
+              date: new Date(event.wedding_date).toLocaleDateString(locale, { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' }),
             }}
           />
           <div className="absolute inset-x-0 bottom-0 px-6 pb-[calc(5.5rem+4svh)] text-center text-white [text-shadow:0_1px_18px_rgba(0,0,0,0.35)]">
@@ -2092,12 +2137,11 @@ export default function GuestPortalView({
               // A preset's own gilt is drawn at full strength; the accent frame stays a soft hairline
               style={heroStyle ? containerInlineStyle(heroStyle) : { border: `1px solid ${theme.frame_color || `color-mix(in srgb, ${frameColor} 55%, transparent)`}` }}
             >
-              {!heroStyle && theme.frame_color && (
+              {!heroStyle && theme.rsvp_card === 'girih' && (
                 // An eight-point girih star set on the frame's head rule
-                <svg aria-hidden="true" viewBox="-12 -12 24 24" className="absolute left-1/2 top-0 h-8 w-8 -translate-x-1/2 -translate-y-1/2" fill={pageBg} stroke={frameColor} strokeWidth="1">
-                  <rect x="-7" y="-7" width="14" height="14" />
-                  <rect x="-7" y="-7" width="14" height="14" transform="rotate(45)" />
-                  <circle r="2.6" />
+                <svg aria-hidden="true" viewBox="-12 -12 24 24" className="absolute left-1/2 top-0 h-10 w-10 -translate-x-1/2 -translate-y-1/2" fill={pageBg} stroke={frameColor} strokeWidth="0.9" strokeLinejoin="round">
+                  <path d={GIRIH} />
+                  <circle r="2.4" />
                 </svg>
               )}
               <div
@@ -2176,23 +2220,20 @@ export default function GuestPortalView({
                   {cal.weeks.flat().map((d, i) => (
                     <span key={i} className={`relative grid h-9 place-items-center text-lg ${d === cal.day ? 'font-semibold' : 'opacity-80'}`}>
                       {d}
-                      {d === cal.day && (
-                        <svg viewBox="0 0 60 54" className="pointer-events-none absolute left-1/2 top-1/2 h-14 w-14 -translate-x-1/2 -translate-y-1/2" fill="none">
-                          <path
-                            d="M31 49 C 14 38, 3 27, 6 15 C 9 4, 23 2, 30 13.5 C 35 3, 49 2, 54 12 C 59 24, 47 37, 29 50.5"
-                            stroke={accent}
-                            strokeWidth="1.6"
-                            strokeLinecap="round"
-                          />
-                        </svg>
-                      )}
+                      {d === cal.day && <DateMark variant={theme.date_mark} accent={accent} ink={ink} frameColor={frameColor} />}
                     </span>
                   ))}
                 </div>
                 <div className="mt-6 flex items-start justify-center">
                   {countdownUnits(timeLeft).map((unit, i) => (
                     <div key={unit} className={`px-5 sm:px-7 ${i > 0 ? 'border-l' : ''}`} style={{ borderColor: `color-mix(in srgb, ${accent} 25%, transparent)` }}>
-                      <span className="font-editorial text-3xl italic leading-none block">{timeLeft[unit]}</span>
+                      <span
+                        className={`block leading-none ${
+                          theme.name_font && theme.name_style === 'serif' ? 'couple-names text-4xl not-italic' : 'font-editorial text-3xl italic'
+                        }`}
+                      >
+                        {timeLeft[unit]}
+                      </span>
                       <span className="mt-1 block text-base italic lowercase text-[color:var(--muted)]">
                         {timeLeft[unit] === 1 ? tr[UNIT_SINGULAR[unit]] : tr[unit]}
                       </span>
@@ -2549,16 +2590,10 @@ export function CoverFrame({ flair, accent, postmark }: { flair?: string; accent
         </div>
       );
     case 'arabesque':
-      // A double rule with an outlined lotus at its head
+      // A double rule with a marigold toran swagged across its head
       return (
         <div aria-hidden="true" className="pointer-events-none absolute inset-x-4 top-4 bottom-[5.5rem] border p-1.5" style={{ borderColor: tone }}>
           <div className="h-full w-full border" style={{ borderColor: tone, opacity: 0.6 }} />
-          <svg viewBox="0 0 48 28" className="absolute left-1/2 top-4 h-7 w-12 -translate-x-1/2" fill="none" stroke={tone} strokeWidth="1.2" strokeLinejoin="round">
-            <path d="M24 4 C 30 10, 30 18, 24 24 C 18 18, 18 10, 24 4 Z" />
-            <path d="M24 24 C 18 22, 10 18, 7 10 C 14 10, 20 14, 24 24 Z" />
-            <path d="M24 24 C 30 22, 38 18, 41 10 C 34 10, 28 14, 24 24 Z" />
-            <path d="M8 25 L 40 25" />
-          </svg>
           {/* A marigold garland (toran) swagged across the top: ruffled flower heads with leaves between them.
               It keeps its proportions (never stretched), capped in width so a wide screen gets a centred swag. */}
           <svg
@@ -2594,85 +2629,27 @@ export function CoverFrame({ flair, accent, postmark }: { flair?: string; accent
         </div>
       );
     case 'stars':
-      // A gold hairline with a small constellation drawn in its corner
-      return (
-        <div aria-hidden="true" className="pointer-events-none absolute inset-x-5 top-5 bottom-[5.5rem] border" style={{ borderColor: tone }}>
-          <svg viewBox="0 0 100 60" className="absolute right-3 top-3 h-24 w-40" fill="none" stroke={tone} strokeWidth="1.2">
-            <polyline points="8,40 30,22 52,30 70,10 92,18" opacity="0.85" />
-            {[[8, 40, 2.8], [30, 22, 3.4], [52, 30, 2.6], [70, 10, 3.8], [92, 18, 2.8]].map(([cx, cy, r]) => (
-              <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={r} fill={tone} />
-            ))}
-          </svg>
-          {[['14%', '12%', 10], ['22%', '30%', 7], ['70%', '72%', 8]].map(([l, t, size]) => (
-            <span key={`${l}${t}`} className="absolute" style={{ left: l as string, top: t as string, color: tone, fontSize: size as number }}>
-              ✦
-            </span>
-          ))}
-        </div>
-      );
-    case 'sprig': {
-      // A hand-drawn eucalyptus spray reaching in from the top-left corner: a curved stem with a side branch,
-      // round tapered leaves on short stalks, alternating sides and sizes. Sized with the cover, so it stays a
-      // spray on a wide screen rather than a scribble.
-      const along = (p: number[][], t: number) => {
-        const u = 1 - t;
-        const at = (i: number) => u ** 3 * p[0][i] + 3 * u * u * t * p[1][i] + 3 * u * t * t * p[2][i] + t ** 3 * p[3][i];
-        const d = (i: number) => 3 * u * u * (p[1][i] - p[0][i]) + 6 * u * t * (p[2][i] - p[1][i]) + 3 * t * t * (p[3][i] - p[2][i]);
-        // Rounded so server and browser render identical numbers
-        const r = (n: number) => Math.round(n * 100) / 100;
-        return { x: r(at(0)), y: r(at(1)), angle: r((Math.atan2(d(1), d(0)) * 180) / Math.PI) };
-      };
-      const stem = [[6, 8], [44, 16], [78, 46], [126, 104]];
-      const branch = [[52, 28], [62, 16], [80, 10], [102, 12]];
-      const leaves = [
-        ...[0.12, 0.24, 0.36, 0.48, 0.6, 0.72, 0.84, 0.96].map((t, i) => ({ ...along(stem, t), side: i % 2 ? 1 : -1, size: 7 + ((i * 3) % 4) })),
-        ...[0.3, 0.55, 0.8, 1].map((t, i) => ({ ...along(branch, t), side: i % 2 ? 1 : -1, size: 6 + ((i * 2) % 3) })),
-      ];
-      return (
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 160 120"
-          className="pointer-events-none absolute left-3 top-3 aspect-[4/3] h-auto w-[52%] max-w-[24rem] sm:w-[34%] [filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.3))]"
-          fill="none"
-          stroke="rgba(226,234,214,0.9)"
-          strokeWidth="1.1"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M6 8 C 44 16, 78 46, 126 104" />
-          <path d="M52 28 C 62 16, 80 10, 102 12" />
-          {leaves.map(({ x, y, angle, side, size }, i) => {
-            // Eucalyptus "coins": filled sage discs clasping the stem, shrinking toward the tip, slightly overlapping
-            const a = angle + side * 50;
-            const rr = Math.max(3, size * 0.8 - (i % 8) * 0.35);
-            return (
-              <g key={i} transform={`translate(${x} ${y}) rotate(${a})`}>
-                <circle cx={rr * 0.8} cy="0" r={rr} fill="rgba(206,222,196,0.42)" strokeWidth="0.8" />
-              </g>
-            );
-          })}
-        </svg>
-      );
-    }
+      // A single gold hairline: the foil stars belong to the envelope
+      return <div aria-hidden="true" className="pointer-events-none absolute inset-x-5 top-5 bottom-[5.5rem] border" style={{ borderColor: tone }} />;
     case 'airmail': {
       // Riviera: the airmail envelope carried onto the cover, a striped border with a postmark at its corner
       return (
         <div aria-hidden="true" className="pointer-events-none absolute inset-x-4 top-4 bottom-[5.5rem]">
           <div
             className="cover-airmail absolute inset-0"
-            style={{ background: `repeating-linear-gradient(-45deg, ${accent} 0 8px, #FFFFFF 8px 14px)` }}
+            style={{ padding: 3, background: `repeating-linear-gradient(-45deg, ${accent} 0 7px, #FFFFFF 7px 12px)` }}
           />
           {/* A postmark carrying the place and the date */}
-          <svg viewBox="0 0 96 56" className="absolute right-4 top-5 h-[5.25rem] w-36 [filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.45))]" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="1.1">
+          <svg viewBox="0 0 96 56" className="absolute right-4 top-5 h-28 w-48 [filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.45))]" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="1.1">
             <defs>
               <path id="postmark-ring" d="M8 28 A 20 20 0 1 1 48 28 A 20 20 0 1 1 8 28" />
             </defs>
-            <circle cx="28" cy="28" r="25" />
+            <circle cx="28" cy="28" r="25" fill="rgba(10,20,40,0.38)" />
             <circle cx="28" cy="28" r="15" strokeWidth="0.6" />
-            <text fill="rgba(255,255,255,0.9)" stroke="none" fontSize="5.4" letterSpacing="0.8" className="font-editorial uppercase">
+            <text fill="rgba(255,255,255,0.9)" stroke="none" fontSize="6.2" letterSpacing="0.6" className="font-editorial uppercase">
               <textPath href="#postmark-ring" startOffset="2%">{postmark?.place}</textPath>
             </text>
-            <text x="28" y="30" textAnchor="middle" fill="rgba(255,255,255,0.95)" stroke="none" fontSize="6.5" className="font-editorial">
+            <text x="28" y="30.5" textAnchor="middle" fill="rgba(255,255,255,0.95)" stroke="none" fontSize="7" letterSpacing="0.3" className="font-editorial uppercase">
               {postmark?.date}
             </text>
             {[18, 24, 30, 36].map((y) => (
@@ -2695,13 +2672,59 @@ export function CoverFrame({ flair, accent, postmark }: { flair?: string; accent
   }
 }
 
+/** The mark round the wedding day in the calendar: a hand-drawn heart, or the preset's own. */
+function DateMark({ variant, accent, ink, frameColor }: { variant?: string; accent: string; ink: string; frameColor: string }) {
+  const box = 'pointer-events-none absolute left-1/2 top-1/2 h-14 w-14 -translate-x-1/2 -translate-y-1/2';
+  switch (variant) {
+    case 'square':
+      // Modern: a ruled square, nothing more
+      return <span className="pointer-events-none absolute left-1/2 top-1/2 h-10 w-10 -translate-x-1/2 -translate-y-1/2 border" style={{ borderColor: ink }} />;
+    case 'star':
+      return (
+        <svg viewBox="-12 -12 24 24" className={box} fill="none" stroke={accent} strokeWidth="0.7" strokeLinejoin="round">
+          <path d="M0 -11.5 Q 1.6 -1.6, 11.5 0 Q 1.6 1.6, 0 11.5 Q -1.6 1.6, -11.5 0 Q -1.6 -1.6, 0 -11.5 Z" />
+        </svg>
+      );
+    case 'girih':
+      return (
+        <svg viewBox="-12 -12 24 24" className={box} fill="none" stroke={frameColor} strokeWidth="0.6" strokeLinejoin="round">
+          <path d={GIRIH} />
+        </svg>
+      );
+    case 'beads':
+      // Marigold: a ring of beads round the day
+      return (
+        <svg viewBox="-12 -12 24 24" className={box} fill={accent}>
+          {Array.from({ length: 14 }, (_, i) => (
+            <circle key={i} cx={Math.round(Math.cos((i / 14) * 2 * Math.PI) * 1000) / 100} cy={Math.round(Math.sin((i / 14) * 2 * Math.PI) * 1000) / 100} r="0.85" />
+          ))}
+        </svg>
+      );
+    case 'ring':
+      // Boho: a loose ring drawn once round the day, not quite closed
+      return (
+        <svg viewBox="0 0 60 54" className={box} fill="none">
+          <path d="M33 6 C 50 7, 57 21, 52 34 C 47 46, 30 50, 17 44 C 6 38, 4 23, 11 14 C 17 7, 27 4, 40 8" stroke={accent} strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      );
+    default:
+      return (
+        <svg viewBox="0 0 60 54" className={box} fill="none">
+          <path d="M31 49 C 14 38, 3 27, 6 15 C 9 4, 23 2, 30 13.5 C 35 3, 49 2, 54 12 C 59 24, 47 37, 29 50.5" stroke={accent} strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      );
+  }
+}
+
+/** An eight-point girih star, centred on 0,0 within a 24-unit box. */
+const GIRIH = 'M0 -11 L2.07 -4.99 L7.78 -7.78 L4.99 -2.07 L11 0 L4.99 2.07 L7.78 7.78 L2.07 4.99 L0 11 L-2.07 4.99 L-7.78 7.78 L-4.99 2.07 L-11 0 L-4.99 -2.07 L-7.78 -7.78 L-2.07 -4.99 Z';
+
 /** The small mark a preset leaves on its RSVP letter: gilt corners, foil stars, beads, a girih star or a stamp. */
 function RsvpCardMark({ variant, accent, frameColor, pageBg }: { variant?: string; accent: string; frameColor: string; pageBg: string }) {
   const corner = 'pointer-events-none absolute h-5 w-5';
   switch (variant) {
     case 'gilt-corners': {
-      // Gilt brackets in each corner, like a framed card
-      const gilt = '#B08F45';
+      // Gilt brackets in each corner, like a framed card (the preset's own gilt)
       return (
         <span aria-hidden="true">
           {[
@@ -2710,7 +2733,7 @@ function RsvpCardMark({ variant, accent, frameColor, pageBg }: { variant?: strin
             ['left-3 bottom-3', 'border-l-[1.5px] border-b-[1.5px]'],
             ['right-3 bottom-3', 'border-r-[1.5px] border-b-[1.5px]'],
           ].map(([pos, sides]) => (
-            <span key={pos} className={`${corner} ${pos} ${sides}`} style={{ borderColor: gilt }} />
+            <span key={pos} className={`${corner} ${pos} ${sides}`} style={{ borderColor: frameColor }} />
           ))}
         </span>
       );
@@ -2729,17 +2752,21 @@ function RsvpCardMark({ variant, accent, frameColor, pageBg }: { variant?: strin
       // A row of marigold beads along the top and foot of the letter
       return (
         <span aria-hidden="true">
-          <span className="pointer-events-none absolute inset-x-8 top-3 border-t-[3px] border-dotted" style={{ borderColor: accent }} />
-          <span className="pointer-events-none absolute inset-x-8 bottom-3 border-t-[3px] border-dotted" style={{ borderColor: accent }} />
+          {['top-3', 'bottom-3'].map((pos) => (
+            <span
+              key={pos}
+              className={`pointer-events-none absolute inset-x-8 h-2 ${pos}`}
+              style={{ background: `radial-gradient(circle, ${accent} 2.6px, transparent 3.1px) center / 11px 8px repeat-x` }}
+            />
+          ))}
         </span>
       );
     case 'girih':
       // An eight-point girih star set on the head rule, in gilt
       return (
-        <svg aria-hidden="true" viewBox="-12 -12 24 24" className="pointer-events-none absolute left-1/2 top-0 h-7 w-7 -translate-x-1/2" fill={pageBg} stroke={frameColor} strokeWidth="1">
-          <rect x="-7" y="-7" width="14" height="14" />
-          <rect x="-7" y="-7" width="14" height="14" transform="rotate(45)" />
-          <circle r="2.6" />
+        <svg aria-hidden="true" viewBox="-12 -12 24 24" className="pointer-events-none absolute left-1/2 top-1 h-9 w-9 -translate-x-1/2" fill={pageBg} stroke={frameColor} strokeWidth="0.9" strokeLinejoin="round">
+          <path d={GIRIH} />
+          <circle r="2.4" />
         </svg>
       );
     case 'stamp':

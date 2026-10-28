@@ -3005,7 +3005,7 @@ export default function AdminDashboardView({
                                   className="relative flex flex-1 flex-col items-center justify-center overflow-hidden rounded-lg"
                                   style={{ height: 52, backgroundColor: thm.bg_color, color: thm.text_color, border: '1px solid rgba(0,0,0,0.06)' }}
                                 >
-                                  {thm.border_flair && thm.border_flair !== 'clean' && thm.border_flair !== 'sprig' && (
+                                  {thm.border_flair && thm.border_flair !== 'clean' && (
                                     <span
                                       style={{
                                         position: 'absolute',
@@ -3017,9 +3017,6 @@ export default function AdminDashboardView({
                                         opacity: 0.55,
                                       }}
                                     />
-                                  )}
-                                  {thm.border_flair === 'sprig' && (
-                                    <span style={{ position: 'absolute', left: 4, top: 2, fontSize: 11, lineHeight: 1, color: thm.accent_color, opacity: 0.7 }}>❧</span>
                                   )}
                                   <span
                                     style={{
