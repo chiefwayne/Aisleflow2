@@ -1617,7 +1617,7 @@ export default function GuestPortalView({
                                     {tr.entreePreference}
                                   </label>
                                   {menuOptions.length > 0 ? (
-                                    <div role="radiogroup" aria-label={`Meal for ${guest.first_name}`} className="space-y-2">
+                                    <div role="radiogroup" aria-label={`${tr.mealFor} ${guest.first_name}`} className="space-y-2">
                                       {menuOptions.map((option) => {
                                         const isSelected = gState.meal_choice === option.name;
                                         return (
@@ -1661,10 +1661,10 @@ export default function GuestPortalView({
                                   </summary>
                                   <div className="space-y-4 pt-3">
                                 {/* Dietary Tag Selector */}
-                                <div>
-                                  <label className="block text-base italic mb-1.5 text-[color:var(--muted)]">
+                                <fieldset className="m-0 min-w-0 border-0 p-0">
+                                  <legend className="block p-0 text-base italic mb-1.5 text-[color:var(--muted)]">
                                     {tr.dietaryRestrictions}
-                                  </label>
+                                  </legend>
                                   <div className="flex flex-wrap gap-1.5">
                                     {Object.keys(COMMON_DIETARY_TAGS).map((tag) => {
                                       const isSelected = (gState.dietary_tags || []).includes(tag);
@@ -1672,6 +1672,7 @@ export default function GuestPortalView({
                                         <button
                                           key={tag}
                                           type="button"
+                                          aria-pressed={isSelected}
                                           onClick={() => handleToggleDietaryTag(guest.id, tag)}
                                           className={`min-h-[44px] ${btnShape} px-4 py-3 text-sm font-medium transition-colors cursor-pointer ${
                                             isSelected
@@ -1685,14 +1686,15 @@ export default function GuestPortalView({
                                       );
                                     })}
                                   </div>
-                                </div>
+                                </fieldset>
 
                                 {/* Dietary Notes Input */}
                                 <div>
-                                  <label className="block text-base italic mb-1 text-[color:var(--muted)]">
+                                  <label htmlFor={`allergy-${guest.id}`} className="block text-base italic mb-1 text-[color:var(--muted)]">
                                     {tr.allergyNotes}
                                   </label>
                                   <input
+                                    id={`allergy-${guest.id}`}
                                     type="text"
                                     placeholder={tr.allergyPlaceholder}
                                     value={gState.dietary_notes}
