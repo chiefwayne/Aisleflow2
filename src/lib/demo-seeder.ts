@@ -15,6 +15,7 @@ import {
 
 export const DEMO_ADMIN_TOKEN = 'admin_sophia_demo_7721';
 export const DEMO_GUEST_TOKEN = 'guest_elena_vance';
+const DEMO_GUEST_TOKENS = [DEMO_GUEST_TOKEN, 'gt_marcus_vance', 'gt_julian_sterling'];
 export const DEMO_EVENT_ID = '00000000-0000-0000-0000-000000000001';
 
 export const MOCK_DEMO_EVENT: EventRecord = {
@@ -37,6 +38,7 @@ export const MOCK_DEMO_EVENT: EventRecord = {
   story_image_url: 'https://images.unsplash.com/photo-1583939003579-730e3918a45a?auto=format&fit=crop&w=1200&q=80',
   venue_image_url: 'https://images.unsplash.com/photo-1533105079780-92b9be482077?auto=format&fit=crop&w=1200&q=80',
   is_live: true,
+  plan: 'premium',
   is_ready_for_testing: true,
   theme_config: {
     accent_color: '#9E5A44',
@@ -320,6 +322,12 @@ export const MOCK_DEMO_TEMPLATES: CommunicationTemplateRecord[] = [
 ];
 
 export const MOCK_DEMO_CAMPAIGNS: CommunicationCampaignRecord[] = [];
+
+/** True only for the built-in sample guests, never for real guest links. */
+export function isDemoGuestToken(token?: string | null): boolean {
+  if (!token) return false;
+  return DEMO_GUEST_TOKENS.includes(token);
+}
 
 export function isDemoEvent(eventId?: string | null, adminToken?: string | null): boolean {
   if (eventId === DEMO_EVENT_ID) return true;

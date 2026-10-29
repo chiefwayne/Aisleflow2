@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -35,7 +35,17 @@ import {
 } from 'lucide-react';
 import WaxSealOpening from '@/components/WaxSeal';
 import { BotanicalCorner, GoldHairlineDivider } from '@/components/MotifDecorations';
-import { uploadTemplateMediaAssetAction } from '@/app/actions/template-design-actions';
+import {
+  deleteTemplateDesignAction,
+  fetchTemplateDesignRows,
+  fetchTemplateMediaAssets,
+  saveEventStudioDesignAction,
+  saveTemplateDesignAction,
+  uploadTemplateMediaAssetAction,
+} from '@/app/actions/template-design-actions';
+import { ALL_GUEST_SECTIONS, computeSectionStyle, containerInlineStyle } from '@/lib/portal-design';
+import { uploadWebsiteImageAction } from '@/app/actions/wedding-actions';
+import OwnerDesignRequests from '@/components/owner/OwnerDesignRequests';
 import { CURATED_WEDDING_MEDIA } from '@/lib/curated-media';
 import {
   GuestPortalSectionId,
@@ -49,7 +59,14 @@ import {
   GuestPortalTextFrameStyle,
   GuestPortalOpeningStyle,
   TemplateDesignRecord,
+  CustomRsvpQuestionRecord,
+  EventRecord,
+  GuestRecord,
+  PhotoRecord,
+  RegistryItemRecord,
+  ScheduleItemRecord,
 } from '@/lib/types';
+import GuestPortalView from '@/components/guest/GuestPortalView';
 
 export type SelectedPreviewElement =
   | 'identity'
@@ -133,17 +150,6 @@ export interface TemplateDesignRow {
   updated_at?: string;
 }
 
-export const ALL_GUEST_SECTIONS: GuestPortalSectionId[] = [
-  'our-story',
-  'schedule',
-  'travel',
-  'rsvp',
-  'registry',
-  'photos',
-  'wedding-party',
-  'local-recs',
-  'faq',
-];
 
 // Authentic Curated AisleFlow System Designs
 export const SYSTEM_DESIGNS: TemplateDesignRow[] = [
@@ -461,13 +467,33 @@ interface TemplateDesignStudioProps {
   ownerToken?: string;
   initialTemplates?: TemplateDesignRow[];
   initialMediaAssets?: TemplateMediaAsset[];
+  /** 'event': a Premium couple styling their own invitation; saves to their event, no catalogue. */
+  mode?: 'owner' | 'event';
+  eventId?: string;
+  adminToken?: string;
+  initialDesign?: TemplateDesignRow;
+  /** Event mode: the couple's content, so the preview is their real guest page. */
+  eventPreview?: {
+    event: EventRecord;
+    guests: GuestRecord[];
+    schedule: ScheduleItemRecord[];
+    questions: CustomRsvpQuestionRecord[];
+    registry: RegistryItemRecord[];
+    photos: PhotoRecord[];
+  };
 }
 
 export default function TemplateDesignStudio({
   ownerToken = 'owner-dev',
   initialTemplates,
   initialMediaAssets,
+  mode = 'owner',
+  eventId,
+  adminToken,
+  initialDesign,
+  eventPreview,
 }: TemplateDesignStudioProps) {
+  const isEventMode = mode === 'event';
   // State
   const [ownerDesigns, setOwnerDesigns] = useState<TemplateDesignRow[]>(
     initialTemplates && initialTemplates.length > 0 ? initialTemplates : []
@@ -475,7 +501,20 @@ export default function TemplateDesignStudio({
   const [mediaAssets, setMediaAssets] = useState<TemplateMediaAsset[]>(
     initialMediaAssets && initialMediaAssets.length > 0 ? initialMediaAssets : INITIAL_MEDIA_ASSETS
   );
-  const [currentDesign, setCurrentDesign] = useState<TemplateDesignRow>(SYSTEM_DESIGNS[0]);
+  const [currentDesign, setCurrentDesign] = useState<TemplateDesignRow>(initialDesign || SYSTEM_DESIGNS[0]);
+  // The couple's real guest page with the draft design applied, as the Editor shows it.
+  const realPreview = eventPreview ? (
+    <GuestPortalView
+      event={{ ...eventPreview.event, theme_config: currentDesign as unknown as EventRecord['theme_config'] }}
+      primaryGuest={eventPreview.guests[0] || null}
+      partyMembers={eventPreview.guests.length > 1 ? eventPreview.guests : []}
+      scheduleItems={eventPreview.schedule}
+      customQuestions={eventPreview.questions}
+      registryItems={eventPreview.registry}
+      initialPhotos={eventPreview.photos}
+      previewMode={true}
+    />
+  ) : null;
   const [selectedElement, setSelectedElement] = useState<SelectedPreviewElement>('page');
   const [previewMode, setPreviewMode] = useState<PreviewMode>('guest');
   const [previewLayout, setPreviewLayout] = useState<PreviewLayoutId>('editorial-ceremony');
@@ -507,6 +546,32 @@ export default function TemplateDesignStudio({
     setTimeout(() => setStatusMessage(null), 3500);
   };
 
+  // Load saved designs and uploaded media from the database
+  useEffect(() => {
+    if (isEventMode) return;
+    let cancelled = false;
+    (async () => {
+      const [designs, assets] = await Promise.all([fetchTemplateDesignRows(ownerToken), fetchTemplateMediaAssets()]);
+      if (cancelled) return;
+      setOwnerDesigns(designs as unknown as TemplateDesignRow[]);
+      if (assets.length > 0) {
+        setMediaAssets([
+          ...assets.map((asset) => ({
+            id: asset.id,
+            title: asset.title,
+            category: (asset.category.charAt(0).toUpperCase() + asset.category.slice(1)) as TemplateMediaAsset['category'],
+            image_url: asset.image_url,
+            created_at: asset.created_at,
+          })),
+          ...INITIAL_MEDIA_ASSETS,
+        ]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ownerToken, isEventMode]);
+
   // Upload New Media Asset via File Picker
   const handleSelectUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -526,6 +591,19 @@ export default function TemplateDesignStudio({
       formData.append('category', newMediaCategory.toLowerCase());
       formData.append('file', file);
 
+      if (isEventMode) {
+        const upload = await uploadWebsiteImageAction({ eventId, adminToken, category: 'studio', file });
+        if (upload.success && upload.url) {
+          setMediaAssets((prev) => [
+            { id: 'media_' + Date.now(), title: file.name.replace(/\.[^/.]+$/, ''), category: newMediaCategory, image_url: upload.url, created_at: new Date().toISOString() },
+            ...prev,
+          ]);
+          showToast('Image uploaded.');
+        } else {
+          showToast(upload.error || 'Failed to upload image.', 'error');
+        }
+        return;
+      }
       const result = await uploadTemplateMediaAssetAction(formData);
       if (result.success && result.asset) {
         const newAsset: TemplateMediaAsset = {
@@ -616,12 +694,30 @@ export default function TemplateDesignStudio({
   };
 
   // Delete Template
-  const handleDeleteDesign = (id: string) => {
-    if (confirm(`Are you sure you want to delete template "${currentDesign.name}"?`)) {
-      setOwnerDesigns((prev) => prev.filter((d) => d.id !== id));
-      setCurrentDesign(SYSTEM_DESIGNS[0]);
-      showToast('Template deleted successfully.');
+  const handleDeleteDesign = async (id: string) => {
+    if (!confirm(`Are you sure you want to delete template "${currentDesign.name}"?`)) return;
+    // Drafts that were never saved exist only in this browser.
+    if (!id.startsWith('owner_')) {
+      const formData = new FormData();
+      formData.append('ownerToken', ownerToken);
+      formData.append('designId', id);
+      const result = await deleteTemplateDesignAction(formData);
+      if (!result.success) {
+        showToast(result.error || 'Failed to delete template.', 'error');
+        return;
+      }
     }
+    setOwnerDesigns((prev) => prev.filter((d) => d.id !== id));
+    setCurrentDesign(SYSTEM_DESIGNS[0]);
+    showToast('Template deleted successfully.');
+  };
+
+  // Event mode: save straight to the couple's invitation
+  const handleSaveEventDesign = async () => {
+    if (!eventId || !adminToken) return;
+    const result = await saveEventStudioDesignAction({ eventId, adminToken, design: JSON.stringify(currentDesign) });
+    if ('error' in result) showToast(result.error, 'error');
+    else showToast('Saved to your invitation. Guests see it straight away.');
   };
 
   // Open Save Details Modal
@@ -639,14 +735,14 @@ export default function TemplateDesignStudio({
   };
 
   // Confirm Save Details
-  const handleConfirmSaveDetails = (e: React.FormEvent) => {
+  const handleConfirmSaveDetails = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!saveModalForm.name.trim()) {
       setSaveModalError('Template name is required.');
       return;
     }
 
-    const updated: TemplateDesignRow = {
+    const draft: TemplateDesignRow = {
       ...currentDesign,
       name: saveModalForm.name,
       slug: saveModalForm.slug || saveModalForm.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
@@ -654,20 +750,29 @@ export default function TemplateDesignStudio({
       description: saveModalForm.description,
       best_for: saveModalForm.best_for,
       status: saveModalForm.status,
-      updated_at: new Date().toISOString(),
     };
 
-    setCurrentDesign(updated);
+    const formData = new FormData();
+    formData.append('ownerToken', ownerToken);
+    formData.append('design', JSON.stringify(draft));
+    const result = await saveTemplateDesignAction(formData);
+    if (!result.success || !result.design) {
+      setSaveModalError(result.error || 'Failed to save template.');
+      return;
+    }
+
+    const saved = { ...draft, ...(result.design as Partial<TemplateDesignRow>) } as TemplateDesignRow;
+    setCurrentDesign(saved);
     setOwnerDesigns((prev) => {
-      const exists = prev.some((d) => d.id === updated.id);
+      const exists = prev.some((d) => d.id === currentDesign.id);
       if (exists) {
-        return prev.map((d) => (d.id === updated.id ? updated : d));
+        return prev.map((d) => (d.id === currentDesign.id ? saved : d));
       }
-      return [updated, ...prev];
+      return [saved, ...prev];
     });
 
     setSaveDetailsOpen(false);
-    showToast(`Template "${updated.name}" saved successfully!`);
+    showToast(`Template "${saved.name}" saved successfully!`);
   };
 
   // Field Setters
@@ -743,14 +848,14 @@ export default function TemplateDesignStudio({
       {/* 1. TOP PILL HEADER */}
       <header className="mx-auto flex max-w-[1500px] items-center justify-between rounded-full border border-white/70 bg-white/80 px-4 py-3 shadow-sm backdrop-blur md:px-6">
         <Link
-          href="/"
+          href={isEventMode ? `/admin/${adminToken}` : '/'}
           className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold text-stone-700 hover:bg-stone-100 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
-          <span>AisleFlow Home</span>
+          <span>{isEventMode ? 'Back to dashboard' : 'AisleFlow Home'}</span>
         </Link>
         <span className="rounded-full bg-rose-100/70 border border-rose-200/60 px-4 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-rose-900">
-          Site Owner Studio
+          {isEventMode ? 'Design Studio' : 'Site Owner Studio'}
         </span>
       </header>
 
@@ -759,11 +864,11 @@ export default function TemplateDesignStudio({
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-aisle-terracotta" />
           <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-500">
-            Owner Template Studio
+            {isEventMode ? 'Premium Design Studio' : 'Owner Template Studio'}
           </span>
         </div>
         <h1 className="mt-2 max-w-4xl font-serif text-3xl sm:text-5xl leading-[1.02] text-stone-950">
-          Build the design catalogue without changing code.
+          {isEventMode ? 'Make your invitation your own.' : 'Build the design catalogue without changing code.'}
         </h1>
         <p className="mt-3 max-w-[75ch] text-xs sm:text-sm leading-relaxed text-stone-600">
           Tune colors, typography, container framing, and interactive behaviors for every element with live preview reflection.
@@ -800,7 +905,7 @@ export default function TemplateDesignStudio({
               </div>
               <button
                 type="button"
-                onClick={handleOpenSaveDetails}
+                onClick={isEventMode ? handleSaveEventDesign : handleOpenSaveDetails}
                 className="inline-flex items-center gap-1.5 rounded-full bg-stone-900 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-white shadow-sm hover:bg-aisle-terracotta transition-colors cursor-pointer"
               >
                 <Save className="h-3.5 w-3.5" />
@@ -950,7 +1055,8 @@ export default function TemplateDesignStudio({
               </div>
             </div>
 
-            {/* Layout Preset Selector */}
+            {/* Layout Preset Selector (sample preview only) */}
+            {!realPreview && (
             <div className="flex items-center justify-between pt-1 border-t border-stone-100 text-xs">
               <span className="text-stone-400 font-medium text-[11px]">Preview Layout:</span>
               <select
@@ -965,18 +1071,32 @@ export default function TemplateDesignStudio({
                 <option value="royal-floral">Royal Floral</option>
               </select>
             </div>
+            )}
           </div>
 
           {/* Actual Scrollable Guest Invite Canvas */}
           <div className="w-full flex justify-center">
             {previewMode === 'opening' ? (
-              <div className="w-full max-w-md rounded-3xl overflow-hidden shadow-wedding-lg border border-stone-200">
+              // translateZ(0) keeps the full-screen opening inside this box
+              <div className={`w-full h-[640px] rounded-3xl overflow-hidden shadow-wedding-lg border border-stone-200 [transform:translateZ(0)] ${fontClass(currentDesign.font_family)}`}>
                 <WaxSealOpening
-                  coupleNames="Sarah & James"
+                  coupleNames={eventPreview?.event.couple_names || 'Sarah & James'}
                   openingStyle={currentDesign.opening_style}
-                  guestName="Elena"
+                  palette={{
+                    bg: currentDesign.bg_color,
+                    surface: currentDesign.surface_color || '#FFFFFF',
+                    text: currentDesign.text_color,
+                    accent: currentDesign.accent_color,
+                    border: currentDesign.border_color,
+                  }}
+                  guestName={eventPreview ? eventPreview.guests[0]?.first_name : 'Elena'}
                   onOpen={() => setPreviewMode('guest')}
                 />
+              </div>
+            ) : realPreview ? (
+              // translateZ(0) keeps the portal's fixed-position overlays inside this box
+              <div className="w-full h-[840px] overflow-y-auto overflow-x-hidden rounded-3xl border border-stone-200 shadow-wedding-lg [transform:translateZ(0)]">
+                {realPreview}
               </div>
             ) : (
               <LiveGuestInvitePreview
@@ -989,8 +1109,34 @@ export default function TemplateDesignStudio({
           </div>
         </section>
 
-        {/* RIGHT COLUMN: CATALOGUE, SYSTEM DESIGNS & MEDIA LIBRARY */}
+        {/* RIGHT COLUMN: CATALOGUE, SYSTEM DESIGNS & MEDIA LIBRARY (owner only) */}
+        {isEventMode ? (
+          <aside className="lg:col-span-3 space-y-4 lg:sticky lg:top-6">
+            <div className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm space-y-3 text-xs">
+              <h3 className="font-serif text-base font-semibold text-stone-900">Your invitation</h3>
+              <p className="text-stone-600 leading-relaxed">
+                Pick an element on the left, adjust it, and watch the preview. Save when you are happy; guests see the new design straight away.
+              </p>
+              <button
+                type="button"
+                onClick={handleSaveEventDesign}
+                className="w-full min-h-[44px] rounded-full bg-stone-900 px-4 text-xs font-semibold uppercase tracking-wider text-white hover:bg-aisle-terracotta cursor-pointer"
+              >
+                Save to my invitation
+              </button>
+              <button
+                type="button"
+                onClick={() => setMediaLibraryOpen(true)}
+                className="w-full min-h-[44px] rounded-full border border-stone-200 px-4 text-xs font-semibold text-stone-700 hover:bg-stone-50 cursor-pointer"
+              >
+                Images
+              </button>
+            </div>
+          </aside>
+        ) : (
         <aside className="lg:col-span-3 space-y-5 lg:sticky lg:top-6 max-h-[calc(100vh-3rem)] overflow-y-auto pl-1">
+          <OwnerDesignRequests ownerToken={ownerToken} />
+
           {/* Catalogue Overview Card */}
           <div className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
@@ -1179,6 +1325,7 @@ export default function TemplateDesignStudio({
             </div>
           )}
         </aside>
+        )}
       </div>
 
       {/* 4. SAVE DETAILS MODAL */}
@@ -1381,14 +1528,20 @@ export default function TemplateDesignStudio({
               </button>
             </div>
 
-            <div className="w-full max-h-[82vh] overflow-y-auto rounded-3xl shadow-2xl flex justify-center">
-              <LiveGuestInvitePreview
-                design={currentDesign}
-                selectedElement={selectedElement}
-                onSelectElement={setSelectedElement}
-                previewLayout={previewLayout}
-              />
-            </div>
+            {realPreview ? (
+              <div className="w-full h-[82vh] overflow-y-auto overflow-x-hidden rounded-3xl shadow-2xl [transform:translateZ(0)]">
+                {realPreview}
+              </div>
+            ) : (
+              <div className="w-full max-h-[82vh] overflow-y-auto rounded-3xl shadow-2xl flex justify-center">
+                <LiveGuestInvitePreview
+                  design={currentDesign}
+                  selectedElement={selectedElement}
+                  onSelectElement={setSelectedElement}
+                  previewLayout={previewLayout}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1968,7 +2121,7 @@ function LiveGuestInvitePreview({
         selected={selectedElement === 'hero'}
         onSelect={() => onSelectElement('hero')}
         className="relative text-center space-y-5 p-6 sm:p-8 rounded-3xl border transition"
-        style={containerInlineStyle(heroStyle, design)}
+        style={containerInlineStyle(heroStyle)}
       >
         {/* Botanical Motif Corners if Botanical / Floral */}
         {(design.motif === 'floral' || design.motif === 'botanical') && (
@@ -2090,7 +2243,7 @@ function LiveGuestInvitePreview({
               selected={isSelected}
               onSelect={() => onSelectElement('story')}
               className="p-6 rounded-3xl border transition space-y-5 text-center"
-              style={containerInlineStyle(secStyle, design)}
+              style={containerInlineStyle(secStyle)}
             >
               <div className="space-y-1">
                 <span className="text-[10px] uppercase tracking-[0.3em] font-semibold block" style={{ color: design.accent_color }}>
@@ -2124,7 +2277,7 @@ function LiveGuestInvitePreview({
               selected={isSelected}
               onSelect={() => onSelectElement('schedule')}
               className="p-6 rounded-3xl border transition space-y-6"
-              style={containerInlineStyle(secStyle, design)}
+              style={containerInlineStyle(secStyle)}
             >
               <div className="text-center space-y-1">
                 <span className="text-[10px] uppercase tracking-[0.3em] font-semibold block" style={{ color: design.accent_color }}>
@@ -2186,7 +2339,7 @@ function LiveGuestInvitePreview({
               selected={isSelected}
               onSelect={() => onSelectElement('travel')}
               className="p-6 rounded-3xl border transition space-y-4 text-center"
-              style={containerInlineStyle(secStyle, design)}
+              style={containerInlineStyle(secStyle)}
             >
               <div className="space-y-1">
                 <span className="text-[10px] uppercase tracking-[0.3em] font-semibold block" style={{ color: design.accent_color }}>
@@ -2233,7 +2386,7 @@ function LiveGuestInvitePreview({
               selected={isSelected}
               onSelect={() => onSelectElement('rsvp')}
               className="p-6 rounded-3xl border transition space-y-5"
-              style={containerInlineStyle(secStyle, design)}
+              style={containerInlineStyle(secStyle)}
             >
               <div className="text-center space-y-1">
                 <span className="text-[10px] uppercase tracking-[0.3em] font-semibold block" style={{ color: design.accent_color }}>
@@ -2292,7 +2445,7 @@ function LiveGuestInvitePreview({
               selected={isSelected}
               onSelect={() => onSelectElement('registry')}
               className="p-6 rounded-3xl border transition space-y-4 text-center"
-              style={containerInlineStyle(secStyle, design)}
+              style={containerInlineStyle(secStyle)}
             >
               <div className="space-y-1">
                 <span className="text-[10px] uppercase tracking-[0.3em] font-semibold block" style={{ color: design.accent_color }}>
@@ -2344,7 +2497,7 @@ function LiveGuestInvitePreview({
               selected={isSelected}
               onSelect={() => onSelectElement('photos')}
               className="p-6 rounded-3xl border transition space-y-4 text-center"
-              style={containerInlineStyle(secStyle, design)}
+              style={containerInlineStyle(secStyle)}
             >
               <div className="space-y-1">
                 <span className="text-[10px] uppercase tracking-[0.3em] font-semibold block" style={{ color: design.accent_color }}>
@@ -2379,7 +2532,7 @@ function LiveGuestInvitePreview({
               selected={isSelected}
               onSelect={() => onSelectElement('wedding-party')}
               className="p-6 rounded-3xl border transition space-y-4 text-center"
-              style={containerInlineStyle(secStyle, design)}
+              style={containerInlineStyle(secStyle)}
             >
               <div className="space-y-1">
                 <span className="text-[10px] uppercase tracking-[0.3em] font-semibold block" style={{ color: design.accent_color }}>
@@ -2429,7 +2582,7 @@ function LiveGuestInvitePreview({
               selected={isSelected}
               onSelect={() => onSelectElement('local')}
               className="p-6 rounded-3xl border transition space-y-4 text-center"
-              style={containerInlineStyle(secStyle, design)}
+              style={containerInlineStyle(secStyle)}
             >
               <div className="space-y-1">
                 <span className="text-[10px] uppercase tracking-[0.3em] font-semibold block" style={{ color: design.accent_color }}>
@@ -2451,7 +2604,7 @@ function LiveGuestInvitePreview({
             selected={isSelected}
             onSelect={() => onSelectElement('faq')}
             className="p-6 rounded-3xl border transition space-y-4 text-center"
-            style={containerInlineStyle(secStyle, design)}
+            style={containerInlineStyle(secStyle)}
           >
             <div className="space-y-1">
               <span className="text-[10px] uppercase tracking-[0.3em] font-semibold block" style={{ color: design.accent_color }}>
@@ -2484,60 +2637,6 @@ function LiveGuestInvitePreview({
 // -------------------------------------------------------------------------
 // STYLING COMPUTATION & HELPERS
 // -------------------------------------------------------------------------
-
-function computeSectionStyle(
-  design: TemplateDesignRow,
-  target: GuestPortalSectionStyleTarget
-): GuestPortalSectionStyle {
-  const styles = design.section_styles || {};
-  const style = styles[target] || {};
-
-  if (!style.useCustomStyle) {
-    return {
-      containerLayout: design.container_layout || 'card',
-      containerPadding: design.container_padding || 'balanced',
-      containerSurface: design.container_surface_color || design.surface_color || '#FFFFFF',
-      containerBorder: design.container_border_color || design.border_color || '#E8E0D7',
-      containerShadow: design.container_shadow_color || design.shadow_color || 'rgba(44, 37, 35, 0.06)',
-      containerRadius: design.container_radius ?? 28,
-      containerBorderWidth: design.container_border_width ?? 1,
-      textFrameStyle: design.text_frame_style || 'glass',
-      textFrameRadius: design.text_frame_radius ?? 20,
-      textFrameBorderWidth: design.text_frame_border_width ?? 1,
-      backgroundMode: 'none',
-      backgroundImageUrl: '',
-    };
-  }
-
-  return {
-    useCustomStyle: true,
-    containerLayout: style.containerLayout || design.container_layout || 'card',
-    containerPadding: style.containerPadding || design.container_padding || 'balanced',
-    containerSurface: style.containerSurface || design.container_surface_color || design.surface_color || '#FFFFFF',
-    containerBorder: style.containerBorder || design.container_border_color || design.border_color || '#E8E0D7',
-    containerShadow: style.containerShadow || design.container_shadow_color || design.shadow_color || 'rgba(44, 37, 35, 0.06)',
-    containerRadius: style.containerRadius ?? design.container_radius ?? 28,
-    containerBorderWidth: style.containerBorderWidth ?? design.container_border_width ?? 1,
-    backgroundMode: style.backgroundMode || 'none',
-    backgroundImageUrl: style.backgroundImageUrl || '',
-    contentImageUrl: style.contentImageUrl,
-    textFrameStyle: style.textFrameStyle || design.text_frame_style || 'glass',
-    textFrameRadius: style.textFrameRadius ?? design.text_frame_radius ?? 20,
-    textFrameBorderWidth: style.textFrameBorderWidth ?? design.text_frame_border_width ?? 1,
-  };
-}
-
-function containerInlineStyle(style: GuestPortalSectionStyle, design: TemplateDesignRow): React.CSSProperties {
-  const isBorderless = style.containerLayout === 'borderless';
-
-  return {
-    backgroundColor: isBorderless ? 'transparent' : style.containerSurface,
-    borderColor: isBorderless ? 'transparent' : style.containerBorder,
-    borderRadius: isBorderless ? 0 : `${style.containerRadius}px`,
-    borderWidth: isBorderless ? 0 : `${style.containerBorderWidth}px`,
-    boxShadow: isBorderless ? 'none' : `0 12px 36px ${style.containerShadow}`,
-  };
-}
 
 function PreviewClickable({
   children,

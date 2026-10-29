@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+// Server-only: row-level security blocks the public key, so read with the service role.
+import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { createGuestAccessToken } from '@/lib/guest-access-token';
+import { generateAdminToken } from '@/lib/admin-auth';
 
 export async function POST(request: Request) {
   try {
@@ -18,7 +20,7 @@ export async function POST(request: Request) {
       '-' +
       Math.random().toString(36).substring(2, 6);
 
-    const admin_token = 'admin_' + Math.random().toString(36).substring(2, 14);
+    const admin_token = generateAdminToken();
 
     // Calculate default RSVP deadline (30 days before wedding date)
     const weddingDateTime = new Date(wedding_date).getTime();
@@ -45,9 +47,9 @@ export async function POST(request: Request) {
           'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=1200&q=80',
         venue_image_url:
           'https://images.unsplash.com/photo-1533105079780-92b9be482077?auto=format&fit=crop&w=1200&q=80',
-        is_live: true,
+        is_live: false,
         is_ready_for_testing: false,
-        launch_notes: 'Initial event provisioned. Complete setup wizard before sending invites.',
+        launch_notes: 'Initial event provisioned. Complete setup and publish before sending invites.',
       })
       .select()
       .single();

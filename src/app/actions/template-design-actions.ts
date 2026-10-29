@@ -2,18 +2,36 @@
 
 import { revalidatePath } from 'next/cache';
 import { supabaseAdmin } from '@/lib/supabase';
-import { requireOwnerAccess } from '@/lib/owner-auth';
+import { requireOwnerAccess, verifyOwnerAccess } from '@/lib/owner-auth';
+import { requireAdminAccess } from '@/lib/admin-auth';
+import { featureError, hasFeature } from '@/lib/plans';
 import { TemplateDesignRecord, TemplateMediaAssetRecord } from '@/lib/types';
 
 const MEDIA_BUCKET = 'template-media';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const TEMPLATE_DESIGN_COLUMNS = [
+  'name', 'taxonomy', 'description', 'best_for', 'opening_style', 'hero_treatment', 'motif',
+  'font_family', 'canvas_width', 'bg_color', 'text_color', 'accent_color', 'muted_color',
+  'surface_color', 'border_color', 'shadow_color', 'page_background_image_url', 'page_background_mode',
+  'container_surface_color', 'container_border_color', 'container_shadow_color', 'container_radius',
+  'container_border_width', 'container_layout', 'container_padding', 'text_frame_style',
+  'text_frame_radius', 'text_frame_border_width', 'section_order', 'hidden_sections', 'section_styles',
+  'per_section_styles', 'sample_image_url', 'eyebrow_text', 'poetic_line', 'invitation_phrase',
+  'floron', 'border_flair', 'is_dark', 'status',
+] as const;
 
-export async function fetchTemplateDesignRows(): Promise<TemplateDesignRecord[]> {
+/** The owner sees every design; everyone else sees published designs only. */
+export async function fetchTemplateDesignRows(ownerToken?: string): Promise<TemplateDesignRecord[]> {
   try {
-    const { data, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('template_designs')
       .select('*')
       .order('created_at', { ascending: false });
+    if (!ownerToken || !verifyOwnerAccess(ownerToken)) {
+      query = query.eq('status', 'published');
+    }
 
+    const { data, error } = await query;
     if (error || !data) return [];
     return data as TemplateDesignRecord[];
   } catch (err) {
@@ -86,7 +104,7 @@ export async function uploadTemplateMediaAssetAction(formData: FormData) {
 
     if (dbErr) throw dbErr;
 
-    revalidatePath('/owner/studio');
+    revalidatePath('/owner/templates');
     return { success: true, asset };
   } catch (err: any) {
     console.error('uploadTemplateMediaAssetAction error:', err);
@@ -113,7 +131,7 @@ export async function deleteTemplateMediaAssetAction(formData: FormData) {
 
     await supabaseAdmin.from('template_media_assets').delete().eq('id', assetId);
 
-    revalidatePath('/owner/studio');
+    revalidatePath('/owner/templates');
     return { success: true };
   } catch (err: any) {
     console.error('deleteTemplateMediaAssetAction error:', err);
@@ -130,21 +148,25 @@ export async function saveTemplateDesignAction(formData: FormData) {
     const design = JSON.parse(designJson);
 
     const slug = design.slug || design.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    const dbPayload = {
-      ...design,
-      slug,
-      updated_at: new Date().toISOString(),
-    };
+    // Only known columns are written. Saved designs are updated by id. Unsaved Studio ids
+    // (owner_...) are not uuids, so those are inserted, or matched by slug.
+    const dbPayload: Record<string, unknown> = { slug, updated_at: new Date().toISOString() };
+    for (const column of TEMPLATE_DESIGN_COLUMNS) {
+      if (design[column] !== undefined) dbPayload[column] = design[column];
+    }
+    const isSaved = typeof design.id === 'string' && UUID_PATTERN.test(design.id);
 
-    const { data: saved, error } = await supabaseAdmin
-      .from('template_designs')
-      .upsert(dbPayload, { onConflict: 'slug' })
+    const table = supabaseAdmin.from('template_designs');
+    const { data: saved, error } = await (isSaved
+      ? table.update(dbPayload).eq('id', design.id)
+      : table.upsert(dbPayload, { onConflict: 'slug' })
+    )
       .select()
       .single();
 
     if (error) throw error;
 
-    revalidatePath('/owner/studio');
+    revalidatePath('/owner/templates');
     return { success: true, design: saved };
   } catch (err: any) {
     console.error('saveTemplateDesignAction error:', err);
@@ -161,10 +183,52 @@ export async function deleteTemplateDesignAction(formData: FormData) {
 
     await supabaseAdmin.from('template_designs').delete().eq('id', designId);
 
-    revalidatePath('/owner/studio');
+    revalidatePath('/owner/templates');
     return { success: true };
   } catch (err: any) {
     console.error('deleteTemplateDesignAction error:', err);
     return { error: err.message };
+  }
+}
+
+/** Lets the owner unlock page confirm a passkey against the server secret. */
+export async function verifyOwnerPasskeyAction(passkey: string) {
+  return verifyOwnerAccess(passkey);
+}
+
+/** Saves a Premium couple's Studio design into their own event (not the shared catalogue). */
+export async function saveEventStudioDesignAction(input: {
+  eventId: string;
+  adminToken: string;
+  design: string;
+}): Promise<{ success: true } | { error: string }> {
+  try {
+    await requireAdminAccess(input.eventId, input.adminToken);
+
+    const { data: event } = await supabaseAdmin.from('events').select('id, plan').eq('id', input.eventId).single();
+    if (!event) return { error: 'Event not found.' };
+    if (!hasFeature(event, 'design_studio')) return { error: featureError('design_studio') };
+
+    const design = JSON.parse(input.design);
+    const snapshot: Record<string, unknown> = {};
+    for (const column of TEMPLATE_DESIGN_COLUMNS) {
+      if (column !== 'status' && design[column] !== undefined) snapshot[column] = design[column];
+    }
+    // container_layout marks a Studio design, so the portal applies its layout controls.
+    snapshot.container_layout ||= 'card';
+    snapshot.id = `event-studio-${input.eventId}`;
+
+    const { error } = await supabaseAdmin
+      .from('events')
+      .update({ theme_config: snapshot, updated_at: new Date().toISOString() })
+      .eq('id', input.eventId);
+    if (error) throw error;
+
+    revalidatePath(`/admin/${input.adminToken}`);
+    revalidatePath('/g/[token]', 'page');
+    return { success: true };
+  } catch (err: any) {
+    console.error('saveEventStudioDesignAction error:', err);
+    return { error: err.message || 'Failed to save your design.' };
   }
 }

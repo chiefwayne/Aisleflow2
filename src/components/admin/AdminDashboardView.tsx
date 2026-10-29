@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Papa from 'papaparse';
 import {
   LayoutDashboard,
+  LayoutGrid,
+  ChevronDown,
   Settings,
   Users,
   Send,
@@ -41,9 +43,9 @@ import {
   AlertCircle,
   Type,
   Layers,
-  Sliders,
   ChevronUp,
   Eye,
+  MessageCircle,
   EyeOff,
   UserPlus,
   Edit2,
@@ -63,14 +65,31 @@ import {
   CommunicationCampaignRecord,
   CommunicationMessageRecord,
   TemplateDesignRecord,
+  GuestbookEntryRecord,
+  GuestPortalSectionId,
   EventCustomSections
 } from '@/lib/types';
 import { BUILTIN_THEMES } from '@/lib/theme-presets';
 import { generateQrDataUrl } from '@/lib/qrcode';
-import PhoneMockup from '@/components/PhoneMockup';
+import PortalPreviewPane from '@/components/admin/PortalPreviewPane';
 import GuestPortalView from '@/components/guest/GuestPortalView';
 import { ImagePickerUploader } from '@/components/common/ImagePickerUploader';
-import { supabase } from '@/lib/supabase';
+import PublishReadinessPanel from '@/components/admin/PublishReadinessPanel';
+import PlanCard from '@/components/admin/PlanCard';
+import SeatingPlanner from '@/components/admin/SeatingPlanner';
+import DesignServiceCard from '@/components/admin/DesignServiceCard';
+import {
+  deleteGuestbookEntryAction,
+  getOrCreateAlbumTokenAction,
+  listGuestbookAction,
+  setMemoryVisibilityAction,
+} from '@/app/actions/album-actions';
+import { featureError, hasFeature } from '@/lib/plans';
+import { ALWAYS_VISIBLE_SECTIONS, chapterSettings, isStudioDesign } from '@/lib/portal-design';
+import { getMenuOptions, MenuOption } from '@/lib/menu';
+import { whatsappShareUrl } from '@/lib/share';
+import { setAtPath } from '@/lib/set-at-path';
+import { PORTAL_LANGUAGES } from '@/lib/portal-i18n';
 import { generateTrackingToken, renderTemplateVariables } from '@/lib/communications';
 import {
   addGuestAction,
@@ -93,8 +112,26 @@ import {
   updateEventThemeAction,
   updateEventDesignAction,
   updateCommunicationTemplateAction,
-  deleteCommunicationTemplateAction
+  deleteCommunicationTemplateAction,
+  listEventRowsAction,
+  setGuestRsvpStatusAction,
+  setGuestPlusOneAction,
+  setEventMusicAction,
+  setInvitationModeAction,
+  setCustomSlugAction,
 } from '@/app/actions/wedding-actions';
+
+const CHAPTER_LABELS: Record<GuestPortalSectionId, { label: string; desc: string }> = {
+  'our-story': { label: 'Our Story & Welcome', desc: 'Welcome message, your story and photo' },
+  schedule: { label: 'The Itinerary', desc: 'Timeline and attire notes' },
+  travel: { label: 'Venue & Travel', desc: 'Address, map, hotels and shuttles' },
+  'wedding-party': { label: 'Wedding Party', desc: 'Names, roles and bios' },
+  'local-recs': { label: 'Local Tips', desc: 'Places to eat, drink and visit' },
+  faq: { label: 'Questions & Answers', desc: 'Your FAQ' },
+  rsvp: { label: 'RSVP', desc: 'Replies, meals and questions' },
+  photos: { label: 'Shared Photos', desc: 'Guest photo uploads' },
+  registry: { label: 'Gift Registry', desc: 'Gifts and cash funds' },
+};
 
 interface AdminDashboardViewProps {
   initialEvent: EventRecord;
@@ -108,6 +145,7 @@ interface AdminDashboardViewProps {
   initialTasks: PlanningTaskRecord[];
   initialTemplates: CommunicationTemplateRecord[];
   initialCampaigns: CommunicationCampaignRecord[];
+  studioDesigns?: TemplateDesignRecord[];
 }
 
 export default function AdminDashboardView({
@@ -122,10 +160,11 @@ export default function AdminDashboardView({
   initialTasks,
   initialTemplates,
   initialCampaigns,
+  studioDesigns = [],
 }: AdminDashboardViewProps) {
   // Navigation Tabs
   const [activeTab, setActiveTab] = useState<
-    'dashboard' | 'setup' | 'guests' | 'communications' | 'builder' | 'copy' | 'schedule' | 'questions' | 'registry' | 'photos' | 'planning'
+    'dashboard' | 'setup' | 'guests' | 'communications' | 'builder' | 'copy' | 'schedule' | 'questions' | 'registry' | 'photos' | 'seating' | 'planning'
   >('dashboard');
 
   // State
@@ -258,7 +297,12 @@ export default function AdminDashboardView({
   });
 
   // Setup Form State
-  const [setupForm, setSetupForm] = useState({ ...event });
+  // Dates are stored as timestamps; the date inputs need YYYY-MM-DD.
+  const [setupForm, setSetupForm] = useState({
+    ...event,
+    wedding_date: (event.wedding_date || '').slice(0, 10),
+    rsvp_deadline: (event.rsvp_deadline || '').slice(0, 10),
+  });
 
   // Custom Sections CMS State
   const [customSections, setCustomSections] = useState<EventCustomSections>(
@@ -276,7 +320,7 @@ export default function AdminDashboardView({
     name: '',
     lifecycle_type: 'invitation',
     target_audience: 'all',
-    channel: 'sms',
+    channel: hasFeature(initialEvent, 'sms') ? 'sms' : 'email',
     subject: `Formal Wedding Invitation: ${event.couple_names}`,
     email_body: `Dear {{guest_name}},\n\nYou are cordially invited to celebrate the marriage of ${event.couple_names} on {{wedding_date}} at {{venue_name}}.\n\nPlease visit your private portal to RSVP: {{portal_link}}`,
     sms_body: `Hi {{guest_name}}! You're invited to ${event.couple_names}'s wedding. Please view details and RSVP at: {{portal_link}}`,
@@ -308,10 +352,29 @@ export default function AdminDashboardView({
   });
 
   const [builderSubTab, setBuilderSubTab] = useState<
-    'presets' | 'palette' | 'typography' | 'reveal' | 'imagery' | 'sections'
+    'presets' | 'palette' | 'typography' | 'reveal' | 'imagery'
   >('presets');
 
+  // What the Builder and Editor previews show: the page alone, the page with the floating RSVP pill, or the opening.
+  const [previewView, setPreviewView] = useState<'page' | 'floating' | 'opening'>('page');
+  const [openingReplay, setOpeningReplay] = useState(0);
+  const choosePreviewView = (view: 'page' | 'floating' | 'opening') => {
+    if (view === 'opening') setOpeningReplay((n) => n + 1); // choosing Opening again replays it
+    setPreviewView(view);
+  };
+  // The Builder's Opening tab is about the opening, so show it there.
+  useEffect(() => {
+    if (builderSubTab === 'reveal') choosePreviewView('opening');
+    else setPreviewView((v) => (v === 'opening' ? 'page' : v));
+  }, [builderSubTab]);
+
   // Copy Link Helper
+  // Re-read a list from the server after a change (the browser cannot query the database directly).
+  const refreshRows = async (table: 'guests' | 'schedule_items' | 'custom_rsvp_questions' | 'planning_tasks') => {
+    const res = await listEventRowsAction(event.id, event.admin_token, table);
+    return res.rows as any[] | null;
+  };
+
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     setCopiedLink(label);
@@ -326,10 +389,58 @@ export default function AdminDashboardView({
   };
 
   // Open Printable Table Card
+  // The table card links to the shared album, never to a guest's or the couple's own link.
   const handleOpenTableCard = async () => {
-    const url = `${window.location.origin}/g/${guests[0]?.access_token || event.admin_token}`;
-    const qrData = await generateQrDataUrl(url);
-    setTableCardModal(qrData);
+    if (!hasFeature(event, 'memories')) {
+      setStatusMessage(featureError('memories'));
+      setTimeout(() => setStatusMessage(''), 4000);
+      setActiveTab('dashboard');
+      return;
+    }
+    const albumUrl = await ensureAlbumUrl();
+    if (!albumUrl) return;
+    setTableCardModal(await generateQrDataUrl(albumUrl));
+  };
+
+  const ensureAlbumUrl = async (): Promise<string | null> => {
+    const result = await getOrCreateAlbumTokenAction(event.id, event.admin_token);
+    if ('error' in result) {
+      setStatusMessage(result.error);
+      setTimeout(() => setStatusMessage(''), 4000);
+      return null;
+    }
+    if (result.albumToken !== event.album_token) setEvent((prev) => ({ ...prev, album_token: result.albumToken }));
+    return `${window.location.origin}/album/${result.albumToken}`;
+  };
+
+  const openAlbumPage = async (path: '' | '/slideshow') => {
+    const albumUrl = await ensureAlbumUrl();
+    if (albumUrl) window.open(`${albumUrl}${path}`, '_blank', 'noopener');
+  };
+
+  // Guestbook entries for moderation (loaded when the Photos tab opens)
+  const [guestbook, setGuestbook] = useState<GuestbookEntryRecord[]>([]);
+  useEffect(() => {
+    if (activeTab !== 'photos' || !hasFeature(event, 'memories')) return;
+    listGuestbookAction(event.id, event.admin_token).then((r) => setGuestbook(r.entries));
+  }, [activeTab, event.id, event.admin_token, event.plan]);
+
+  const handleToggleMemory = async (kind: 'photo' | 'message', id: string, approved: boolean) => {
+    if (kind === 'photo') setPhotos((prev) => prev.map((p) => (p.id === id ? { ...p, is_approved: approved } : p)));
+    else setGuestbook((prev) => prev.map((m) => (m.id === id ? { ...m, is_approved: approved } : m)));
+    const result = await setMemoryVisibilityAction({ eventId: event.id, adminToken: event.admin_token, kind, id, approved });
+    if (!result.success) {
+      if (kind === 'photo') setPhotos((prev) => prev.map((p) => (p.id === id ? { ...p, is_approved: !approved } : p)));
+      else setGuestbook((prev) => prev.map((m) => (m.id === id ? { ...m, is_approved: !approved } : m)));
+      setStatusMessage('Could not update visibility. Please try again.');
+      setTimeout(() => setStatusMessage(''), 3500);
+    }
+  };
+
+  const handleDeleteGuestbookEntry = async (id: string) => {
+    if (!confirm('Delete this message for good?')) return;
+    const result = await deleteGuestbookEntryAction(event.id, event.admin_token, id);
+    if (result.success) setGuestbook((prev) => prev.filter((m) => m.id !== id));
   };
 
   // Metric Rollups
@@ -338,6 +449,13 @@ export default function AdminDashboardView({
   const declinedGuests = guests.filter((g) => g.rsvp_status === 'declined').length;
   const pendingGuests = guests.filter((g) => g.rsvp_status === 'pending').length;
   const totalRaised = registry.reduce((sum, item) => sum + (Number(item.current_amount) || 0), 0);
+  const smsAllowed = hasFeature(event, 'sms');
+  const readinessCounts = {
+    guests: guests.length,
+    schedule: schedule.length,
+    questions: questions.length,
+    registry: registry.length,
+  };
 
   // Setup Save Handler (Server Action)
   const handleSaveSetup = async (e: React.FormEvent) => {
@@ -349,13 +467,15 @@ export default function AdminDashboardView({
         eventId: event.id,
         adminToken: event.admin_token,
         couple_names: setupForm.couple_names,
+        admin_email: setupForm.admin_email,
         wedding_date: setupForm.wedding_date,
         rsvp_deadline: setupForm.rsvp_deadline,
         allow_late_rsvp: setupForm.allow_late_rsvp,
+        rsvp_locked: !!setupForm.rsvp_locked,
+        language: setupForm.language || 'en',
         venue_name: setupForm.venue_name,
         venue_address: setupForm.venue_address,
         launch_notes: setupForm.launch_notes,
-        is_ready_for_testing: setupForm.is_ready_for_testing,
       });
 
       if (result.success && result.event) {
@@ -505,11 +625,7 @@ export default function AdminDashboardView({
       });
 
       if (result.success) {
-        const { data: updatedGuests } = await supabase
-          .from('guests')
-          .select('*')
-          .eq('event_id', event.id)
-          .order('created_at', { ascending: true });
+        const updatedGuests = await refreshRows('guests');
 
         if (updatedGuests) setGuests(updatedGuests as GuestRecord[]);
         setSelectedGuestIds([]);
@@ -583,11 +699,7 @@ export default function AdminDashboardView({
       });
 
       if (result.success) {
-        const { data: updatedGuests } = await supabase
-          .from('guests')
-          .select('*')
-          .eq('event_id', event.id)
-          .order('created_at', { ascending: true });
+        const updatedGuests = await refreshRows('guests');
 
         if (updatedGuests) setGuests(updatedGuests as GuestRecord[]);
         setAddGuestToPartySelectedId('');
@@ -788,11 +900,7 @@ export default function AdminDashboardView({
       });
 
       if (result.success) {
-        const { data: refreshedGuests } = await supabase
-          .from('guests')
-          .select('*')
-          .eq('event_id', event.id)
-          .order('created_at', { ascending: true });
+        const refreshedGuests = await refreshRows('guests');
 
         if (refreshedGuests) setGuests(refreshedGuests as GuestRecord[]);
         setCsvImportModalOpen(false);
@@ -822,6 +930,7 @@ export default function AdminDashboardView({
         welcome_message: event.welcome_message || '',
         our_story: event.our_story || '',
         dress_code: event.dress_code || '',
+        travel_info: event.travel_info || '',
       });
 
       if (result.success && result.event) {
@@ -837,6 +946,223 @@ export default function AdminDashboardView({
       setIsProcessingAction(false);
       setTimeout(() => setStatusMessage(''), 3500);
     }
+  };
+
+  const handleTogglePlusOne = async (guest: GuestRecord) => {
+    const allowed = !guest.plus_one_allowed;
+    setGuests((prev) => prev.map((g) => (g.id === guest.id ? { ...g, plus_one_allowed: allowed } : g)));
+    const result = await setGuestPlusOneAction(event.id, event.admin_token, guest.id, allowed);
+    if (!result.success) {
+      setGuests((prev) => prev.map((g) => (g.id === guest.id ? { ...g, plus_one_allowed: !allowed } : g)));
+      setStatusMessage('Could not update the plus-one. Please try again.');
+      setTimeout(() => setStatusMessage(''), 3500);
+    }
+  };
+
+  // Upload (file) or remove (null) the song played when guests open the invitation
+  const handleSetMusic = async (file: File | null) => {
+    setIsProcessingAction(true);
+    setStatusMessage(file ? 'Uploading song...' : 'Removing song...');
+    try {
+      const formData = new FormData();
+      formData.append('eventId', event.id);
+      formData.append('adminToken', event.admin_token);
+      if (file) formData.append('file', file);
+      else formData.append('remove', 'true');
+      const result = await setEventMusicAction(formData);
+      if (result.success && result.event) {
+        const saved = (result.event as EventRecord).custom_sections as EventCustomSections;
+        setEvent((prev) => ({ ...prev, custom_sections: saved }));
+        setCustomSections((prev) => ({ ...prev, music: saved?.music }));
+        setStatusMessage(file ? '🎵 Song added. It plays when guests open the invitation.' : 'Song removed.');
+      } else {
+        setStatusMessage(`Error: ${result.error || 'Failed to update music'}`);
+      }
+    } catch (err: any) {
+      setStatusMessage(`Failed to update music: ${err?.message}`);
+    } finally {
+      setIsProcessingAction(false);
+      setTimeout(() => setStatusMessage(''), 4000);
+    }
+  };
+
+  const [customSlugDraft, setCustomSlugDraft] = useState(event.custom_slug || '');
+  const handleSaveCustomSlug = async () => {
+    setIsProcessingAction(true);
+    const result = await setCustomSlugAction(event.id, event.admin_token, customSlugDraft);
+    setIsProcessingAction(false);
+    if ('error' in result) {
+      setStatusMessage(result.error);
+    } else {
+      setEvent((prev) => ({ ...prev, custom_slug: result.slug }));
+      setCustomSlugDraft(result.slug || '');
+      setStatusMessage(result.slug ? `Short link saved: /i/${result.slug}` : 'Short link removed.');
+    }
+    setTimeout(() => setStatusMessage(''), 4000);
+  };
+
+  const handleSetInvitationMode = async (mode: 'save_the_date' | 'invitation') => {
+    if ((event.invitation_mode || 'invitation') === mode) return;
+    setIsProcessingAction(true);
+    const result = await setInvitationModeAction(event.id, event.admin_token, mode);
+    setIsProcessingAction(false);
+    if ('error' in result) {
+      setStatusMessage(result.error);
+    } else {
+      setEvent((prev) => ({ ...prev, invitation_mode: mode }));
+      setStatusMessage(mode === 'save_the_date' ? 'Guests now see your save-the-date.' : 'Guests now see the full invitation.');
+    }
+    setTimeout(() => setStatusMessage(''), 3500);
+  };
+
+  // Meal options (stored in custom_sections.menu)
+  const [menuDraft, setMenuDraft] = useState<MenuOption[]>(() => getMenuOptions(event));
+  const mealCounts = guests
+    .filter((g) => g.rsvp_status === 'attending')
+    .reduce<Record<string, number>>((counts, g) => {
+      for (const meal of [g.meal_choice, g.plus_one_name ? g.plus_one_meal : null]) {
+        if (meal) counts[meal] = (counts[meal] || 0) + 1;
+      }
+      return counts;
+    }, {});
+
+  const handleSaveMenu = async () => {
+    const options = menuDraft
+      .map((o) => ({ name: o.name.trim(), description: o.description?.trim() || '' }))
+      .filter((o) => o.name);
+    if (new Set(options.map((o) => o.name)).size !== options.length) {
+      setStatusMessage('Each meal needs a different name.');
+      setTimeout(() => setStatusMessage(''), 3500);
+      return;
+    }
+    setIsProcessingAction(true);
+    setStatusMessage('Saving menu...');
+    try {
+      // Start from the saved sections so unsaved Editor changes aren't saved with the menu.
+      const result = await updateEventCustomSectionsAction({
+        eventId: event.id,
+        adminToken: event.admin_token,
+        custom_sections: { ...(event.custom_sections || {}), menu: { options } },
+      });
+      if (result.success && result.event) {
+        // Only take custom_sections back, so unsaved Editor text in `event` is kept.
+        setEvent((prev) => ({ ...prev, custom_sections: (result.event as EventRecord).custom_sections }));
+        setCustomSections((prev) => ({ ...prev, menu: { options } }));
+        setMenuDraft(options);
+        setStatusMessage('✨ Menu saved. Guests now choose from these meals.');
+      } else {
+        setStatusMessage(`Error: ${result.error || 'Failed to save menu'}`);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setStatusMessage(`Failed to save menu: ${err?.message}`);
+    } finally {
+      setIsProcessingAction(false);
+      setTimeout(() => setStatusMessage(''), 3500);
+    }
+  };
+
+  // Chapter order and visibility (Builder > Presets), saved in theme_config for every plan.
+  const chapters = chapterSettings(event.theme_config as { section_order?: string[]; hidden_sections?: string[] });
+  const handleMoveChapter = (index: number, direction: -1 | 1) => {
+    const order = [...chapters.order];
+    const target = index + direction;
+    if (target < 0 || target >= order.length) return;
+    [order[index], order[target]] = [order[target], order[index]];
+    handleUpdateThemeConfig('section_order', order);
+  };
+  const handleToggleChapter = (id: GuestPortalSectionId) => {
+    if (ALWAYS_VISIBLE_SECTIONS.includes(id)) return;
+    const hidden = chapters.hidden.includes(id) ? chapters.hidden.filter((h) => h !== id) : [...chapters.hidden, id];
+    handleUpdateThemeConfig('hidden_sections', hidden);
+  };
+
+  // Click-to-edit on the Editor preview. Paths: event.<field>, sections.<path>, theme.<phrase>.
+  const [editorDirty, setEditorDirty] = useState(false);
+  // Only the invitation lines actually edited are saved, so untouched ones keep the theme's own wording.
+  const [editedThemeKeys, setEditedThemeKeys] = useState<string[]>([]);
+  const handlePreviewTextEdit = (path: string, value: string) => {
+    const [scope, ...rest] = path.split('.');
+    if (scope === 'event') {
+      setEvent((prev) => ({ ...prev, [rest[0]]: value }));
+    } else if (scope === 'sections') {
+      setCustomSections((prev) => setAtPath(prev, rest, value));
+    } else if (scope === 'theme') {
+      setEvent((prev) => ({ ...prev, theme_config: { ...(prev.theme_config || {}), [rest[0]]: value } }));
+      setCustomTheme((prev) => ({ ...prev, [rest[0]]: value }));
+      setEditedThemeKeys((prev) => (prev.includes(rest[0]) ? prev : [...prev, rest[0]]));
+    }
+    setEditorDirty(true);
+  };
+
+  const handleSaveEditor = async () => {
+    if (editedThemeKeys.length > 0) {
+      const config = (event.theme_config || {}) as Record<string, any>;
+      const result = await updateEventDesignAction({
+        eventId: event.id,
+        adminToken: event.admin_token,
+        theme_config: Object.fromEntries(editedThemeKeys.map((key) => [key, config[key] ?? ''])),
+      });
+      if (!result.success) {
+        setStatusMessage(`Error: ${result.error || 'Failed to save the invitation lines'}`);
+        setTimeout(() => setStatusMessage(''), 3500);
+        return;
+      }
+      setEditedThemeKeys([]);
+    }
+    await handleSaveCustomSections();
+    setEditorDirty(false);
+  };
+
+  // Replace the whole theme. Studio designs are copied into theme_config, so later Studio edits
+  // don't change an invitation the couple has already chosen.
+  const handleApplyTheme = async (themeId: string, themeConfig: Record<string, any>) => {
+    const base = BUILTIN_THEMES[themeId] || BUILTIN_THEMES['royal-floral'];
+    setCustomTheme({ ...base, ...themeConfig });
+    setIsProcessingAction(true);
+    setStatusMessage('Applying design...');
+    try {
+      const result = await updateEventThemeAction({
+        eventId: event.id,
+        adminToken: event.admin_token,
+        theme_id: themeId,
+        theme_config: themeConfig,
+      });
+      if (result.success && result.event) {
+        setEvent(result.event as EventRecord);
+        setStatusMessage('✨ Design applied to your guest view!');
+      } else {
+        setStatusMessage(`Error applying design: ${result.error || 'Failed to save'}`);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setStatusMessage(`Failed to apply design: ${err?.message}`);
+    } finally {
+      setIsProcessingAction(false);
+      setTimeout(() => setStatusMessage(''), 3500);
+    }
+  };
+
+  // Picking a preset while custom colours are saved: ask whether to use the preset's colours. Custom colours
+  // layered on a different preset can clash (dark text on navy cards); everything else the couple chose is kept.
+  const handleChoosePreset = (thm: TemplateDesignRecord) => {
+    if (isStudioDesign(customTheme)) return handleApplyTheme(thm.id, {});
+    const config = event.theme_config && typeof event.theme_config === 'object' ? (event.theme_config as Record<string, any>) : {};
+    const colourKeys = ['bg_color', 'text_color', 'accent_color', 'muted_color', 'surface_color', 'border_color', 'shadow_color'];
+    const customColours = colourKeys.filter((k) => k in config);
+    if (
+      customColours.length > 0 &&
+      window.confirm(`Use ${thm.name}'s colours?\n\nYour own colour changes will be replaced by the preset's. Your layout, names, opening and chapters stay as they are.`)
+    ) {
+      const kept = Object.fromEntries(Object.entries(config).filter(([k]) => !colourKeys.includes(k)));
+      return handleApplyTheme(thm.id, kept);
+    }
+    return handleUpdateDesignSlot('theme_id', thm.id);
+  };
+
+  const handleApplyStudioDesign = (design: TemplateDesignRecord) => {
+    const { created_at, updated_at, status, ...snapshot } = design;
+    handleApplyTheme(design.slug || design.id, snapshot);
   };
 
   // Update Design Slot (Theme Preset or Image Slot) and persist immediately to Supabase
@@ -1075,7 +1401,7 @@ export default function AdminDashboardView({
       const result = await broadcastSmsAction({
         eventId: event.id,
         adminToken: event.admin_token,
-        message: `Friendly reminder from ${event.couple_names}: Please let us know if you can celebrate with us by ${new Date(event.rsvp_deadline).toLocaleDateString()} at {{portal_link}}`,
+        message: `Friendly reminder from ${event.couple_names}: Please let us know if you can celebrate with us by ${new Date(event.rsvp_deadline).toLocaleDateString('en-US', { timeZone: 'UTC' })} at {{portal_link}}`,
       });
 
       if (result.success) {
@@ -1243,11 +1569,7 @@ export default function AdminDashboardView({
             setSchedule((prev) => [...prev, result.item]);
           }
         } else {
-          const { data: updatedSchedule } = await supabase
-            .from('schedule_items')
-            .select('*')
-            .eq('event_id', event.id)
-            .order('start_time', { ascending: true });
+          const updatedSchedule = await refreshRows('schedule_items');
           if (updatedSchedule) setSchedule(updatedSchedule as ScheduleItemRecord[]);
         }
         setScheduleModalOpen(false);
@@ -1327,11 +1649,7 @@ export default function AdminDashboardView({
       });
 
       if (result.success) {
-        const { data: updatedQuestions } = await supabase
-          .from('custom_rsvp_questions')
-          .select('*')
-          .eq('event_id', event.id)
-          .order('display_order', { ascending: true });
+        const updatedQuestions = await refreshRows('custom_rsvp_questions');
         if (updatedQuestions) setQuestions(updatedQuestions as CustomRsvpQuestionRecord[]);
         setQuestionModalOpen(false);
         setStatusMessage(editingQuestion ? '✅ Question updated!' : '🎉 Question added!');
@@ -1425,11 +1743,7 @@ export default function AdminDashboardView({
             setTasks((prev) => [...prev, result.task]);
           }
         } else {
-          const { data: updatedTasks } = await supabase
-            .from('planning_tasks')
-            .select('*')
-            .eq('event_id', event.id)
-            .order('created_at', { ascending: true });
+          const updatedTasks = await refreshRows('planning_tasks');
           if (updatedTasks) setTasks(updatedTasks as PlanningTaskRecord[]);
         }
         setTaskModalOpen(false);
@@ -1505,12 +1819,48 @@ export default function AdminDashboardView({
       'Portal Link': `${window.location.origin}/g/${g.access_token}`,
     }));
 
-    const csv = Papa.unparse(exportData);
+    const csv = Papa.unparse(exportData, { escapeFormulae: true });
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `AisleFlow_GuestList_${event.slug}.csv`;
+    a.click();
+  };
+
+  // Caterer list: one row per attending person, plus-ones included
+  const handleExportCatererCsv = () => {
+    const rows = guests
+      .filter((g) => g.rsvp_status === 'attending')
+      .flatMap((g) => {
+        const guestRow = {
+          Name: `${g.first_name} ${g.last_name || ''}`.trim(),
+          Party: g.party_name || '',
+          Meal: g.meal_choice || '',
+          'Dietary Tags': (g.dietary_tags || []).join(', '),
+          'Dietary Notes': g.dietary_notes || '',
+          'Guest Of': '',
+        };
+        if (!g.plus_one_name) return [guestRow];
+        return [
+          guestRow,
+          {
+            Name: g.plus_one_name,
+            Party: g.party_name || '',
+            Meal: g.plus_one_meal || '',
+            'Dietary Tags': '',
+            'Dietary Notes': '',
+            'Guest Of': guestRow.Name,
+          },
+        ];
+      });
+
+    const csv = Papa.unparse(rows, { escapeFormulae: true });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `AisleFlow_Caterer_${event.slug}.csv`;
     a.click();
   };
 
@@ -1536,7 +1886,7 @@ export default function AdminDashboardView({
     }
 
     if (matchedGuest) {
-      await supabase.from('guests').update({ rsvp_status: newStatus }).eq('id', matchedGuest.id);
+      await setGuestRsvpStatusAction(event.id, event.admin_token, matchedGuest.id, newStatus);
       setGuests((prev) =>
         prev.map((g) => (g.id === matchedGuest.id ? { ...g, rsvp_status: newStatus } : g))
       );
@@ -1559,7 +1909,7 @@ export default function AdminDashboardView({
             <Link href="/" className="font-editorial text-2xl font-semibold text-aisle-charcoal">
               Aisle<span className="italic text-aisle-terracotta">Flow</span>
             </Link>
-            <span className="rounded-full bg-aisle-sand px-2.5 py-0.5 text-[10px] font-semibold text-aisle-charcoal">
+            <span className="rounded-full bg-aisle-sand px-2.5 py-0.5 text-xs font-semibold text-aisle-charcoal">
               Admin Suite
             </span>
             <span className="text-xs text-aisle-muted hidden sm:inline-block">
@@ -1576,7 +1926,7 @@ export default function AdminDashboardView({
               <span>Print Table QR Cards</span>
             </button>
             <Link
-              href={`/g/${guests[0]?.access_token || event.admin_token}`}
+              href={`/g/${guests[0]?.access_token || event.admin_token}?preview=1`}
               target="_blank"
               className="inline-flex items-center gap-1.5 rounded-full bg-aisle-charcoal px-4 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-aisle-terracotta transition-colors"
             >
@@ -1588,53 +1938,57 @@ export default function AdminDashboardView({
       </header>
 
       {/* Main Workspace Layout */}
-      <div className="mx-auto max-w-7xl w-full px-4 sm:px-6 lg:px-8 py-6 flex-1 flex flex-col md:flex-row gap-6">
-        {/* Navigation Sidebar */}
-        <aside className="w-full md:w-60 shrink-0">
-          <nav className="rounded-2xl border border-aisle-border bg-white p-3 space-y-1 shadow-sm sticky top-24">
-            {[
-              { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
-              { id: 'setup', label: 'Setup Wizard', icon: Settings },
-              { id: 'guests', label: 'Guest Registry', icon: Users, badge: totalGuests },
-              { id: 'communications', label: 'Communications', icon: Send },
-              { id: 'builder', label: 'Portal Builder', icon: Palette },
-              { id: 'copy', label: 'Guest Copy', icon: Edit3 },
-              { id: 'schedule', label: 'Schedule / VIP', icon: Calendar },
-              { id: 'questions', label: 'RSVP Questions', icon: HelpCircle },
-              { id: 'registry', label: 'Gift Registry', icon: Gift },
-              { id: 'photos', label: 'Photo Stream', icon: Camera, badge: photos.length },
-              { id: 'planning', label: 'Task Workspace', icon: CheckSquare },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={`w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-xs font-medium transition-all ${
-                    isActive
-                      ? 'bg-aisle-charcoal text-white font-semibold shadow-sm'
-                      : 'text-aisle-warm hover:bg-aisle-sand/50'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Icon className={`h-4 w-4 ${isActive ? 'text-aisle-gold-light' : 'text-aisle-muted'}`} />
-                    <span>{tab.label}</span>
-                  </div>
-                  {tab.badge !== undefined && (
-                    <span
-                      className={`rounded-full px-1.5 py-0.2 text-[10px] font-semibold ${
-                        isActive ? 'bg-white/20 text-white' : 'bg-aisle-sand text-aisle-charcoal'
-                      }`}
-                    >
-                      {tab.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-        </aside>
+      <div className="mx-auto max-w-7xl w-full px-4 sm:px-6 lg:px-8 py-6 flex-1 flex flex-col gap-6">
+        {/* Top Tab Bar */}
+        <nav
+          role="tablist"
+          aria-label="Admin sections"
+          className="sticky top-[69px] z-20 flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-2xl border border-aisle-border bg-white/95 p-1 shadow-sm backdrop-blur-md select-none"
+        >
+          {[
+            { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+            { id: 'setup', label: 'Setup', icon: Settings },
+            { id: 'guests', label: 'Guests', icon: Users, badge: totalGuests },
+            { id: 'communications', label: 'Comms', icon: Send },
+            { id: 'builder', label: 'Builder', icon: Palette },
+            { id: 'copy', label: 'Editor', icon: Edit3 },
+            { id: 'schedule', label: 'Schedule', icon: Calendar },
+            { id: 'questions', label: 'RSVP Qs', icon: HelpCircle },
+            { id: 'registry', label: 'Registry', icon: Gift },
+            { id: 'photos', label: 'Photos', icon: Camera, badge: photos.length },
+            { id: 'seating', label: 'Seating', icon: LayoutGrid },
+            { id: 'planning', label: 'Plan', icon: CheckSquare },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aisle-terracotta ${
+                  isActive
+                    ? 'bg-aisle-charcoal text-white font-semibold shadow-sm'
+                    : 'text-aisle-warm hover:bg-aisle-sand/60'
+                }`}
+              >
+                <Icon className={`h-4 w-4 ${isActive ? 'text-aisle-gold-light' : 'text-aisle-muted'}`} />
+                <span>{tab.label}</span>
+                {tab.badge !== undefined && (
+                  <span
+                    className={`rounded-full px-1.5 text-xs font-semibold ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-aisle-sand text-aisle-charcoal'
+                    }`}
+                  >
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
 
         {/* Content Area */}
         <div className="flex-1 min-w-0 space-y-6">
@@ -1662,104 +2016,57 @@ export default function AdminDashboardView({
               {/* Top Metrics Cards */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div className="rounded-2xl border border-aisle-border bg-white p-5 shadow-sm">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-aisle-muted">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-aisle-muted">
                     Total Invited
                   </span>
                   <p className="font-editorial text-3xl font-semibold text-aisle-charcoal mt-1">
                     {totalGuests}
                   </p>
-                  <span className="text-[10px] text-aisle-muted">across all parties</span>
+                  <span className="text-xs text-aisle-muted">across all parties</span>
                 </div>
 
                 <div className="rounded-2xl border border-aisle-border bg-white p-5 shadow-sm">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
                     Attending
                   </span>
                   <p className="font-editorial text-3xl font-semibold text-emerald-700 mt-1">
                     {attendingGuests}
                   </p>
-                  <span className="text-[10px] text-emerald-600">
+                  <span className="text-xs text-emerald-600">
                     {totalGuests ? Math.round((attendingGuests / totalGuests) * 100) : 0}% confirmed
                   </span>
                 </div>
 
                 <div className="rounded-2xl border border-aisle-border bg-white p-5 shadow-sm">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-rose-700">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-rose-700">
                     Declined
                   </span>
                   <p className="font-editorial text-3xl font-semibold text-rose-700 mt-1">
                     {declinedGuests}
                   </p>
-                  <span className="text-[10px] text-rose-600">regretfully declined</span>
+                  <span className="text-xs text-rose-600">regretfully declined</span>
                 </div>
 
                 <div className="rounded-2xl border border-aisle-border bg-white p-5 shadow-sm">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-aisle-gold-deep">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-aisle-gold-deep">
                     Gifts & Cash Raised
                   </span>
                   <p className="font-editorial text-3xl font-semibold text-aisle-gold-deep mt-1">
                     ${totalRaised}
                   </p>
-                  <span className="text-[10px] text-aisle-muted">honeymoon contributions</span>
+                  <span className="text-xs text-aisle-muted">honeymoon contributions</span>
                 </div>
               </div>
 
-              {/* Readiness Checklist */}
-              <div className="rounded-3xl border border-aisle-border bg-white p-6 sm:p-8 shadow-sm space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">
-                      Event Launch Readiness
-                    </h3>
-                    <p className="text-xs text-aisle-muted mt-0.5">
-                      Verify key wedding details before sharing tokenized links with guests
-                    </p>
-                  </div>
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                      event.is_ready_for_testing
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-amber-100 text-amber-800'
-                    }`}
-                  >
-                    {event.is_ready_for_testing ? 'Ready for Guest Testing' : 'Setup In Progress'}
-                  </span>
-                </div>
+              {/* Publish readiness */}
+              <PublishReadinessPanel
+                event={event}
+                counts={readinessCounts}
+                onNavigate={setActiveTab}
+                onEventChange={setEvent}
+              />
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div className="flex items-center gap-3 rounded-2xl border border-aisle-border bg-aisle-sand/30 p-3.5">
-                    <Check className="h-4 w-4 text-emerald-600 shrink-0" />
-                    <div>
-                      <strong className="text-aisle-charcoal">Wedding Basics Complete</strong>
-                      <p className="text-aisle-muted text-[11px]">Date, couple names & venue confirmed</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 rounded-2xl border border-aisle-border bg-aisle-sand/30 p-3.5">
-                    <Check className="h-4 w-4 text-emerald-600 shrink-0" />
-                    <div>
-                      <strong className="text-aisle-charcoal">Guest List Seeded</strong>
-                      <p className="text-aisle-muted text-[11px]">{totalGuests} tokenized invitations generated</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 rounded-2xl border border-aisle-border bg-aisle-sand/30 p-3.5">
-                    <Check className="h-4 w-4 text-emerald-600 shrink-0" />
-                    <div>
-                      <strong className="text-aisle-charcoal">VIP & Schedule Configured</strong>
-                      <p className="text-aisle-muted text-[11px]">{schedule.length} timeline events published</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 rounded-2xl border border-aisle-border bg-aisle-sand/30 p-3.5">
-                    <Check className="h-4 w-4 text-emerald-600 shrink-0" />
-                    <div>
-                      <strong className="text-aisle-charcoal">Custom Questions Active</strong>
-                      <p className="text-aisle-muted text-[11px]">{questions.length} RSVP prompts configured</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <PlanCard event={event} onPlanChange={(plan) => setEvent((prev) => ({ ...prev, plan }))} />
 
               {/* Sample Guest Links for Instant Testing */}
               <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-4">
@@ -1778,9 +2085,9 @@ export default function AdminDashboardView({
                     >
                       <div>
                         <strong className="text-aisle-charcoal">{g.first_name} {g.last_name || ''}</strong>
-                        {g.is_vip && <span className="ml-2 text-[10px] text-aisle-gold-deep font-semibold">VIP</span>}
-                        {g.party_name && <span className="ml-2 text-[10px] text-aisle-muted">({g.party_name})</span>}
-                        <p className="text-[10px] text-aisle-muted font-mono">/g/{g.access_token}</p>
+                        {g.is_vip && <span className="ml-2 text-xs text-aisle-gold-deep font-semibold">VIP</span>}
+                        {g.party_name && <span className="ml-2 text-xs text-aisle-muted">({g.party_name})</span>}
+                        <p className="text-xs text-aisle-muted font-mono">/g/{g.access_token}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <button
@@ -1790,9 +2097,9 @@ export default function AdminDashboardView({
                           {copiedLink === g.id ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
                         </button>
                         <Link
-                          href={`/g/${g.access_token}`}
+                          href={`/g/${g.access_token}?preview=1`}
                           target="_blank"
-                          className="rounded-lg bg-aisle-charcoal px-3 py-1.5 text-white font-medium hover:bg-aisle-terracotta text-[11px]"
+                          className="rounded-lg bg-aisle-charcoal px-3 py-1.5 text-white font-medium hover:bg-aisle-terracotta text-xs"
                         >
                           Open Portal
                         </Link>
@@ -1806,6 +2113,96 @@ export default function AdminDashboardView({
 
           {/* TAB 2: SETUP WIZARD */}
           {activeTab === 'setup' && (
+            <div className="space-y-6">
+            <PublishReadinessPanel
+              event={event}
+              counts={readinessCounts}
+              onNavigate={setActiveTab}
+              onEventChange={setEvent}
+            />
+
+            <DesignServiceCard event={event} />
+
+            {/* Custom short link (Premium) */}
+            <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-3 text-xs">
+              <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">
+                Short link
+                <span className="ml-2 rounded-full bg-aisle-gold/20 px-2 py-0.5 text-xs font-bold text-aisle-gold-deep align-middle">Premium</span>
+              </h3>
+              <p className="text-aisle-muted">
+                A readable public link to your published invitation, for social media or printed cards. It has no RSVP; guests reply with their personal link.
+              </p>
+              {hasFeature(event, 'custom_url') ? (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSaveCustomSlug();
+                  }}
+                  className="flex flex-wrap items-center gap-2"
+                >
+                  <span className="text-aisle-muted">Your link: /i/</span>
+                  <input
+                    value={customSlugDraft}
+                    onChange={(e) => setCustomSlugDraft(e.target.value)}
+                    placeholder="sarah-and-james"
+                    aria-label="Short link"
+                    maxLength={60}
+                    className="flex-1 min-w-[160px] rounded-xl border border-aisle-border px-3 py-2.5 focus:outline-none focus:border-aisle-terracotta"
+                  />
+                  <button type="submit" disabled={isProcessingAction} className="min-h-[44px] rounded-full bg-aisle-charcoal px-4 font-semibold text-white hover:bg-aisle-terracotta disabled:opacity-50 cursor-pointer">
+                    Save link
+                  </button>
+                  {event.custom_slug && (
+                    <a href={`/i/${event.custom_slug}`} target="_blank" rel="noopener noreferrer" className="font-semibold text-aisle-terracotta underline">
+                      Open
+                    </a>
+                  )}
+                </form>
+              ) : (
+                <p className="text-aisle-muted">{featureError('custom_url')}</p>
+              )}
+              {event.custom_slug && !event.is_live && (
+                <p className="text-amber-700">The link works once your invitation is published.</p>
+              )}
+            </div>
+
+            {/* Save-the-date mode (Premium) */}
+            <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-4 text-xs">
+              <div>
+                <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">
+                  What guests see
+                  <span className="ml-2 rounded-full bg-aisle-gold/20 px-2 py-0.5 text-xs font-bold text-aisle-gold-deep align-middle">Premium</span>
+                </h3>
+                <p className="text-aisle-muted mt-1">
+                  Send a save-the-date first, then switch the same links to the full invitation when you are ready.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label="What guests see">
+                {([
+                  { mode: 'save_the_date', label: 'Save the date', desc: 'Names, date, place and a countdown' },
+                  { mode: 'invitation', label: 'Full invitation', desc: 'Everything, including RSVP' },
+                ] as const).map((option) => {
+                  const selected = (event.invitation_mode || 'invitation') === option.mode;
+                  const locked = option.mode === 'save_the_date' && !hasFeature(event, 'save_the_date');
+                  return (
+                    <button
+                      key={option.mode}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      disabled={locked || isProcessingAction}
+                      onClick={() => handleSetInvitationMode(option.mode)}
+                      className={`min-h-[44px] rounded-2xl border p-3 text-left cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 ${
+                        selected ? 'border-aisle-terracotta bg-aisle-sand/50' : 'border-aisle-border hover:bg-aisle-sand/20'
+                      }`}
+                    >
+                      <strong className="block text-aisle-charcoal">{option.label}</strong>
+                      <span className="text-aisle-muted">{locked ? featureError('save_the_date') : option.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <div className="rounded-3xl border border-aisle-border bg-white p-6 sm:p-8 shadow-sm space-y-6">
               <div>
                 <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">Wedding Setup Wizard</h3>
@@ -1896,16 +2293,31 @@ export default function AdminDashboardView({
                   </label>
                 </div>
 
+                <div>
+                  <label htmlFor="language" className="block font-medium text-aisle-warm mb-1">Invitation language</label>
+                  <select
+                    id="language"
+                    value={setupForm.language || 'en'}
+                    onChange={(e) => setSetupForm({ ...setupForm, language: e.target.value })}
+                    className="w-full sm:w-64 rounded-xl border border-aisle-border px-3 py-2.5 text-xs focus:outline-none focus:border-aisle-terracotta"
+                  >
+                    {Object.entries(PORTAL_LANGUAGES).map(([code, lang]) => (
+                      <option key={code} value={code}>{lang.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-aisle-muted mt-1">Buttons, headings and the RSVP steps guests see. Text you write yourself is shown as you wrote it.</p>
+                </div>
+
                 <div className="flex items-center gap-3">
                   <input
                     type="checkbox"
-                    id="ready_test"
-                    checked={setupForm.is_ready_for_testing}
-                    onChange={(e) => setSetupForm({ ...setupForm, is_ready_for_testing: e.target.checked })}
+                    id="rsvp_locked"
+                    checked={!!setupForm.rsvp_locked}
+                    onChange={(e) => setSetupForm({ ...setupForm, rsvp_locked: e.target.checked })}
                     className="h-4 w-4 rounded border-aisle-border text-aisle-terracotta focus:ring-0"
                   />
-                  <label htmlFor="ready_test" className="font-medium text-aisle-warm">
-                    Mark event as "Ready for Guest Testing & Communications"
+                  <label htmlFor="rsvp_locked" className="font-medium text-aisle-warm">
+                    Close RSVPs now (guests can still view the invitation but can't reply or change their answer)
                   </label>
                 </div>
 
@@ -1926,6 +2338,7 @@ export default function AdminDashboardView({
                   Save Setup
                 </button>
               </form>
+            </div>
             </div>
           )}
 
@@ -2068,10 +2481,23 @@ export default function AdminDashboardView({
                               <div className="font-medium text-aisle-charcoal">
                                 {guest.first_name} {guest.last_name || ''}
                                 {guest.is_vip && (
-                                  <span className="ml-2 rounded-full bg-aisle-gold/20 px-2 py-0.5 text-[9px] font-bold text-aisle-gold-deep">
+                                  <span className="ml-2 rounded-full bg-aisle-gold/20 px-2 py-0.5 text-xs font-bold text-aisle-gold-deep">
                                     VIP
                                   </span>
                                 )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleTogglePlusOne(guest)}
+                                  title={guest.plus_one_allowed ? 'Remove plus-one' : 'Allow a plus-one'}
+                                  aria-pressed={!!guest.plus_one_allowed}
+                                  className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold border cursor-pointer ${
+                                    guest.plus_one_allowed
+                                      ? 'border-aisle-terracotta bg-aisle-terracotta/10 text-aisle-terracotta'
+                                      : 'border-dashed border-aisle-border text-aisle-muted hover:text-aisle-charcoal'
+                                  }`}
+                                >
+                                  +1
+                                </button>
                               </div>
                               {partyId && (
                                 <div className="flex items-center gap-1.5 mt-1">
@@ -2079,11 +2505,11 @@ export default function AdminDashboardView({
                                     type="button"
                                     onClick={() => handleOpenManageParty(partyId)}
                                     title="Click to manage this household party"
-                                    className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-900 border border-amber-200/80 hover:bg-amber-100/80 transition-colors cursor-pointer group shadow-xs"
+                                    className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900 border border-amber-200/80 hover:bg-amber-100/80 transition-colors cursor-pointer group shadow-xs"
                                   >
                                     <Users className="h-2.5 w-2.5 text-amber-700" />
                                     <span>{guest.party_name || matchingParty?.name || 'Household Party'}</span>
-                                    <span className="text-[9px] text-amber-700 font-bold ml-0.5">
+                                    <span className="text-xs text-amber-700 font-bold ml-0.5">
                                       ({matchingParty?.members.length || 2})
                                     </span>
                                     <Edit2 className="h-2 w-2 opacity-50 group-hover:opacity-100 ml-0.5" />
@@ -2092,7 +2518,7 @@ export default function AdminDashboardView({
                                     type="button"
                                     onClick={() => handleRemoveGuestFromParty(guest.id)}
                                     title="Unlink from household party"
-                                    className="text-[9px] text-rose-600 hover:underline cursor-pointer"
+                                    className="text-xs text-rose-600 hover:underline cursor-pointer"
                                   >
                                     (unlink)
                                   </button>
@@ -2101,11 +2527,11 @@ export default function AdminDashboardView({
                             </td>
                             <td className="p-3 text-aisle-muted">
                               <div>{guest.phone || '—'}</div>
-                              <div className="text-[10px]">{guest.email || ''}</div>
+                              <div className="text-xs">{guest.email || ''}</div>
                             </td>
                             <td className="p-3">
                               <span
-                                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
                                   guest.rsvp_status === 'attending'
                                     ? 'bg-emerald-100 text-emerald-800'
                                     : guest.rsvp_status === 'declined'
@@ -2115,11 +2541,17 @@ export default function AdminDashboardView({
                               >
                                 {guest.rsvp_status}
                               </span>
+                              <span
+                                className="block mt-1 text-xs text-aisle-muted"
+                                title={guest.last_viewed_at ? `Last opened ${new Date(guest.last_viewed_at).toLocaleString()}` : undefined}
+                              >
+                                {guest.view_count ? `Opened ${guest.view_count}×` : 'Not opened'}
+                              </span>
                             </td>
                             <td className="p-3 text-aisle-warm">
                               <div>{guest.meal_choice || '—'}</div>
                               {guest.dietary_notes && (
-                                <span className="text-[10px] text-rose-700 block">{guest.dietary_notes}</span>
+                                <span className="text-xs text-rose-700 block">{guest.dietary_notes}</span>
                               )}
                             </td>
                             <td className="p-3 text-right">
@@ -2131,6 +2563,16 @@ export default function AdminDashboardView({
                                 >
                                   <QrCode className="h-3.5 w-3.5 text-aisle-charcoal" />
                                 </button>
+                                <a
+                                  href={whatsappShareUrl(guest, event, `${window.location.origin}/g/${guest.access_token}`)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title="Send link on WhatsApp"
+                                  aria-label={`Send ${guest.first_name}'s link on WhatsApp`}
+                                  className="rounded-lg border border-aisle-border p-1.5 hover:bg-emerald-50 text-aisle-charcoal hover:text-emerald-700"
+                                >
+                                  <MessageCircle className="h-3.5 w-3.5" />
+                                </a>
                                 <button
                                   onClick={() => copyToClipboard(`${window.location.origin}/g/${guest.access_token}`, guest.id)}
                                   title="Copy Guest Link"
@@ -2166,6 +2608,18 @@ export default function AdminDashboardView({
           {/* TAB 4: COMMUNICATIONS */}
           {activeTab === 'communications' && (
             <div className="space-y-6">
+              {!event.is_live && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-xs text-amber-900">
+                  <span>Your event is a draft. Publish it before sending messages to guests. You can still save drafts and schedule campaigns.</span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('dashboard')}
+                    className="min-h-[44px] rounded-full bg-amber-900 px-4 font-semibold text-white hover:bg-amber-800"
+                  >
+                    Go to Publish
+                  </button>
+                </div>
+              )}
               <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-5">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div>
@@ -2179,7 +2633,8 @@ export default function AdminDashboardView({
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handleBroadcastReminder}
-                      disabled={isProcessingAction}
+                      disabled={isProcessingAction || !smsAllowed}
+                      title={smsAllowed ? undefined : featureError('sms')}
                       className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100 cursor-pointer transition-colors"
                     >
                       <Clock className="h-3.5 w-3.5 text-amber-700" />
@@ -2198,13 +2653,13 @@ export default function AdminDashboardView({
                 {/* Templates Selector */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted">
+                    <span className="text-xs uppercase font-bold tracking-wider text-aisle-muted">
                       Standard Communication Templates ({templates.length})
                     </span>
                     <button
                       type="button"
                       onClick={handleOpenNewTemplate}
-                      className="text-[11px] font-semibold text-aisle-terracotta hover:underline cursor-pointer inline-flex items-center gap-1"
+                      className="text-xs font-semibold text-aisle-terracotta hover:underline cursor-pointer inline-flex items-center gap-1"
                     >
                       <Plus className="h-3 w-3" />
                       <span>Add Custom Template</span>
@@ -2223,14 +2678,14 @@ export default function AdminDashboardView({
                               <span>{tpl.name}</span>
                             </span>
                             <div className="flex items-center gap-1.5">
-                              <span className="rounded-full bg-aisle-sand px-2 py-0.5 text-[9px] uppercase font-bold text-aisle-muted">
+                              <span className="rounded-full bg-aisle-sand px-2 py-0.5 text-xs uppercase font-bold text-aisle-muted">
                                 {tpl.lifecycle_type}
                               </span>
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditTemplate(tpl)}
                                 title="Edit this communication template"
-                                className="inline-flex items-center gap-1 rounded-lg border border-aisle-border bg-white px-2 py-1 text-[10px] font-semibold text-aisle-charcoal hover:bg-aisle-sand hover:text-aisle-terracotta cursor-pointer transition-colors shadow-2xs"
+                                className="inline-flex items-center gap-1 rounded-lg border border-aisle-border bg-white px-2 py-1 text-xs font-semibold text-aisle-charcoal hover:bg-aisle-sand hover:text-aisle-terracotta cursor-pointer transition-colors shadow-2xs"
                               >
                                 <Edit2 className="h-2.5 w-2.5 text-aisle-terracotta" />
                                 <span>Edit</span>
@@ -2238,12 +2693,12 @@ export default function AdminDashboardView({
                             </div>
                           </div>
 
-                          <p className="text-xs text-aisle-muted line-clamp-3 leading-relaxed bg-white/80 p-2.5 rounded-xl border border-aisle-border/60 font-mono text-[11px]">
+                          <p className="text-xs text-aisle-muted line-clamp-3 leading-relaxed bg-white/80 p-2.5 rounded-xl border border-aisle-border/60 font-mono text-xs">
                             {tpl.sms_body || tpl.email_body}
                           </p>
                         </div>
 
-                        <div className="flex items-center justify-between pt-1 border-t border-aisle-border/40 text-[10px] text-aisle-muted">
+                        <div className="flex items-center justify-between pt-1 border-t border-aisle-border/40 text-xs text-aisle-muted">
                           <span className="capitalize">{tpl.channel} channel</span>
                           <button
                             type="button"
@@ -2265,7 +2720,7 @@ export default function AdminDashboardView({
                     <h4 className="font-serif text-sm font-semibold text-aisle-charcoal">
                       Broadcast Campaigns & Delivery Ledger
                     </h4>
-                    <span className="text-[11px] text-aisle-muted">
+                    <span className="text-xs text-aisle-muted">
                       {campaigns.length} total campaigns
                     </span>
                   </div>
@@ -2285,7 +2740,7 @@ export default function AdminDashboardView({
                             <div className="flex items-center gap-2">
                               <strong className="text-aisle-charcoal text-sm font-semibold">{camp.name}</strong>
                               <span
-                                className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                                className={`text-xs font-bold uppercase px-2 py-0.5 rounded-full ${
                                   camp.status === 'completed' || camp.status === 'sent'
                                     ? 'bg-emerald-100 text-emerald-800'
                                     : camp.status === 'scheduled'
@@ -2304,7 +2759,7 @@ export default function AdminDashboardView({
                                   : '⏳ Sending'}
                               </span>
                             </div>
-                            <div className="flex flex-wrap items-center gap-2 text-[10px] text-aisle-muted">
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-aisle-muted">
                               <span>Target: <strong className="text-aisle-charcoal">{camp.target_audience}</strong></span>
                               <span>·</span>
                               <span>Channel: <strong className="text-aisle-charcoal">{camp.channel.toUpperCase()}</strong></span>
@@ -2339,7 +2794,7 @@ export default function AdminDashboardView({
                                 type="button"
                                 disabled={isProcessingAction}
                                 onClick={() => handleDispatchExistingCampaign(camp.id)}
-                                className="inline-flex items-center gap-1 rounded-xl border border-aisle-border bg-white px-2.5 py-1.5 text-[11px] font-semibold text-aisle-charcoal hover:bg-aisle-sand cursor-pointer transition-all"
+                                className="inline-flex items-center gap-1 rounded-xl border border-aisle-border bg-white px-2.5 py-1.5 text-xs font-semibold text-aisle-charcoal hover:bg-aisle-sand cursor-pointer transition-all"
                               >
                                 <span>Send Again</span>
                               </button>
@@ -2411,11 +2866,11 @@ export default function AdminDashboardView({
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">Design & Content Slots</h3>
-                      <p className="text-[11px] text-aisle-muted mt-0.5">
+                      <p className="text-xs text-aisle-muted mt-0.5">
                         Customize visual styling, palettes, fonts, opening reveal, and section layout in real-time.
                       </p>
                     </div>
-                    <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/60 rounded-full px-2.5 py-0.5 shrink-0">
+                    <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/60 rounded-full px-2.5 py-0.5 shrink-0">
                       Auto-syncs live
                     </span>
                   </div>
@@ -2428,7 +2883,6 @@ export default function AdminDashboardView({
                       { id: 'typography', label: 'Typography', icon: Type },
                       { id: 'reveal', label: 'Opening', icon: Layers },
                       { id: 'imagery', label: 'Imagery', icon: Camera },
-                      { id: 'sections', label: 'Chapters', icon: Sliders },
                     ].map((tab) => {
                       const Icon = tab.icon;
                       const isActive = builderSubTab === tab.id;
@@ -2462,7 +2916,7 @@ export default function AdminDashboardView({
                             <button
                               key={thm.id}
                               type="button"
-                              onClick={() => handleUpdateDesignSlot('theme_id', thm.id)}
+                              onClick={() => handleChoosePreset(thm)}
                               className={`rounded-xl border p-3 text-left transition-all cursor-pointer ${
                                 customTheme.id === thm.id
                                   ? 'border-aisle-terracotta bg-aisle-sand/50 shadow-sm'
@@ -2475,15 +2929,303 @@ export default function AdminDashboardView({
                                   <span className="h-2 w-2 rounded-full bg-aisle-terracotta" />
                                 )}
                               </div>
-                              <span className="text-[10px] text-aisle-muted block mt-0.5">{thm.taxonomy}</span>
+                              <span className="text-xs text-aisle-muted block mt-0.5">{thm.taxonomy}</span>
+                              {/* The preset at a glance: its colours, and a tiny opening (envelope or sheet) on its page colour.
+                                  Sizes and positions are inline so the preview never depends on generated utility classes. */}
+                              <span className="mt-1.5 flex items-center gap-1" aria-hidden="true">
+                                {[thm.bg_color, thm.accent_color, thm.text_color].map((c) => (
+                                  <span key={c} className="rounded-full border border-black/10" style={{ width: 12, height: 12, backgroundColor: c }} />
+                                ))}
+                              </span>
+                              <span className="mt-2 flex items-center gap-1.5" aria-hidden="true">
+                                <span
+                                  className="flex flex-1 items-center justify-center rounded-lg"
+                                  style={{ height: 52, backgroundColor: thm.bg_color, border: '1px solid rgba(0,0,0,0.06)' }}
+                                >
+                                  {thm.opening_style === 'minimal-fade' || thm.opening_style === 'curtain' ? (
+                                    <span style={{ width: 22, height: 28, padding: 2, backgroundColor: thm.surface_color, boxShadow: '0 1px 3px rgba(0,0,0,0.15)' }}>
+                                      <span
+                                        style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', border: `1px solid ${thm.accent_color}` }}
+                                      >
+                                        <span style={{ width: 10, height: 1, backgroundColor: thm.accent_color }} />
+                                      </span>
+                                    </span>
+                                  ) : (
+                                    <span
+                                      style={
+                                        {
+                                          position: 'relative',
+                                          width: 40,
+                                          height: 28,
+                                          borderRadius: 2,
+                                          boxShadow: '0 1px 3px rgba(0,0,0,0.18)',
+                                          backgroundColor: thm.envelope_paper || thm.surface_color,
+                                          '--env-paper': thm.envelope_paper || thm.surface_color,
+                                          '--env-accent': thm.accent_color,
+                                        } as React.CSSProperties
+                                      }
+                                    >
+                                      {/* Open flap showing the lining: a tint always, the pattern when its styles are loaded */}
+                                      <span
+                                        style={{
+                                          position: 'absolute',
+                                          left: 0,
+                                          right: 0,
+                                          top: 0,
+                                          height: 19,
+                                          clipPath: 'polygon(0 0, 100% 0, 50% 100%)',
+                                          backgroundColor: `color-mix(in srgb, ${thm.accent_color} 30%, ${thm.envelope_paper || thm.surface_color})`,
+                                        }}
+                                      >
+                                        <span className={`env-liner-${thm.envelope_liner || 'stripes'}`} style={{ position: 'absolute', inset: 0 }} />
+                                      </span>
+                                      {thm.opening_style === 'envelope' ? (
+                                        // Ribbon-tied presets: a band across the envelope
+                                        <span style={{ position: 'absolute', left: 0, right: 0, top: 17, height: 3, backgroundColor: thm.accent_color }} />
+                                      ) : (
+                                        <span
+                                          style={{
+                                            position: 'absolute',
+                                            left: 15,
+                                            top: 12,
+                                            width: 10,
+                                            height: 10,
+                                            borderRadius: 9999,
+                                            backgroundColor: thm.accent_color,
+                                            boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
+                                          }}
+                                        />
+                                      )}
+                                    </span>
+                                  )}
+                                </span>
+                                {/* The invitation itself in miniature: the preset's paper, its cover frame, name typeface and
+                                    ornament, with the RSVP band's colour along the foot */}
+                                <span
+                                  className="relative flex flex-1 flex-col items-center justify-center overflow-hidden rounded-lg"
+                                  style={{ height: 52, backgroundColor: thm.bg_color, color: thm.text_color, border: '1px solid rgba(0,0,0,0.06)' }}
+                                >
+                                  {thm.border_flair && thm.border_flair !== 'clean' && (
+                                    <span
+                                      style={{
+                                        position: 'absolute',
+                                        inset: thm.border_flair === 'deboss' ? '5px 8px 11px' : '4px 6px 10px',
+                                        border: thm.border_flair === 'deboss' ? 'none' : `${['double-line', 'arabesque'].includes(thm.border_flair) ? '3px double' : thm.border_flair === 'airmail' ? '2px dashed' : '1px solid'} ${thm.accent_color}`,
+                                        borderTop: thm.border_flair === 'deboss' ? `1px solid ${thm.border_color}` : undefined,
+                                        borderBottom: thm.border_flair === 'deboss' ? `1px solid ${thm.border_color}` : undefined,
+                                        borderRadius: thm.border_flair === 'arch' ? '999px 999px 0 0' : 0,
+                                        opacity: 0.55,
+                                      }}
+                                    />
+                                  )}
+                                  <span
+                                    style={{
+                                      position: 'absolute',
+                                      left: 0,
+                                      right: 0,
+                                      bottom: 0,
+                                      height: 6,
+                                      backgroundColor:
+                                        (thm.rsvp_band ?? (thm.is_dark ? 'deep' : 'accent')) === 'deep'
+                                          ? `color-mix(in srgb, ${thm.bg_color} 72%, #000)`
+                                          : thm.accent_color,
+                                    }}
+                                  />
+                                  <span style={{ fontSize: 8, lineHeight: 1, color: thm.accent_color }}>{thm.floron || '✦'}</span>
+                                  <span
+                                    style={{
+                                      fontFamily: thm.name_font
+                                        ? `var(--font-${thm.name_font}), serif`
+                                        : thm.name_style === 'serif'
+                                          ? thm.font_family === 'vintage-editorial'
+                                            ? 'var(--font-cinzel), serif'
+                                            : 'var(--font-playfair), serif'
+                                          : 'var(--font-script), cursive',
+                                      fontSize: thm.name_font === 'belle-aurore' ? 15 : thm.name_style === 'serif' ? 13 : 20,
+                                      lineHeight: 1.1,
+                                    }}
+                                  >
+                                    A &amp; B
+                                  </span>
+                                  <span style={{ marginTop: 3, height: 1, width: 22, backgroundColor: thm.accent_color, opacity: 0.6 }} />
+                                </span>
+                              </span>
                             </button>
                           ))}
                         </div>
+                        {/* What makes the chosen preset its own, in its own words */}
+                        {BUILTIN_THEMES[customTheme.id]?.description && (
+                          <p className="mt-2 text-xs leading-relaxed text-aisle-muted">{BUILTIN_THEMES[customTheme.id].description}</p>
+                        )}
                       </div>
+
+                      {/* Invitation layout: cover, names, paper and chapter labels (every plan) */}
+                      <div className="space-y-3 rounded-2xl border border-aisle-border p-4 text-xs">
+                        <h4 className="font-semibold uppercase tracking-wider text-aisle-charcoal">Invitation layout</h4>
+                        <SegmentedChoice
+                          label="Cover"
+                          hint={event.cover_image_url ? undefined : 'Add a cover photo under Imagery to use the full photo.'}
+                          value={customTheme.hero_layout || (event.cover_image_url ? 'photo' : 'stationery')}
+                          options={[
+                            { id: 'photo', label: 'Full photo' },
+                            { id: 'stationery', label: 'Framed stationery' },
+                          ]}
+                          onChange={(v) => handleUpdateThemeConfig('hero_layout', v)}
+                        />
+                        <SegmentedChoice
+                          label="Names & headings"
+                          value={customTheme.name_style || 'script'}
+                          options={[
+                            { id: 'script', label: 'Script' },
+                            { id: 'serif', label: 'Serif' },
+                          ]}
+                          onChange={(v) => handleUpdateThemeConfig('name_style', v)}
+                        />
+                        <SegmentedChoice
+                          label="Paper texture"
+                          value={customTheme.paper_texture ? 'on' : 'off'}
+                          options={[
+                            { id: 'off', label: 'Smooth' },
+                            { id: 'on', label: 'Paper grain' },
+                          ]}
+                          onChange={(v) => handleUpdateThemeConfig('paper_texture', v === 'on')}
+                        />
+                        <SegmentedChoice
+                          label="Above each section"
+                          value={customTheme.show_chapter_labels ? 'labels' : 'ornament'}
+                          options={[
+                            { id: 'ornament', label: 'Ornament' },
+                            { id: 'labels', label: 'Chapter I, II…' },
+                          ]}
+                          onChange={(v) => handleUpdateThemeConfig('show_chapter_labels', v === 'labels')}
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-aisle-border bg-aisle-sand/30 p-4 text-xs">
+                        <div>
+                          <span className="font-semibold text-aisle-charcoal">Design Studio</span>
+                          <span className="ml-2 rounded-full bg-aisle-gold/20 px-2 py-0.5 text-xs font-bold text-aisle-gold-deep">Premium</span>
+                          <p className="text-aisle-muted mt-0.5">Rearrange sections and style every card, border and background.</p>
+                        </div>
+                        {hasFeature(event, 'design_studio') ? (
+                          <Link
+                            href={`/admin/${event.admin_token}/studio`}
+                            className="inline-flex min-h-[44px] items-center rounded-full bg-aisle-charcoal px-4 font-semibold text-white hover:bg-aisle-terracotta"
+                          >
+                            Open Design Studio
+                          </Link>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('dashboard')}
+                            className="inline-flex min-h-[44px] items-center rounded-full border border-aisle-border px-4 font-semibold text-aisle-charcoal hover:bg-white cursor-pointer"
+                          >
+                            See plans
+                          </button>
+                        )}
+                      </div>
+                      {studioDesigns.length > 0 && (
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wider text-aisle-muted mb-2">
+                            Studio Designs
+                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            {studioDesigns.map((design) => (
+                              <button
+                                key={design.id}
+                                type="button"
+                                onClick={() => handleApplyStudioDesign(design)}
+                                className={`rounded-xl border p-3 text-left transition-all cursor-pointer ${
+                                  customTheme.id === design.id
+                                    ? 'border-aisle-terracotta bg-aisle-sand/50 shadow-sm'
+                                    : 'border-aisle-border hover:bg-aisle-sand/20'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-serif text-xs font-semibold text-aisle-charcoal block">{design.name}</span>
+                                  {customTheme.id === design.id && (
+                                    <span className="h-2 w-2 rounded-full bg-aisle-terracotta" />
+                                  )}
+                                </div>
+                                <span className="flex items-center gap-1 mt-1">
+                                  <span className="h-3 w-3 rounded-full border border-aisle-border" style={{ backgroundColor: design.bg_color }} />
+                                  <span className="h-3 w-3 rounded-full border border-aisle-border" style={{ backgroundColor: design.accent_color }} />
+                                  <span className="text-xs text-aisle-muted ml-1">{design.taxonomy}</span>
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       <div className="rounded-2xl border border-aisle-border bg-[#FAF7F2]/50 p-3.5 text-xs text-aisle-muted space-y-1">
                         <p className="font-semibold text-aisle-charcoal">{customTheme.name} · {customTheme.taxonomy}</p>
-                        <p className="leading-relaxed text-[11px]">{customTheme.description}</p>
+                        <p className="leading-relaxed text-xs">{customTheme.description}</p>
+                      </div>
+
+                      {/* Chapters (moved here from its own sub-tab) */}
+                      <div className="space-y-4 text-xs">
+                        <div>
+                          <h4 className="text-xs font-semibold uppercase tracking-wider text-aisle-charcoal">
+                            Portal Chapters & Section Flow
+                          </h4>
+                          <p className="text-xs text-aisle-muted mt-0.5">
+                            Reorder chapters with the arrows and hide any you don't need. Changes save straight away.
+                          </p>
+                        </div>
+
+                        <ol className="space-y-2">
+                          {chapters.order.map((id, index) => {
+                            const hidden = chapters.hidden.includes(id);
+                            const locked = ALWAYS_VISIBLE_SECTIONS.includes(id);
+                            return (
+                              <li
+                                key={id}
+                                className={`flex items-center gap-2 p-3 rounded-xl border border-aisle-border ${hidden ? 'bg-aisle-sand/30 opacity-60' : 'bg-[#FAF7F2]/40'}`}
+                              >
+                                <div className="flex flex-col">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMoveChapter(index, -1)}
+                                    disabled={index === 0}
+                                    aria-label={`Move ${CHAPTER_LABELS[id].label} up`}
+                                    className="rounded p-0.5 text-aisle-muted hover:text-aisle-charcoal disabled:opacity-30 cursor-pointer disabled:cursor-default"
+                                  >
+                                    <ChevronUp className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMoveChapter(index, 1)}
+                                    disabled={index === chapters.order.length - 1}
+                                    aria-label={`Move ${CHAPTER_LABELS[id].label} down`}
+                                    className="rounded p-0.5 text-aisle-muted hover:text-aisle-charcoal disabled:opacity-30 cursor-pointer disabled:cursor-default"
+                                  >
+                                    <ChevronDown className="h-4 w-4" />
+                                  </button>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <span className="font-semibold text-aisle-charcoal block">{CHAPTER_LABELS[id].label}</span>
+                                  <span className="text-xs text-aisle-muted">{locked ? 'Always shown so guests can reply' : CHAPTER_LABELS[id].desc}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={!hidden}
+                                  aria-label={`Show ${CHAPTER_LABELS[id].label}`}
+                                  onClick={() => handleToggleChapter(id)}
+                                  disabled={locked}
+                                  className={`min-h-[32px] rounded-full px-3 text-xs font-semibold border cursor-pointer disabled:cursor-default ${
+                                    hidden
+                                      ? 'border-aisle-border text-aisle-muted bg-white'
+                                      : 'border-emerald-200 text-emerald-800 bg-emerald-50'
+                                  }`}
+                                >
+                                  {hidden ? 'Hidden' : 'Shown'}
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ol>
                       </div>
                     </div>
                   )}
@@ -2495,7 +3237,7 @@ export default function AdminDashboardView({
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <label className="font-semibold text-aisle-charcoal">Primary Accent & Wax Tint</label>
-                          <span className="font-mono text-[11px] text-aisle-muted">{customTheme.accent_color || '#9E5A44'}</span>
+                          <span className="font-mono text-xs text-aisle-muted">{customTheme.accent_color || '#9E5A44'}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <input
@@ -2523,7 +3265,7 @@ export default function AdminDashboardView({
                       <div className="space-y-2 pt-3 border-t border-aisle-border/60">
                         <div className="flex items-center justify-between">
                           <label className="font-semibold text-aisle-charcoal">Stationery Background Canvas</label>
-                          <span className="font-mono text-[11px] text-aisle-muted">{customTheme.bg_color || '#FAF7F2'}</span>
+                          <span className="font-mono text-xs text-aisle-muted">{customTheme.bg_color || '#FAF7F2'}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <input
@@ -2551,7 +3293,7 @@ export default function AdminDashboardView({
                       <div className="space-y-2 pt-3 border-t border-aisle-border/60">
                         <div className="flex items-center justify-between">
                           <label className="font-semibold text-aisle-charcoal">Typography Ink Color</label>
-                          <span className="font-mono text-[11px] text-aisle-muted">{customTheme.text_color || '#2C2523'}</span>
+                          <span className="font-mono text-xs text-aisle-muted">{customTheme.text_color || '#2C2523'}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <input
@@ -2579,7 +3321,7 @@ export default function AdminDashboardView({
                       <div className="space-y-2 pt-3 border-t border-aisle-border/60">
                         <div className="flex items-center justify-between">
                           <label className="font-semibold text-aisle-charcoal">Card & Module Surface</label>
-                          <span className="font-mono text-[11px] text-aisle-muted">{customTheme.surface_color || '#FFFFFF'}</span>
+                          <span className="font-mono text-xs text-aisle-muted">{customTheme.surface_color || '#FFFFFF'}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <input
@@ -2623,7 +3365,7 @@ export default function AdminDashboardView({
                               }`}
                             >
                               <span className="font-semibold text-xs text-aisle-charcoal block">{w.label}</span>
-                              <span className="text-[10px] text-aisle-muted">{w.desc}</span>
+                              <span className="text-xs text-aisle-muted">{w.desc}</span>
                             </button>
                           ))}
                         </div>
@@ -2654,7 +3396,7 @@ export default function AdminDashboardView({
                               }`}
                             >
                               <span className="font-semibold text-xs text-aisle-charcoal block">{f.label}</span>
-                              <span className="text-[10px] text-aisle-muted">{f.desc}</span>
+                              <span className="text-xs text-aisle-muted">{f.desc}</span>
                             </button>
                           ))}
                         </div>
@@ -2727,15 +3469,9 @@ export default function AdminDashboardView({
                         {[
                           {
                             id: 'wax-seal',
-                            title: 'Tactile Wax Seal',
-                            desc: 'Dimensional wax monogram stamp with pulsing ring and authentic crack animation.',
-                            badge: 'Classic Romance',
-                          },
-                          {
-                            id: 'envelope',
-                            title: 'Vintage Envelope Unfold',
-                            desc: 'Warm paper envelope letterhead that smoothly unfolds upon tapping.',
-                            badge: 'Editorial Formal',
+                            title: 'Sealed Envelope',
+                            desc: 'A paper envelope sealed in wax with your initials. The seal lifts, the flap opens and the invitation rises out.',
+                            badge: 'Signature',
                           },
                           {
                             id: 'curtain',
@@ -2755,21 +3491,70 @@ export default function AdminDashboardView({
                             type="button"
                             onClick={() => handleUpdateThemeConfig('opening_style', rev.id)}
                             className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all space-y-1.5 ${
-                              (customTheme.opening_style || 'wax-seal') === rev.id
+                              ((customTheme.opening_style === 'envelope' ? 'wax-seal' : customTheme.opening_style) || 'wax-seal') === rev.id
                                 ? 'border-aisle-terracotta bg-aisle-sand/50 shadow-sm ring-1 ring-aisle-terracotta'
                                 : 'border-aisle-border hover:bg-aisle-sand/20'
                             }`}
                           >
                             <div className="flex items-center justify-between">
                               <span className="font-serif font-semibold text-aisle-charcoal">{rev.title}</span>
-                              <span className="text-[9px] uppercase tracking-wider font-semibold text-aisle-gold-deep bg-white px-2 py-0.5 rounded-full border border-aisle-border/60">
+                              <span className="text-xs uppercase tracking-wider font-semibold text-aisle-gold-deep bg-white px-2 py-0.5 rounded-full border border-aisle-border/60">
                                 {rev.badge}
                               </span>
                             </div>
-                            <p className="text-[11px] text-aisle-muted leading-relaxed">{rev.desc}</p>
+                            <p className="text-xs text-aisle-muted leading-relaxed">{rev.desc}</p>
                           </button>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Music on open (shown with the opening styles) */}
+                  {builderSubTab === 'reveal' && (
+                    <div className="space-y-3 rounded-2xl border border-aisle-border p-4 text-xs">
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-aisle-charcoal">Music on open</h4>
+                        <p className="text-xs text-aisle-muted mt-0.5">
+                          Plays when a guest taps to open the invitation. Guests can mute it at any time.
+                        </p>
+                      </div>
+                      {!hasFeature(event, 'music') ? (
+                        <p className="text-aisle-muted">
+                          {featureError('music')}{' '}
+                          <button type="button" onClick={() => setActiveTab('dashboard')} className="font-semibold text-aisle-terracotta underline cursor-pointer">
+                            See plans
+                          </button>
+                        </p>
+                      ) : customSections.music?.url ? (
+                        <div className="space-y-2">
+                          <p className="font-semibold text-aisle-charcoal">{customSections.music.title || 'Your song'}</p>
+                          <audio controls src={customSections.music.url} className="w-full" />
+                          <button
+                            type="button"
+                            onClick={() => handleSetMusic(null)}
+                            disabled={isProcessingAction}
+                            className="rounded-full border border-aisle-border px-4 py-2 font-semibold text-aisle-muted hover:text-red-600 cursor-pointer disabled:opacity-50"
+                          >
+                            Remove song
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="inline-flex items-center gap-1.5 rounded-full bg-aisle-charcoal px-4 py-2 font-semibold text-white hover:bg-aisle-terracotta cursor-pointer">
+                          <Upload className="h-3.5 w-3.5" />
+                          <span>{isProcessingAction ? 'Uploading…' : 'Upload a song (MP3, M4A, up to 15MB)'}</span>
+                          <input
+                            type="file"
+                            accept="audio/*"
+                            className="sr-only"
+                            disabled={isProcessingAction}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              e.target.value = '';
+                              if (file) handleSetMusic(file);
+                            }}
+                          />
+                        </label>
+                      )}
                     </div>
                   )}
 
@@ -2780,7 +3565,7 @@ export default function AdminDashboardView({
                         <h4 className="text-xs font-semibold uppercase tracking-wider text-aisle-charcoal">
                           Website Imagery & Photo Uploads
                         </h4>
-                        <p className="text-[11px] text-aisle-muted mt-0.5">
+                        <p className="text-xs text-aisle-muted mt-0.5">
                           Select files from your computer, curated high-res boutique library, or direct URL.
                         </p>
                       </div>
@@ -2820,51 +3605,9 @@ export default function AdminDashboardView({
                     </div>
                   )}
 
-                  {/* SUB-TAB 6: CHAPTERS & LAYOUT */}
-                  {builderSubTab === 'sections' && (
-                    <div className="space-y-4 text-xs">
-                      <div>
-                        <h4 className="text-xs font-semibold uppercase tracking-wider text-aisle-charcoal">
-                          Portal Chapters & Section Flow
-                        </h4>
-                        <p className="text-[11px] text-aisle-muted mt-0.5">
-                          Toggle visibility and customize the chapter layout for your guests.
-                        </p>
-                      </div>
-
-                      <div className="space-y-2">
-                        {[
-                          { id: 'story', label: 'Chapter I: Our Story & Welcome', desc: 'Narrative & couple narrative photo' },
-                          { id: 'schedule', label: 'Chapter II: The Itinerary', desc: 'Timeline schedule & attire notes' },
-                          { id: 'venue', label: 'Chapter III: Venue & Setting', desc: 'Location address & one-tap map' },
-                          { id: 'travel', label: 'Chapter IV: Accommodations & Logistics', desc: 'Hotel room blocks & shuttles' },
-                          { id: 'rsvp', label: 'Chapter V: Zero-Login Interactive RSVP', desc: 'Household RSVP, meals & questions' },
-                          { id: 'photos', label: 'Chapter VI: Live Photo Stream', desc: 'Guest camera uploads & gallery' },
-                          { id: 'registry', label: 'Chapter VII: Gift Registry & Cash Funds', desc: 'Honeymoon fund & gift items' },
-                          { id: 'faq', label: 'Chapter VIII: FAQ Accordion', desc: 'Common questions & answers' },
-                          { id: 'local-recs', label: 'Chapter IX: Local Concierge', desc: 'Curated dining, drinks & stays' },
-                          { id: 'wedding-party', label: 'Chapter X: The Wedding Party', desc: 'Entourage bios & portraits' },
-                        ].map((sec) => (
-                          <div
-                            key={sec.id}
-                            className="flex items-center justify-between p-3 rounded-xl border border-aisle-border bg-[#FAF7F2]/40"
-                          >
-                            <div>
-                              <span className="font-semibold text-aisle-charcoal block">{sec.label}</span>
-                              <span className="text-[10px] text-aisle-muted">{sec.desc}</span>
-                            </div>
-                            <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                              Active
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
                   {/* Manual Save & Action Bar */}
                   <div className="pt-4 border-t border-aisle-border/70 flex items-center justify-between">
-                    <p className="text-[11px] text-aisle-muted italic">
+                    <p className="text-xs text-aisle-muted italic">
                       Changes sync live to your guest view.
                     </p>
                     <button
@@ -2879,10 +3622,14 @@ export default function AdminDashboardView({
                 </div>
               </div>
 
-              {/* Phone Preview Column */}
-              <div className="lg:col-span-6 flex justify-center sticky top-24">
-                <PhoneMockup badgeText="Live Mobile Canvas">
+              {/* Live Preview Column */}
+              <div className="lg:col-span-6">
+                <PortalPreviewPane toolbar={<PreviewViewSwitch value={previewView} onChange={choosePreviewView} />}>
                   <GuestPortalView
+                    // Restart on the opening whenever the style changes or Opening is chosen again.
+                    key={previewView === 'opening' ? `opening-${customTheme.opening_style}-${openingReplay}` : 'page'}
+                    showOpening={previewView === 'opening'}
+                    showFloating={previewView === 'floating'}
                     event={event}
                     primaryGuest={guests && guests.length > 0 ? guests[0] : null}
                     partyMembers={guests && guests.length > 1 ? guests.slice(0, 2) : []}
@@ -2893,14 +3640,15 @@ export default function AdminDashboardView({
                     customTheme={customTheme}
                     previewMode={true}
                   />
-                </PhoneMockup>
+                </PortalPreviewPane>
               </div>
             </div>
           )}
 
           {/* TAB 6: GUEST COPY & STRUCTURED CMS EDITOR */}
           {activeTab === 'copy' && (
-            <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-8">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            <div className="lg:col-span-6 rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-8">
               <div>
                 <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">
                   Guest Copy & Structured CMS Sections
@@ -2945,6 +3693,52 @@ export default function AdminDashboardView({
                     className="w-full rounded-xl border border-aisle-border p-3 focus:outline-none focus:border-aisle-terracotta"
                   />
                 </div>
+
+                <div>
+                  <span className="block font-medium text-aisle-warm mb-1">Dress Code Colours</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {(customSections.dress_palette || []).map((c, i) => (
+                      <span key={i} className="inline-flex items-center gap-1 rounded-full border border-aisle-border py-1 pl-1 pr-2">
+                        <input
+                          type="color"
+                          value={c}
+                          aria-label={`Dress code colour ${i + 1}`}
+                          onChange={(e) => {
+                            const next = [...(customSections.dress_palette || [])];
+                            next[i] = e.target.value;
+                            setCustomSections({ ...customSections, dress_palette: next });
+                            setEditorDirty(true);
+                          }}
+                          className="h-8 w-8 cursor-pointer rounded-full border-0 bg-transparent p-0"
+                        />
+                        <button
+                          type="button"
+                          aria-label={`Remove colour ${i + 1}`}
+                          onClick={() => {
+                            setCustomSections({ ...customSections, dress_palette: (customSections.dress_palette || []).filter((_, j) => j !== i) });
+                            setEditorDirty(true);
+                          }}
+                          className="text-aisle-muted hover:text-red-700"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    {(customSections.dress_palette || []).length < 6 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomSections({ ...customSections, dress_palette: [...(customSections.dress_palette || []), '#C9B79C'] });
+                          setEditorDirty(true);
+                        }}
+                        className="min-h-[36px] rounded-full border border-dashed border-aisle-border px-3 font-semibold text-aisle-charcoal hover:bg-aisle-sand"
+                      >
+                        + Add colour
+                      </button>
+                    )}
+                  </div>
+                  <p className="mt-1 text-aisle-muted">Up to six, shown to guests as swatches under the dress code.</p>
+                </div>
               </div>
 
               {/* 1. FAQ CMS SECTION */}
@@ -2955,7 +3749,7 @@ export default function AdminDashboardView({
                       <HelpCircle className="h-4 w-4 text-aisle-terracotta" />
                       <span>Frequently Asked Questions</span>
                     </h4>
-                    <p className="text-[11px] text-aisle-muted">Accordion Q&A for guests</p>
+                    <p className="text-xs text-aisle-muted">Accordion Q&A for guests</p>
                   </div>
                   <button
                     type="button"
@@ -3025,7 +3819,7 @@ export default function AdminDashboardView({
                       <Compass className="h-4 w-4 text-aisle-terracotta" />
                       <span>Local Recommendations Concierge</span>
                     </h4>
-                    <p className="text-[11px] text-aisle-muted">Curated local spots for guests</p>
+                    <p className="text-xs text-aisle-muted">Curated local spots for guests</p>
                   </div>
                   <button
                     type="button"
@@ -3125,7 +3919,7 @@ export default function AdminDashboardView({
                       <Users className="h-4 w-4 text-aisle-terracotta" />
                       <span>Wedding Party</span>
                     </h4>
-                    <p className="text-[11px] text-aisle-muted">Honorary party members & entourage</p>
+                    <p className="text-xs text-aisle-muted">Honorary party members & entourage</p>
                   </div>
                   <button
                     type="button"
@@ -3259,13 +4053,51 @@ export default function AdminDashboardView({
               <div className="pt-4 border-t border-aisle-border flex justify-end">
                 <button
                   type="button"
-                  onClick={handleSaveCustomSections}
+                  onClick={handleSaveEditor}
                   disabled={isProcessingAction}
                   className="rounded-full bg-aisle-charcoal px-8 py-3 text-xs font-semibold uppercase tracking-widest text-white hover:bg-aisle-terracotta disabled:opacity-50 cursor-pointer shadow-md"
                 >
                   {isProcessingAction ? 'Saving Editorial CMS...' : 'Save All CMS Sections'}
                 </button>
               </div>
+            </div>
+
+            {/* Live Preview Column: shows unsaved copy and CMS edits */}
+            <div className="lg:col-span-6">
+              <PortalPreviewPane
+                label="Live preview · click your text to edit"
+                toolbar={<PreviewViewSwitch value={previewView} onChange={choosePreviewView} />}
+                actions={
+                  <span className="inline-flex items-center gap-2">
+                    {editorDirty && <span className="text-xs font-semibold text-amber-700">Unsaved edits</span>}
+                    <button
+                      type="button"
+                      onClick={handleSaveEditor}
+                      disabled={isProcessingAction}
+                      className="min-h-[44px] min-w-[140px] rounded-full bg-aisle-charcoal px-6 text-sm font-semibold text-white shadow-sm hover:bg-aisle-terracotta disabled:opacity-50 cursor-pointer"
+                    >
+                      {isProcessingAction ? 'Saving…' : 'Save changes'}
+                    </button>
+                  </span>
+                }
+              >
+                <GuestPortalView
+                  key={previewView === 'opening' ? `opening-${openingReplay}` : 'page'}
+                  showOpening={previewView === 'opening'}
+                  showFloating={previewView === 'floating'}
+                  event={{ ...event, custom_sections: customSections }}
+                  onEditText={handlePreviewTextEdit}
+                  primaryGuest={guests && guests.length > 0 ? guests[0] : null}
+                  partyMembers={guests && guests.length > 1 ? guests.slice(0, 2) : []}
+                  scheduleItems={schedule || []}
+                  customQuestions={questions || []}
+                  registryItems={registry || []}
+                  initialPhotos={photos || []}
+                  customTheme={customTheme}
+                  previewMode={true}
+                />
+              </PortalPreviewPane>
+            </div>
             </div>
           )}
 
@@ -3305,18 +4137,18 @@ export default function AdminDashboardView({
                           <div className="flex items-center gap-2">
                             <strong className="font-serif text-sm font-semibold text-aisle-charcoal">{item.title}</strong>
                             {item.is_vip_only && (
-                              <span className="rounded-full bg-aisle-gold/20 px-2 py-0.5 text-[9px] font-bold text-aisle-gold-deep">
+                              <span className="rounded-full bg-aisle-gold/20 px-2 py-0.5 text-xs font-bold text-aisle-gold-deep">
                                 VIP Only
                               </span>
                             )}
                             {item.requires_rsvp && (
-                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold text-emerald-800">
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">
                                 RSVP Required
                               </span>
                             )}
                           </div>
                           {item.location_name && (
-                            <div className="text-[11px] text-aisle-muted mt-0.5">
+                            <div className="text-xs text-aisle-muted mt-0.5">
                               📍 {item.location_name}
                             </div>
                           )}
@@ -3326,7 +4158,7 @@ export default function AdminDashboardView({
                           <button
                             type="button"
                             onClick={() => handleOpenEditSchedule(item)}
-                            className="rounded-lg border border-aisle-border bg-white px-2.5 py-1 text-[11px] font-medium text-aisle-charcoal hover:bg-aisle-sand cursor-pointer"
+                            className="rounded-lg border border-aisle-border bg-white px-2.5 py-1 text-xs font-medium text-aisle-charcoal hover:bg-aisle-sand cursor-pointer"
                           >
                             Edit
                           </button>
@@ -3343,7 +4175,7 @@ export default function AdminDashboardView({
 
                       {item.description && <p className="text-aisle-muted leading-relaxed">{item.description}</p>}
 
-                      <div className="flex flex-wrap items-center gap-3 text-[10px] text-aisle-warm pt-1 border-t border-aisle-border/40">
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-aisle-warm pt-1 border-t border-aisle-border/40">
                         <span>
                           🕒 {new Date(item.start_time).toLocaleDateString()} at {new Date(item.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           {item.end_time ? ` – ${new Date(item.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
@@ -3361,6 +4193,97 @@ export default function AdminDashboardView({
 
           {/* TAB 8: RSVP QUESTIONS */}
           {activeTab === 'questions' && (
+            <div className="space-y-6">
+            {/* Meal options: guests choose from these on the RSVP */}
+            <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-5">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">Meal Options</h3>
+                  <p className="text-xs text-aisle-muted mt-0.5">
+                    Guests pick from this menu for themselves and their plus-one. Leave it empty to let guests type their meal.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMenuDraft([...menuDraft, { name: '', description: '' }])}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-aisle-charcoal px-4 py-2 text-xs font-semibold text-white hover:bg-aisle-terracotta cursor-pointer transition-colors shadow-sm"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Add Meal</span>
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                {menuDraft.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-aisle-border p-6 text-center text-xs text-aisle-muted">
+                    No menu yet. Add each main course your caterer offers, for example "Filet mignon" or "Wild mushroom risotto (vegetarian)".
+                  </div>
+                ) : (
+                  menuDraft.map((option, index) => (
+                    <div key={index} className="flex flex-col sm:flex-row gap-2 rounded-xl border border-aisle-border p-3 bg-[#FAF7F2]/40">
+                      <input
+                        type="text"
+                        aria-label={`Meal ${index + 1} name`}
+                        placeholder="Meal name"
+                        value={option.name}
+                        onChange={(e) =>
+                          setMenuDraft(menuDraft.map((o, i) => (i === index ? { ...o, name: e.target.value } : o)))
+                        }
+                        className="sm:w-1/3 rounded-xl border border-aisle-border px-3 py-2.5 text-xs focus:outline-none focus:border-aisle-terracotta"
+                      />
+                      <input
+                        type="text"
+                        aria-label={`Meal ${index + 1} description`}
+                        placeholder="Description (optional)"
+                        value={option.description || ''}
+                        onChange={(e) =>
+                          setMenuDraft(menuDraft.map((o, i) => (i === index ? { ...o, description: e.target.value } : o)))
+                        }
+                        className="flex-1 rounded-xl border border-aisle-border px-3 py-2.5 text-xs focus:outline-none focus:border-aisle-terracotta"
+                      />
+                      <div className="flex items-center justify-between sm:justify-end gap-3">
+                        <span className="text-aisle-muted whitespace-nowrap">
+                          {mealCounts[option.name.trim()] || 0} chosen
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Remove ${option.name || 'meal'}`}
+                          onClick={() => setMenuDraft(menuDraft.filter((_, i) => i !== index))}
+                          className="rounded-lg border border-aisle-border bg-white p-2 text-aisle-muted hover:text-red-600 cursor-pointer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="flex items-center justify-between gap-3 border-t border-aisle-border/70 pt-4">
+                <p className="text-xs text-aisle-muted">
+                  Counts include plus-ones of guests who are attending.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleExportCatererCsv}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-aisle-border px-4 py-2.5 text-xs font-semibold text-aisle-charcoal hover:bg-aisle-sand cursor-pointer"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Caterer list (CSV)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveMenu}
+                  disabled={isProcessingAction}
+                  className="rounded-full bg-aisle-charcoal px-6 py-2.5 text-xs font-semibold uppercase tracking-wider text-white hover:bg-aisle-terracotta disabled:opacity-50 cursor-pointer"
+                >
+                  Save Menu
+                </button>
+                </div>
+              </div>
+            </div>
+
             <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-5">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
@@ -3391,11 +4314,11 @@ export default function AdminDashboardView({
                         <div>
                           <div className="flex items-center gap-2">
                             <strong className="text-aisle-charcoal text-sm">{q.prompt}</strong>
-                            <span className="rounded-full bg-aisle-sand px-2 py-0.5 text-[9px] font-bold text-aisle-warm uppercase">
+                            <span className="rounded-full bg-aisle-sand px-2 py-0.5 text-xs font-bold text-aisle-warm uppercase">
                               {q.question_type}
                             </span>
                             {q.is_required && (
-                              <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-bold text-rose-800">
+                              <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-800">
                                 Required
                               </span>
                             )}
@@ -3406,7 +4329,7 @@ export default function AdminDashboardView({
                           <button
                             type="button"
                             onClick={() => handleOpenEditQuestion(q)}
-                            className="rounded-lg border border-aisle-border bg-white px-2.5 py-1 text-[11px] font-medium text-aisle-charcoal hover:bg-aisle-sand cursor-pointer"
+                            className="rounded-lg border border-aisle-border bg-white px-2.5 py-1 text-xs font-medium text-aisle-charcoal hover:bg-aisle-sand cursor-pointer"
                           >
                             Edit
                           </button>
@@ -3422,7 +4345,7 @@ export default function AdminDashboardView({
                       </div>
 
                       {q.options && q.options.length > 0 && (
-                        <p className="text-[11px] text-aisle-muted">
+                        <p className="text-xs text-aisle-muted">
                           <span className="font-semibold text-aisle-charcoal">Choices:</span> {q.options.join(' · ')}
                         </p>
                       )}
@@ -3430,6 +4353,7 @@ export default function AdminDashboardView({
                   ))
                 )}
               </div>
+            </div>
             </div>
           )}
 
@@ -3447,7 +4371,7 @@ export default function AdminDashboardView({
                       Configure your direct payment handles so guests can send honeymoon & cash fund gifts directly to you with zero transaction fees.
                     </p>
                   </div>
-                  <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
+                  <span className="text-xs uppercase font-bold tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
                     Direct Payouts Active
                   </span>
                 </div>
@@ -3457,7 +4381,7 @@ export default function AdminDashboardView({
                   <div className="space-y-1.5 p-3.5 rounded-2xl border border-aisle-border bg-[#FAF7F2]/40">
                     <label className="font-semibold text-aisle-charcoal flex items-center justify-between">
                       <span>Venmo Username</span>
-                      <span className="text-[10px] text-blue-600 font-normal">One-tap app deep link</span>
+                      <span className="text-xs text-blue-600 font-normal">One-tap app deep link</span>
                     </label>
                     <div className="relative">
                       <span className="absolute left-3 top-2.5 text-aisle-muted font-mono font-bold">@</span>
@@ -3483,7 +4407,7 @@ export default function AdminDashboardView({
                   <div className="space-y-1.5 p-3.5 rounded-2xl border border-aisle-border bg-[#FAF7F2]/40">
                     <label className="font-semibold text-aisle-charcoal flex items-center justify-between">
                       <span>Zelle Email or Phone</span>
-                      <span className="text-[10px] text-purple-700 font-normal">Instant bank transfer</span>
+                      <span className="text-xs text-purple-700 font-normal">Instant bank transfer</span>
                     </label>
                     <input
                       type="text"
@@ -3506,7 +4430,7 @@ export default function AdminDashboardView({
                   <div className="space-y-1.5 p-3.5 rounded-2xl border border-aisle-border bg-[#FAF7F2]/40">
                     <label className="font-semibold text-aisle-charcoal flex items-center justify-between">
                       <span>CashApp $cashtag</span>
-                      <span className="text-[10px] text-emerald-700 font-normal">Cash App pay</span>
+                      <span className="text-xs text-emerald-700 font-normal">Cash App pay</span>
                     </label>
                     <div className="relative">
                       <span className="absolute left-3 top-2.5 text-aisle-muted font-mono font-bold">$</span>
@@ -3532,7 +4456,7 @@ export default function AdminDashboardView({
                   <div className="space-y-1.5 p-3.5 rounded-2xl border border-aisle-border bg-[#FAF7F2]/40">
                     <label className="font-semibold text-aisle-charcoal flex items-center justify-between">
                       <span>PayPal.me Username / Link</span>
-                      <span className="text-[10px] text-blue-800 font-normal">PayPal direct</span>
+                      <span className="text-xs text-blue-800 font-normal">PayPal direct</span>
                     </label>
                     <input
                       type="text"
@@ -3575,7 +4499,7 @@ export default function AdminDashboardView({
                 </div>
 
                 <div className="flex items-center justify-between pt-2 border-t border-aisle-border/60">
-                  <p className="text-[11px] text-aisle-muted italic">
+                  <p className="text-xs text-aisle-muted italic">
                     These payment options will be presented to guests when contributing to any cash fund.
                   </p>
                   <button
@@ -3613,11 +4537,11 @@ export default function AdminDashboardView({
                         <div>
                           <strong className="text-sm font-serif text-aisle-charcoal">{item.title}</strong>
                           {item.is_cash_fund ? (
-                            <span className="ml-2 text-[10px] text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full font-semibold">
+                            <span className="ml-2 text-xs text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full font-semibold">
                               Cash Fund
                             </span>
                           ) : (
-                            <span className="ml-2 text-[10px] text-aisle-muted bg-aisle-sand px-2 py-0.5 rounded-full font-semibold">
+                            <span className="ml-2 text-xs text-aisle-muted bg-aisle-sand px-2 py-0.5 rounded-full font-semibold">
                               External Link
                             </span>
                           )}
@@ -3679,21 +4603,42 @@ export default function AdminDashboardView({
             <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">Guest Photo Stream Moderation</h3>
-                  <p className="text-xs text-aisle-muted mt-0.5">Live photo stream uploaded by wedding guests to Supabase Storage</p>
+                  <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">Memories</h3>
+                  <p className="text-xs text-aisle-muted mt-0.5">
+                    Photos and messages from your guests. Hide anything you don't want shown; hidden items stay here.
+                  </p>
                 </div>
-                <button
-                  onClick={handleOpenTableCard}
-                  className="rounded-full bg-aisle-charcoal px-4 py-1.5 text-xs font-semibold text-white hover:bg-aisle-terracotta cursor-pointer"
-                >
-                  Print Table QR Card
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  {hasFeature(event, 'memories') ? (
+                    <>
+                      <button onClick={() => openAlbumPage('')} className="rounded-full border border-aisle-border px-4 py-1.5 text-xs font-semibold text-aisle-charcoal hover:bg-aisle-sand cursor-pointer">
+                        Open album
+                      </button>
+                      <button onClick={() => openAlbumPage('/slideshow')} className="rounded-full border border-aisle-border px-4 py-1.5 text-xs font-semibold text-aisle-charcoal hover:bg-aisle-sand cursor-pointer">
+                        Live slideshow
+                      </button>
+                      <button onClick={handleOpenTableCard} className="rounded-full bg-aisle-charcoal px-4 py-1.5 text-xs font-semibold text-white hover:bg-aisle-terracotta cursor-pointer">
+                        Print album QR card
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={() => setActiveTab('dashboard')} className="rounded-full border border-aisle-border px-4 py-1.5 text-xs font-semibold text-aisle-charcoal hover:bg-aisle-sand cursor-pointer">
+                      Memories album is Premium · See plans
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {photos.map((p) => (
                   <div key={p.id} className="relative aspect-square rounded-2xl overflow-hidden border border-aisle-border bg-aisle-sand group">
-                    <img src={p.image_url} alt="Photo" className="h-full w-full object-cover" />
+                    <img src={p.image_url} alt="Photo" className={`h-full w-full object-cover ${p.is_approved === false ? 'opacity-30' : ''}`} />
+                    <button
+                      onClick={() => handleToggleMemory('photo', p.id, p.is_approved === false)}
+                      className="absolute top-2 left-2 rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold text-aisle-charcoal shadow cursor-pointer"
+                    >
+                      {p.is_approved === false ? 'Hidden · Show' : 'Hide'}
+                    </button>
                     <button
                       onClick={() => handleDeletePhoto(p.id, p.image_url)}
                       title="Delete Photo"
@@ -3702,15 +4647,58 @@ export default function AdminDashboardView({
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                     {p.caption && (
-                      <div className="absolute inset-x-0 bottom-0 bg-black/60 p-2 text-[10px] text-white">
+                      <div className="absolute inset-x-0 bottom-0 bg-black/60 p-2 text-xs text-white">
                         {p.caption}
                       </div>
                     )}
                   </div>
                 ))}
               </div>
+
+              {hasFeature(event, 'memories') && (
+                <div className="space-y-3 border-t border-aisle-border pt-5">
+                  <h4 className="font-serif text-lg font-semibold text-aisle-charcoal">Guestbook ({guestbook.length})</h4>
+                  {guestbook.length === 0 ? (
+                    <p className="text-xs text-aisle-muted">Messages and voice notes from the album will appear here.</p>
+                  ) : (
+                    guestbook.map((m) => (
+                      <div key={m.id} className={`rounded-2xl border border-aisle-border p-4 space-y-2 text-xs ${m.is_approved ? 'bg-white' : 'bg-aisle-sand/40 opacity-60'}`}>
+                        {m.message && <p className="text-sm text-aisle-charcoal">“{m.message}”</p>}
+                        {m.voice_url && <audio controls src={m.voice_url} preload="none" className="w-full" />}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-aisle-muted">— {m.author_name} · {new Date(m.created_at).toLocaleString()}</span>
+                          <span className="flex gap-1.5">
+                            <button onClick={() => handleToggleMemory('message', m.id, !m.is_approved)} className="rounded-full border border-aisle-border px-3 py-1 font-semibold cursor-pointer">
+                              {m.is_approved ? 'Hide' : 'Show'}
+                            </button>
+                            <button onClick={() => handleDeleteGuestbookEntry(m.id)} aria-label="Delete message" className="rounded-full border border-aisle-border p-1.5 text-aisle-muted hover:text-rose-700 cursor-pointer">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           )}
+
+          {/* SEATING CHART (Premium) */}
+          {activeTab === 'seating' &&
+            (hasFeature(event, 'seating') ? (
+              <SeatingPlanner event={event} guests={guests} onGuestsChange={setGuests} />
+            ) : (
+              <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-3 text-xs">
+                <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">Seating chart</h3>
+                <p className="text-aisle-muted">
+                  {featureError('seating')} Arrange guests at tables, then print a table plan and place cards.
+                </p>
+                <button type="button" onClick={() => setActiveTab('dashboard')} className="rounded-full bg-aisle-charcoal px-4 py-2 font-semibold text-white hover:bg-aisle-terracotta cursor-pointer">
+                  See plans
+                </button>
+              </div>
+            ))}
 
           {/* TAB 11: PLANNING TASKS */}
           {activeTab === 'planning' && (
@@ -3784,7 +4772,7 @@ export default function AdminDashboardView({
                           >
                             {task.title}
                           </span>
-                          <div className="flex flex-wrap items-center gap-2 mt-0.5 text-[10px] text-aisle-muted">
+                          <div className="flex flex-wrap items-center gap-2 mt-0.5 text-xs text-aisle-muted">
                             <span className="rounded-md bg-white border border-aisle-border/60 px-1.5 py-0.5 font-medium">
                               {task.category || 'General'}
                             </span>
@@ -3800,7 +4788,7 @@ export default function AdminDashboardView({
 
                       <div className="flex items-center gap-2 self-end sm:self-center">
                         <span
-                          className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${
+                          className={`rounded-full px-2 py-0.5 text-xs font-bold uppercase ${
                             task.priority === 'high'
                               ? 'bg-rose-100 text-rose-800'
                               : task.priority === 'low'
@@ -3811,7 +4799,7 @@ export default function AdminDashboardView({
                           {task.priority || 'medium'}
                         </span>
                         <span
-                          className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${
+                          className={`rounded-full px-2 py-0.5 text-xs font-bold uppercase ${
                             task.status === 'done'
                               ? 'bg-emerald-100 text-emerald-800'
                               : task.status === 'doing'
@@ -3824,7 +4812,7 @@ export default function AdminDashboardView({
                         <button
                           type="button"
                           onClick={() => handleOpenEditTask(task)}
-                          className="rounded-lg border border-aisle-border bg-white px-2 py-1 text-[11px] font-medium text-aisle-charcoal hover:bg-aisle-sand cursor-pointer"
+                          className="rounded-lg border border-aisle-border bg-white px-2 py-1 text-xs font-medium text-aisle-charcoal hover:bg-aisle-sand cursor-pointer"
                         >
                           Edit
                         </button>
@@ -3891,7 +4879,7 @@ export default function AdminDashboardView({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6 text-xs font-sans">
           <div className="w-full max-w-xl rounded-3xl bg-white p-6 sm:p-8 shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto border border-aisle-border/40">
             <div className="border-b border-aisle-border/60 pb-3">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-aisle-terracotta block mb-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-aisle-terracotta block mb-1">
                 Guest Registry
               </span>
               <h3 className="font-serif text-2xl font-semibold text-aisle-charcoal">
@@ -4055,7 +5043,7 @@ export default function AdminDashboardView({
           <div className="w-full max-w-2xl rounded-3xl bg-white p-6 sm:p-8 shadow-2xl space-y-6 max-h-[92vh] overflow-y-auto border border-aisle-border/40">
             {/* Header */}
             <div className="border-b border-aisle-border/60 pb-4">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-aisle-terracotta block mb-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-aisle-terracotta block mb-1">
                 Communications Dispatcher
               </span>
               <h3 className="font-serif text-2xl font-semibold text-aisle-charcoal">
@@ -4109,7 +5097,9 @@ export default function AdminDashboardView({
                     <button
                       type="button"
                       onClick={() => setNewCampaignForm({ ...newCampaignForm, channel: 'sms' })}
-                      className={`py-2 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      disabled={!smsAllowed}
+                      title={smsAllowed ? undefined : featureError('sms')}
+                      className={`py-2 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
                         newCampaignForm.channel === 'sms'
                           ? 'bg-white text-aisle-charcoal shadow-sm'
                           : 'text-aisle-muted hover:text-aisle-charcoal'
@@ -4131,7 +5121,9 @@ export default function AdminDashboardView({
                     <button
                       type="button"
                       onClick={() => setNewCampaignForm({ ...newCampaignForm, channel: 'both' })}
-                      className={`py-2 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      disabled={!smsAllowed}
+                      title={smsAllowed ? undefined : featureError('sms')}
+                      className={`py-2 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
                         newCampaignForm.channel === 'both'
                           ? 'bg-white text-aisle-charcoal shadow-sm'
                           : 'text-aisle-muted hover:text-aisle-charcoal'
@@ -4140,6 +5132,14 @@ export default function AdminDashboardView({
                       ✨ Both
                     </button>
                   </div>
+                  {!smsAllowed && (
+                    <p className="mt-1.5 text-xs text-aisle-muted">
+                      Text messages are part of Premium.{' '}
+                      <button type="button" onClick={() => { setNewCampaignModalOpen(false); setActiveTab('dashboard'); }} className="font-semibold text-aisle-terracotta underline cursor-pointer">
+                        See plans
+                      </button>
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -4150,7 +5150,7 @@ export default function AdminDashboardView({
                     <label className="text-xs font-semibold text-aisle-charcoal">
                       SMS Message Template
                     </label>
-                    <span className="text-[10px] text-aisle-muted font-mono">
+                    <span className="text-xs text-aisle-muted font-mono">
                       {newCampaignForm.sms_body.length} characters
                     </span>
                   </div>
@@ -4165,7 +5165,7 @@ export default function AdminDashboardView({
 
                   {/* Dynamic Token Chips */}
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    <span className="text-[10px] text-aisle-muted font-medium mr-1">Insert tag:</span>
+                    <span className="text-xs text-aisle-muted font-medium mr-1">Insert tag:</span>
                     {[
                       { label: '{{guest_name}}', tag: '{{guest_name}}' },
                       { label: '{{portal_link}}', tag: '{{portal_link}}' },
@@ -4182,7 +5182,7 @@ export default function AdminDashboardView({
                             sms_body: newCampaignForm.sms_body + (newCampaignForm.sms_body.endsWith(' ') ? '' : ' ') + chip.tag,
                           })
                         }
-                        className="rounded-full bg-white border border-aisle-border px-2 py-0.5 text-[10px] font-mono text-aisle-terracotta hover:bg-aisle-sand transition-colors cursor-pointer shadow-2xs"
+                        className="rounded-full bg-white border border-aisle-border px-2 py-0.5 text-xs font-mono text-aisle-terracotta hover:bg-aisle-sand transition-colors cursor-pointer shadow-2xs"
                       >
                         + {chip.label}
                       </button>
@@ -4310,7 +5310,7 @@ export default function AdminDashboardView({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6 text-xs font-sans">
           <div className="w-full max-w-lg rounded-3xl bg-white p-6 sm:p-8 shadow-2xl space-y-5 border border-aisle-border/40">
             <div className="border-b border-aisle-border/60 pb-3">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-aisle-terracotta block mb-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-aisle-terracotta block mb-1">
                 Registry & Gifts
               </span>
               <h3 className="font-serif text-2xl font-semibold text-aisle-charcoal">
@@ -4426,19 +5426,19 @@ export default function AdminDashboardView({
       {tableCardModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="w-full max-w-md rounded-3xl bg-[#FAF7F2] border-2 border-aisle-gold/60 p-8 text-center space-y-4 shadow-2xl">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.25em] text-aisle-gold-deep">
+            <span className="text-xs font-semibold uppercase tracking-[0.25em] text-aisle-gold-deep">
               Capture The Love
             </span>
             <h3 className="font-serif text-2xl font-semibold text-aisle-charcoal">
               {event.couple_names}
             </h3>
             <p className="text-xs text-aisle-muted">
-              Scan this QR code with your phone to instantly upload photos to our live wedding stream. No app needed.
+              Scan to share your photos and leave us a message. No app or account needed.
             </p>
             <div className="flex justify-center p-4 bg-white rounded-2xl border border-aisle-border shadow-sm mx-auto max-w-[200px]">
               <img src={tableCardModal} alt="Table QR" className="h-40 w-40" />
             </div>
-            <p className="text-[11px] font-editorial italic text-aisle-terracotta">
+            <p className="text-xs font-editorial italic text-aisle-terracotta">
               "We cherish every candid moment through your eyes."
             </p>
             <div className="flex gap-2 pt-2">
@@ -4546,7 +5546,7 @@ export default function AdminDashboardView({
                   />
                   <div>
                     <span className="font-semibold text-aisle-charcoal block">VIP / Family Only</span>
-                    <span className="text-[10px] text-aisle-muted">Only visible to guests flagged as VIP</span>
+                    <span className="text-xs text-aisle-muted">Only visible to guests flagged as VIP</span>
                   </div>
                 </label>
 
@@ -4559,7 +5559,7 @@ export default function AdminDashboardView({
                   />
                   <div>
                     <span className="font-semibold text-aisle-charcoal block">Require RSVP</span>
-                    <span className="text-[10px] text-aisle-muted">Include in Guest Portal RSVP Wizard Step 2</span>
+                    <span className="text-xs text-aisle-muted">Include in Guest Portal RSVP Wizard Step 2</span>
                   </div>
                 </label>
               </div>
@@ -4643,7 +5643,7 @@ export default function AdminDashboardView({
                   />
                   <div>
                     <span className="font-semibold text-aisle-charcoal block">Required Field</span>
-                    <span className="text-[10px] text-aisle-muted">Guests must answer this question before submitting RSVP</span>
+                    <span className="text-xs text-aisle-muted">Guests must answer this question before submitting RSVP</span>
                   </div>
                 </label>
               </div>
@@ -4782,7 +5782,7 @@ export default function AdminDashboardView({
                 <h3 className="font-serif text-lg font-semibold text-aisle-charcoal">
                   Group Guests into Household Party
                 </h3>
-                <p className="text-[11px] text-aisle-muted mt-0.5">
+                <p className="text-xs text-aisle-muted mt-0.5">
                   Party members will share a linked invitation & can RSVP together.
                 </p>
               </div>
@@ -4796,7 +5796,7 @@ export default function AdminDashboardView({
 
             {/* Selected Guests preview */}
             <div className="space-y-1.5">
-              <label className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted block">
+              <label className="text-xs uppercase font-bold tracking-wider text-aisle-muted block">
                 Selected Guests ({selectedGuestIds.length})
               </label>
               <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 rounded-xl bg-[#FAF7F2] border border-aisle-border/60">
@@ -4805,7 +5805,7 @@ export default function AdminDashboardView({
                   return (
                     <span
                       key={id}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white border border-aisle-border text-[11px] font-medium text-aisle-charcoal shadow-2xs"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white border border-aisle-border text-xs font-medium text-aisle-charcoal shadow-2xs"
                     >
                       <span>{g?.first_name} {g?.last_name || ''}</span>
                     </span>
@@ -4816,7 +5816,7 @@ export default function AdminDashboardView({
 
             {/* Grouping Mode: Create New vs Add to Existing */}
             <div className="space-y-3">
-              <label className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted block">
+              <label className="text-xs uppercase font-bold tracking-wider text-aisle-muted block">
                 Destination Party
               </label>
               <div className="grid grid-cols-2 gap-2">
@@ -4855,7 +5855,7 @@ export default function AdminDashboardView({
 
               {groupTargetPartyId === 'new' ? (
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-aisle-charcoal block">
+                  <label className="text-xs font-medium text-aisle-charcoal block">
                     Household Party Name
                   </label>
                   <input
@@ -4868,7 +5868,7 @@ export default function AdminDashboardView({
                 </div>
               ) : (
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-aisle-charcoal block">
+                  <label className="text-xs font-medium text-aisle-charcoal block">
                     Select Existing Party
                   </label>
                   <select
@@ -4921,7 +5921,7 @@ export default function AdminDashboardView({
                     Manage Household Party
                   </h3>
                 </div>
-                <p className="text-[11px] text-aisle-muted mt-0.5">
+                <p className="text-xs text-aisle-muted mt-0.5">
                   Edit party name, add or remove members, or dissolve the group.
                 </p>
               </div>
@@ -4935,7 +5935,7 @@ export default function AdminDashboardView({
 
             {/* 1. Rename Party */}
             <div className="space-y-1.5 p-3.5 rounded-2xl bg-[#FAF7F2] border border-aisle-border">
-              <label className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted block">
+              <label className="text-xs uppercase font-bold tracking-wider text-aisle-muted block">
                 Party / Household Name
               </label>
               <div className="flex gap-2">
@@ -4959,12 +5959,12 @@ export default function AdminDashboardView({
             {/* 2. Current Members List */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted">
+                <label className="text-xs uppercase font-bold tracking-wider text-aisle-muted">
                   Current Members (
                   {existingParties.find((p) => p.id === activePartyId)?.members.length || 0}
                   )
                 </label>
-                <span className="text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold border border-emerald-200">
+                <span className="text-xs text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold border border-emerald-200">
                   Shared RSVP Link Active
                 </span>
               </div>
@@ -4981,12 +5981,12 @@ export default function AdminDashboardView({
                         <div className="font-semibold text-aisle-charcoal flex items-center gap-1.5">
                           <span>{member.first_name} {member.last_name || ''}</span>
                           {member.is_vip && (
-                            <span className="rounded-full bg-aisle-gold/20 px-1.5 py-0.2 text-[8px] font-bold text-aisle-gold-deep">
+                            <span className="rounded-full bg-aisle-gold/20 px-1.5 py-0.2 text-xs font-bold text-aisle-gold-deep">
                               VIP
                             </span>
                           )}
                           <span
-                            className={`text-[9px] px-1.5 py-0.2 rounded-full font-medium ${
+                            className={`text-xs px-1.5 py-0.2 rounded-full font-medium ${
                               member.rsvp_status === 'attending'
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : member.rsvp_status === 'declined'
@@ -4997,7 +5997,7 @@ export default function AdminDashboardView({
                             {member.rsvp_status}
                           </span>
                         </div>
-                        <div className="text-[10px] text-aisle-muted">
+                        <div className="text-xs text-aisle-muted">
                           {member.email || member.phone || 'No direct contact'}
                         </div>
                       </div>
@@ -5007,7 +6007,7 @@ export default function AdminDashboardView({
                         onClick={() => handleRemoveGuestFromParty(member.id)}
                         disabled={isProcessingAction}
                         title="Remove member from party"
-                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2 py-1 rounded-lg border border-rose-200 cursor-pointer"
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2 py-1 rounded-lg border border-rose-200 cursor-pointer"
                       >
                         <UserMinus className="h-3 w-3" />
                         <span>Remove</span>
@@ -5019,7 +6019,7 @@ export default function AdminDashboardView({
 
             {/* 3. Add Guest to Party */}
             <div className="space-y-1.5 p-3.5 rounded-2xl bg-[#FAF7F2] border border-aisle-border">
-              <label className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted block">
+              <label className="text-xs uppercase font-bold tracking-wider text-aisle-muted block">
                 Add Another Guest to This Party
               </label>
               <div className="flex gap-2">
@@ -5055,7 +6055,7 @@ export default function AdminDashboardView({
                 type="button"
                 onClick={handleDissolveParty}
                 disabled={isProcessingAction}
-                className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer inline-flex items-center gap-1"
+                className="text-xs font-semibold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer inline-flex items-center gap-1"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 <span>Dissolve Entire Party</span>
@@ -5086,7 +6086,7 @@ export default function AdminDashboardView({
                     {editingTemplate ? `Edit "${editingTemplate.name}"` : 'Create Custom Template'}
                   </h3>
                 </div>
-                <p className="text-[11px] text-aisle-muted mt-0.5">
+                <p className="text-xs text-aisle-muted mt-0.5">
                   Customize the SMS copy, email wording, and dynamic smart tags.
                 </p>
               </div>
@@ -5101,7 +6101,7 @@ export default function AdminDashboardView({
 
             {/* Helper: Dynamic Variable Tags */}
             <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3 space-y-1.5">
-              <span className="text-[10px] uppercase font-bold text-amber-900 tracking-wider block">
+              <span className="text-xs uppercase font-bold text-amber-900 tracking-wider block">
                 ✨ Dynamic Smart Tags (Click to Insert into SMS)
               </span>
               <div className="flex flex-wrap gap-1.5">
@@ -5117,7 +6117,7 @@ export default function AdminDashboardView({
                     key={v.tag}
                     type="button"
                     onClick={() => handleInsertVariable('sms_body', v.tag)}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-amber-300 text-[10px] font-mono text-amber-900 hover:bg-amber-100 cursor-pointer shadow-2xs"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-amber-300 text-xs font-mono text-amber-900 hover:bg-amber-100 cursor-pointer shadow-2xs"
                   >
                     <span>+ {v.tag}</span>
                   </button>
@@ -5128,7 +6128,7 @@ export default function AdminDashboardView({
             <form onSubmit={handleSaveTemplate} className="space-y-3.5">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] uppercase font-bold tracking-wider text-aisle-muted mb-1">
+                  <label className="block text-xs uppercase font-bold tracking-wider text-aisle-muted mb-1">
                     Template Name
                   </label>
                   <input
@@ -5140,7 +6140,7 @@ export default function AdminDashboardView({
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] uppercase font-bold tracking-wider text-aisle-muted mb-1">
+                  <label className="block text-xs uppercase font-bold tracking-wider text-aisle-muted mb-1">
                     Channel Format
                   </label>
                   <select
@@ -5156,7 +6156,7 @@ export default function AdminDashboardView({
               </div>
 
               <div>
-                <label className="block text-[10px] uppercase font-bold tracking-wider text-aisle-muted mb-1">
+                <label className="block text-xs uppercase font-bold tracking-wider text-aisle-muted mb-1">
                   Email Subject Line
                 </label>
                 <input
@@ -5170,10 +6170,10 @@ export default function AdminDashboardView({
 
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-[10px] uppercase font-bold tracking-wider text-aisle-muted">
+                  <label className="text-xs uppercase font-bold tracking-wider text-aisle-muted">
                     SMS Text Body (Twilio)
                   </label>
-                  <span className="text-[10px] font-mono text-aisle-muted">
+                  <span className="text-xs font-mono text-aisle-muted">
                     {templateForm.sms_body.length} chars (~{Math.ceil((templateForm.sms_body.length || 1) / 160)} SMS)
                   </span>
                 </div>
@@ -5188,7 +6188,7 @@ export default function AdminDashboardView({
               </div>
 
               <div>
-                <label className="block text-[10px] uppercase font-bold tracking-wider text-aisle-muted mb-1">
+                <label className="block text-xs uppercase font-bold tracking-wider text-aisle-muted mb-1">
                   Email Message Body (Optional Markdown/Text)
                 </label>
                 <textarea
@@ -5220,6 +6220,80 @@ export default function AdminDashboardView({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** A row of pill buttons for one Builder setting. */
+function SegmentedChoice({
+  label,
+  hint,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  value: string;
+  options: { id: string; label: string }[];
+  onChange: (id: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <span className="font-medium text-aisle-charcoal">{label}</span>
+        {hint && <p className="text-aisle-muted">{hint}</p>}
+      </div>
+      <div role="radiogroup" aria-label={label} className="inline-flex rounded-full border border-aisle-border bg-white p-0.5">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            role="radio"
+            aria-checked={value === o.id}
+            onClick={() => value !== o.id && onChange(o.id)}
+            className={`min-h-[36px] rounded-full px-3.5 font-semibold transition-colors cursor-pointer ${
+              value === o.id ? 'bg-aisle-charcoal text-white' : 'text-aisle-warm hover:text-aisle-charcoal'
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Page / RSVP button / Opening switch above the Builder and Editor previews. */
+function PreviewViewSwitch({
+  value,
+  onChange,
+}: {
+  value: 'page' | 'floating' | 'opening';
+  onChange: (view: 'page' | 'floating' | 'opening') => void;
+}) {
+  const views = [
+    { id: 'page', label: 'Page', title: 'The invitation alone, nothing floating over it' },
+    { id: 'floating', label: 'RSVP button', title: 'With the floating RSVP button guests see' },
+    { id: 'opening', label: 'Opening', title: 'The envelope guests open first (choose again to replay)' },
+  ] as const;
+  return (
+    <div role="radiogroup" aria-label="Preview shows" className="inline-flex rounded-full border border-aisle-border bg-white p-0.5 text-xs">
+      {views.map((v) => (
+        <button
+          key={v.id}
+          type="button"
+          role="radio"
+          aria-checked={value === v.id}
+          title={v.title}
+          onClick={() => onChange(v.id)}
+          className={`min-h-[36px] rounded-full px-3.5 font-semibold transition-colors cursor-pointer ${
+            value === v.id ? 'bg-aisle-charcoal text-white' : 'text-aisle-warm hover:text-aisle-charcoal'
+          }`}
+        >
+          {v.label}
+        </button>
+      ))}
     </div>
   );
 }

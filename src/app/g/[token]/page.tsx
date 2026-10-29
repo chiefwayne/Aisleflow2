@@ -1,7 +1,10 @@
 import React from 'react';
 import { notFound } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { headers } from 'next/headers';
+// Server-only: row-level security blocks the public key, so read with the service role.
+import { supabaseAdmin as supabase } from '@/lib/supabase';
 import GuestPortalView from '@/components/guest/GuestPortalView';
+import { toPublicEvent } from '@/lib/public-event';
 import {
   EventRecord,
   GuestRecord,
@@ -15,14 +18,20 @@ import { ensureDemoEventSeeded, DEMO_GUEST_TOKEN, getMockDemoData } from '@/lib/
 
 interface PageProps {
   params: Promise<{ token: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
-export default async function GuestPortalPage({ params }: PageProps) {
+export default async function GuestPortalPage({ params, searchParams }: PageProps) {
   const { token } = await params;
+  // Count a view only for a guest's full page load: the couple's own "Open Portal" links add ?preview=1,
+  // and in-app refreshes (after an RSVP is saved) are RSC requests carrying the `rsc` header.
+  const isCouplePreview = (await searchParams).preview === '1';
+  const isRscRefresh = (await headers()).get('rsc') === '1';
   const mockData = getMockDemoData();
 
   let primaryGuest: GuestRecord | null = null;
   let event: EventRecord | null = null;
+  let previewIsAdmin = false;
 
   const isDemoGuestToken =
     token === DEMO_GUEST_TOKEN ||
@@ -43,6 +52,17 @@ export default async function GuestPortalPage({ params }: PageProps) {
 
     if (foundGuest) {
       primaryGuest = foundGuest as GuestRecord;
+      if (!isCouplePreview && !isRscRefresh) {
+        const now = new Date().toISOString();
+        await supabase
+          .from('guests')
+          .update({
+            first_viewed_at: foundGuest.first_viewed_at || now,
+            last_viewed_at: now,
+            view_count: (foundGuest.view_count || 0) + 1,
+          })
+          .eq('id', foundGuest.id);
+      }
       const { data: foundEvent } = await supabase
         .from('events')
         .select('*')
@@ -54,29 +74,15 @@ export default async function GuestPortalPage({ params }: PageProps) {
     console.warn('Guest lookup in DB failed:', err);
   }
 
-  // 2. If not found by guest access_token, check if token is an admin_token or event slug
+  // 2. If not a guest link, allow the event slug (or admin link) to open a preview with a sample guest.
   if (!event) {
     try {
-      const { data: eventByAdminOrSlug } = await supabase
-        .from('events')
-        .select('*')
-        .or(`admin_token.eq.${token},slug.eq.${token}`)
-        .maybeSingle();
-
-      if (eventByAdminOrSlug) {
-        event = eventByAdminOrSlug as EventRecord;
-        const { data: firstGuest } = await supabase
-          .from('guests')
-          .select('*')
-          .eq('event_id', event.id)
-          .order('created_at', { ascending: true })
-          .limit(1)
-          .maybeSingle();
-
-        if (firstGuest) {
-          primaryGuest = firstGuest as GuestRecord;
-        }
-      }
+      const { data: bySlug } = await supabase.from('events').select('*').eq('slug', token).maybeSingle();
+      const { data: byAdmin } = bySlug
+        ? { data: null }
+        : await supabase.from('events').select('*').eq('admin_token', token).maybeSingle();
+      event = (bySlug || byAdmin) as EventRecord | null;
+      previewIsAdmin = !!byAdmin;
     } catch (err) {}
   }
 
@@ -102,7 +108,8 @@ export default async function GuestPortalPage({ params }: PageProps) {
       access_token: token,
       first_name: 'Elena',
       last_name: 'Vance',
-      is_vip: true,
+      // Only someone holding the admin link may preview the VIP-only content.
+      is_vip: previewIsAdmin || isUsingMock,
       relationship: 'Honored Guest',
       rsvp_status: 'pending',
       plus_one_allowed: true,
@@ -213,9 +220,12 @@ export default async function GuestPortalPage({ params }: PageProps) {
     } catch (err) {}
   }
 
+  // Allowlisted fields only: never send admin credentials, billing details or internal notes to a guest's browser.
+  const publicEvent = toPublicEvent(event as EventRecord, { includeAlbum: true });
+
   return (
     <GuestPortalView
-      event={event as EventRecord}
+      event={publicEvent}
       primaryGuest={primaryGuest as GuestRecord}
       partyMembers={partyMembers}
       scheduleItems={scheduleItems}

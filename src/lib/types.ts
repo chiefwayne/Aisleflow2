@@ -14,6 +14,8 @@ export interface EventCustomSections {
     paypal_handle?: string;
     payout_note?: string;
   };
+  /** Dress-code colours shown as swatches under the dress code. */
+  dress_palette?: string[];
   travel?: {
     enabled?: boolean;
     hotel_info?: string;
@@ -30,6 +32,13 @@ export interface EventCustomSections {
   wedding_party?: {
     enabled?: boolean;
     members?: Array<{ name: string; role: string; bio: string; photo_url?: string }>;
+  };
+  menu?: {
+    options?: Array<{ name: string; description?: string }>;
+  };
+  music?: {
+    url: string;
+    title?: string;
   };
   planning?: {
     tasks?: PlanningTaskRecord[];
@@ -79,6 +88,13 @@ export interface EventRecord {
   custom_sections?: EventCustomSections | Record<string, any> | null;
   is_live: boolean;
   is_ready_for_testing: boolean;
+  rsvp_locked?: boolean;
+  album_token?: string | null;
+  invitation_mode?: 'save_the_date' | 'invitation';
+  language?: string | null;
+  custom_slug?: string | null;
+  plan?: 'free' | 'essentials' | 'premium';
+  plan_activated_at?: string | null;
   setup_completed?: boolean;
   setup_completed_at?: string | null;
   reminder_last_sent_at?: string | null;
@@ -123,6 +139,10 @@ export interface GuestRecord {
   last_opened_at?: string | null;
   created_at: string;
   updated_at: string;
+  first_viewed_at?: string | null;
+  last_viewed_at?: string | null;
+  view_count?: number;
+  table_id?: string | null;
 }
 
 export interface ScheduleItemRecord {
@@ -205,6 +225,7 @@ export interface PhotoRecord {
   guest_name?: string;
   is_approved: boolean;
   created_at: string;
+  uploader_name?: string | null;
 }
 
 export interface PlanningTaskRecord {
@@ -399,9 +420,48 @@ export interface TemplateDesignRecord {
   poetic_line?: string;
   invitation_phrase?: string;
   floron?: string;
-  border_flair?: 'double-line' | 'hairline-gold' | 'arch' | 'clean' | 'arabesque' | 'botanical-crest';
+  border_flair?: 'double-line' | 'hairline-gold' | 'arch' | 'clean' | 'arabesque' | 'botanical-crest' | 'stars' | 'deboss' | 'airmail' | 'clay';
+  /** The RSVP band: the accent colour, or a deeper shade of the page (default on dark themes). */
+  rsvp_band?: 'accent' | 'deep';
+  /** Envelope paper colour; defaults to a mix of the card and page colours. */
+  envelope_paper?: string;
+  /** Pattern inside the envelope, seen as the flap lifts. */
+  envelope_liner?: 'stripes' | 'dots' | 'stars' | 'lattice' | 'sunburst' | 'sailcloth' | 'plain' | 'leaf';
+  /** The one physical detail a preset's envelope owns, so no two openings are the same object. */
+  envelope_detail?: 'gilt-edge' | 'stitch' | 'foil-stars' | 'bead-edge' | 'airmail' | 'tassel' | 'twine';
+  /** A name face of the preset's own; otherwise script (Corinthia) or the theme serif. */
+  name_font?: 'bodoni' | 'rozha' | 'belle-aurore' | 'italiana' | 'marcellus';
+  /** The RSVP letter's own shape and corner mark, so the one screen every guest uses belongs to the preset. */
+  rsvp_card?: 'gilt-corners' | 'square' | 'stitch' | 'stars' | 'beads' | 'girih' | 'stamp' | 'deckle';
+  /** The itinerary as a timeline (default), a menu card, a harbour timetable, an order of service, a ledger,
+   *  a constellation, garlanded ceremonies, gilt panels or handwritten times. */
+  schedule_style?: 'menu' | 'timetable' | 'programme' | 'ledger' | 'constellation' | 'garland' | 'panels' | 'handwritten';
+  /** The mark drawn round the wedding day in the calendar: a heart (default) or the preset's own. */
+  date_mark?: 'square' | 'star' | 'beads' | 'girih' | 'ring' | 'wreath' | 'postmark';
+  /** Colour of the stationery frame and monogram ring (e.g. gilt); defaults to the accent. */
+  frame_color?: string;
   is_dark?: boolean;
+  /** Invitation hero: couple photo full-bleed with names over it, or names on framed stationery. */
+  hero_layout?: 'photo' | 'stationery';
+  /** Couple's names in the script face or the theme's serif. */
+  name_style?: 'script' | 'serif';
+  /** Faint paper grain over the page. */
+  paper_texture?: boolean;
+  /** "Chapter I, II…" labels above section headings. */
+  show_chapter_labels?: boolean;
   status: 'draft' | 'published' | 'archived';
   created_at: string;
   updated_at: string;
+}
+
+
+export interface GuestbookEntryRecord {
+  id: string;
+  event_id: string;
+  guest_id?: string | null;
+  author_name: string;
+  message?: string | null;
+  voice_url?: string | null;
+  is_approved: boolean;
+  created_at: string;
 }

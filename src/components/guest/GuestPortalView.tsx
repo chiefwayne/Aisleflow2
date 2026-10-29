@@ -1,19 +1,18 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Heart,
   Calendar,
   Clock,
   MapPin,
-  Camera,
   Gift,
   CheckCircle2,
-  XCircle,
-  Sparkles,
   ExternalLink,
   Lock,
+  Volume2,
+  VolumeX,
   ChevronDown,
   ChevronUp,
   ChevronRight,
@@ -24,7 +23,7 @@ import {
   Compass,
   Hotel,
   HelpCircle,
-  Check
+  Check,
 } from 'lucide-react';
 import {
   EventRecord,
@@ -33,13 +32,29 @@ import {
   CustomRsvpQuestionRecord,
   RegistryItemRecord,
   PhotoRecord,
-  TemplateDesignRecord
+  TemplateDesignRecord,
+  GuestPortalSectionId
 } from '@/lib/types';
 import { BUILTIN_THEMES } from '@/lib/theme-presets';
-import WaxSealOpening from '@/components/WaxSeal';
+import {
+  chapterSettings,
+  computeSectionStyle,
+  containerClassName,
+  containerInlineStyle,
+  isStudioDesign,
+  orderedVisibleSections,
+  pageBackgroundStyle,
+} from '@/lib/portal-design';
+import WaxSealOpening, { BowSvg, SealSvg, TWINE } from '@/components/WaxSeal';
 import { BotanicalCorner, GoldHairlineDivider } from '@/components/MotifDecorations';
-import { supabase } from '@/lib/supabase';
+import { buildIcs, downloadIcs } from '@/lib/ics';
+import EditableText from '@/components/guest/EditableText';
+import { getMenuOptions } from '@/lib/menu';
+import { fill, PORTAL_LANGUAGES, portalLanguageOf, portalStrings, type PortalStrings } from '@/lib/portal-i18n';
+import { hasFeature } from '@/lib/plans';
+import { calendarMonth, contrastRatio, ensureContrast, isDarkBackground, monogram, readableOn, readablePalette } from '@/lib/invite-style';
 import { submitRsvpAction, uploadPhotoAction, contributeToRegistryAction } from '@/app/actions/wedding-actions';
+
 
 interface GuestPortalViewProps {
   event: EventRecord;
@@ -53,18 +68,47 @@ interface GuestPortalViewProps {
   initialScheduleRsvps?: any[];
   customTheme?: TemplateDesignRecord;
   previewMode?: boolean;
+  /** The couple's public short link: no guest identity, no RSVP, uploads or pledges. */
+  publicView?: boolean;
+  /** When set (Editor preview), the couple's own text can be clicked and edited in place. */
+  onEditText?: (path: string, value: string) => void;
+  /** Preview only: start on the opening screen instead of the opened invitation. */
+  showOpening?: boolean;
+  /** Preview only: show the floating RSVP pill and music button (hidden by default so they don't cover content). */
+  showFloating?: boolean;
 }
 
-const COMMON_DIETARY_TAGS = [
-  'Vegetarian',
-  'Vegan',
-  'Gluten-Free',
-  'Dairy-Free',
-  'Nut Allergy',
-  'Shellfish Allergy',
-  'Halal',
-  'Kosher',
-];
+/** The countdown's two units: days and hours, or hours and minutes on the last day. */
+function countdownUnits(t: { days: number; hours: number; minutes: number }) {
+  return t.days > 0 ? (['days', 'hours'] as const) : (['hours', 'minutes'] as const);
+}
+
+/** Countdown labels for a single day, hour or minute. */
+const UNIT_SINGULAR = { days: 'day', hours: 'hour', minutes: 'minute' } as const;
+
+// Stored in English on the reply; shown in the invitation's language
+const COMMON_DIETARY_TAGS: Record<string, keyof PortalStrings> = {
+  Vegetarian: 'dietVegetarian',
+  Vegan: 'dietVegan',
+  'Gluten-Free': 'dietGlutenFree',
+  'Dairy-Free': 'dietDairyFree',
+  'Nut Allergy': 'dietNutAllergy',
+  'Shellfish Allergy': 'dietShellfishAllergy',
+  Halal: 'dietHalal',
+  Kosher: 'dietKosher',
+};
+
+// A preset's own cover line, translated while the couple hasn't written their own
+const PRESET_COVER_LINES: Record<string, keyof PortalStrings> = {
+  'royal-floral': 'coverRoyalFloral',
+  'modern-minimal': 'coverModernMinimal',
+  'tuscan-wine': 'coverTuscanWine',
+  'celestial-magic': 'coverCelestialMagic',
+  'indian-marigold': 'coverIndianMarigold',
+  'persian-mirror': 'coverPersianMirror',
+  'destination-riviera': 'coverDestinationRiviera',
+  'boho-botanical': 'coverBohoBotanical',
+};
 
 export default function GuestPortalView({
   event,
@@ -78,16 +122,50 @@ export default function GuestPortalView({
   initialScheduleRsvps = [],
   customTheme,
   previewMode = false,
+  publicView = false,
+  onEditText,
+  showOpening = false,
+  showFloating = false,
 }: GuestPortalViewProps) {
   const baseTheme =
     customTheme ||
     (event?.theme_id ? BUILTIN_THEMES[event.theme_id] : null) ||
     BUILTIN_THEMES['royal-floral'];
 
-  const theme: TemplateDesignRecord = {
+  const tr = portalStrings(event?.language);
+  const dietLabel = (tag: string) => (COMMON_DIETARY_TAGS[tag] ? tr[COMMON_DIETARY_TAGS[tag]] : tag);
+  // Couple-written text: editable in the Editor preview, plain text everywhere else.
+  const editable = (path: string, value: string | null | undefined, label: string, multiline = false) =>
+    onEditText ? (
+      <EditableText value={value || ''} label={label} multiline={multiline} onCommit={(v) => onEditText(path, v)} />
+    ) : (
+      value
+    );
+  const locale = PORTAL_LANGUAGES[portalLanguageOf(event?.language)].locale;
+
+  const mergedTheme: TemplateDesignRecord = {
     ...baseTheme,
     ...(event?.theme_config && typeof event.theme_config === 'object' ? event.theme_config : {}),
   };
+  // A preset mixed with a couple's own colours can produce unreadable pairs (dark text on a navy card,
+  // champagne on cream); repair just those, so every guest can read the invitation whatever was chosen
+  const repaired = readablePalette({
+    bg: mergedTheme.bg_color || '#FAF7F2',
+    text: mergedTheme.text_color || '#2C2523',
+    accent: mergedTheme.accent_color || '#9E5A44',
+    surface: mergedTheme.surface_color || '#FFFFFF',
+  });
+  const theme: TemplateDesignRecord = {
+    ...mergedTheme,
+    text_color: repaired.text,
+    surface_color: repaired.surface,
+    accent_color: repaired.accent,
+  };
+  const presetId = event?.theme_id || 'royal-floral';
+  const coverLine =
+    PRESET_COVER_LINES[presetId] && theme.eyebrow_text === BUILTIN_THEMES[presetId]?.eyebrow_text
+      ? tr[PRESET_COVER_LINES[presetId]]
+      : theme.eyebrow_text;
 
   const fallbackGuest: GuestRecord = {
     id: 'preview-guest-id',
@@ -111,11 +189,49 @@ export default function GuestPortalView({
       : [activeGuest];
 
   // Opening screen state
-  const [hasOpened, setHasOpened] = useState(previewMode);
+  const [hasOpened, setHasOpened] = useState(previewMode && !showOpening);
+  const [justOpened, setJustOpened] = useState(false);
+  // The floating RSVP pill hides while the RSVP card itself is on screen.
+  const [rsvpInView, setRsvpInView] = useState(false);
+  const [pastCalendar, setPastCalendar] = useState(false);
+  useEffect(() => {
+    const el = document.getElementById('save-the-date');
+    if (!el) return;
+    // Read from the scroll position rather than an intersection crossing, so a jump straight past the
+    // calendar (an anchor link, a restored scroll) still shows the pill
+    const check = () => setPastCalendar(el.getBoundingClientRect().bottom < 0);
+    check();
+    window.addEventListener('scroll', check, { passive: true });
+    return () => window.removeEventListener('scroll', check);
+  }, [hasOpened]);
+  useEffect(() => {
+    const el = document.getElementById('rsvp');
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(([entry]) => setRsvpInView(entry.isIntersecting), { threshold: 0.05 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasOpened]);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [musicPlaying, setMusicPlaying] = useState(false);
+  const toggleMusic = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) audio.play().then(() => setMusicPlaying(true)).catch(() => setMusicPlaying(false));
+    else {
+      audio.pause();
+      setMusicPlaying(false);
+    }
+  };
 
   // 4-Step RSVP Wizard State
   // Step 1: Attendance, Step 2: Sub-Events, Step 3: Dining & Questions, Step 4: Review, Step 5: Confirmed
-  const [rsvpStep, setRsvpStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  // A party that has already replied opens on its reply (with "Change my reply"), not on a blank form
+  const savedReply = allGuests.length > 0 && allGuests.every((g) => g.rsvp_status && g.rsvp_status !== 'pending');
+  const [rsvpStep, setRsvpStep] = useState<1 | 2 | 3 | 4 | 5>(savedReply ? 5 : 1);
+  // Once every guest in the party has replied, the RSVP band thanks them instead of asking again
+  const hasReplied = rsvpStep === 5 || savedReply;
+  const rsvpCardRef = useRef<HTMLDivElement>(null);
+  const rsvpStepMounted = useRef(false);
 
   // Party RSVP Form State
   const [partyState, setPartyState] = useState<
@@ -190,6 +306,7 @@ export default function GuestPortalView({
   const [pledgeMessage, setPledgeMessage] = useState('');
   const [isPledging, setIsPledging] = useState(false);
   const [pledgeSuccess, setPledgeSuccess] = useState(false);
+  const [pledgeError, setPledgeError] = useState('');
   const [copiedZelle, setCopiedZelle] = useState(false);
 
   // Photo uploads
@@ -221,9 +338,20 @@ export default function GuestPortalView({
     return () => clearInterval(timer);
   }, [event.wedding_date]);
 
+  // Bring the RSVP card back into view when moving between steps (long steps on phones)
+  useEffect(() => {
+    if (!rsvpStepMounted.current) {
+      rsvpStepMounted.current = true;
+      return;
+    }
+    if (previewMode) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    rsvpCardRef.current?.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+  }, [rsvpStep, previewMode]);
+
   // Check deadline lockout
   const isPastDeadline = new Date() > new Date(event.rsvp_deadline);
-  const isRsvpLocked = isPastDeadline && !event.allow_late_rsvp;
+  const isRsvpLocked = !!event.rsvp_locked || (isPastDeadline && !event.allow_late_rsvp);
 
   // Filter schedule items based on guest VIP status
   const isGuestVip = activeGuest.is_vip || partyMembers.some((p) => p?.is_vip);
@@ -235,6 +363,27 @@ export default function GuestPortalView({
   // Attending guests count in wizard
   const attendingGuestsInParty = allGuests.filter((g) => partyState[g.id]?.rsvp_status === 'attending');
   const hasAnyAttending = attendingGuestsInParty.length > 0;
+  const allAnswered = allGuests.every((g) => {
+    const st = partyState[g.id]?.rsvp_status;
+    return st === 'attending' || st === 'declined';
+  });
+
+  // Save the wedding (or the guest's personal itinerary) to their calendar app
+  const handleAddToCalendar = () => {
+    const where = [event.venue_name, event.venue_address].filter(Boolean).join(', ');
+    const events =
+      visibleSchedule.length > 0
+        ? visibleSchedule.map((item) => ({
+            uid: item.id,
+            title: `${item.title} — ${event.couple_names}`,
+            start: item.start_time,
+            end: item.end_time,
+            location: item.location_name || where,
+            description: item.description || undefined,
+          }))
+        : [{ uid: `${event.id}-wedding`, title: `${event.couple_names}'s Wedding`, start: String(event.wedding_date).slice(0, 10), location: where }];
+    downloadIcs('wedding.ics', buildIcs(events));
+  };
 
   // Handle party RSVP status change
   const handleStatusChange = (guestId: string, status: 'attending' | 'declined') => {
@@ -278,7 +427,7 @@ export default function GuestPortalView({
   // Submit RSVP via Server Action
   const handleFinalRsvpSubmit = async () => {
     if (isRsvpLocked) {
-      setErrorMessage('The RSVP deadline for this event has passed. Please contact the couple directly.');
+      setErrorMessage(tr.rsvpsClosedError);
       return;
     }
 
@@ -307,40 +456,27 @@ export default function GuestPortalView({
         })
       );
 
-      const res = await submitRsvpAction(formData);
-
-      if (res?.error) {
-        // Fallback: update directly via Supabase client if Server Action encountered authorization or environment issues
-        for (const g of allGuests) {
-          if (!g?.id) continue;
-          const data = partyState[g.id];
-          if (data) {
-            await supabase
-              .from('guests')
-              .update({
-                rsvp_status: data.rsvp_status,
-                meal_choice: data.meal_choice,
-                dietary_notes: data.dietary_notes,
-                dietary_tags: data.dietary_tags,
-                plus_one_name: data.plus_one_name,
-                plus_one_meal: data.plus_one_meal,
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', g.id);
-          }
+      // The landing-page demo has no real guest to save to.
+      if (!previewMode) {
+        const res = await submitRsvpAction(formData);
+        if (res?.error) {
+          setErrorMessage(res.error || tr.rsvpSaveError);
+          return;
         }
       }
 
       setRsvpStep(5);
-      confetti({
+      // Confetti draws over the whole window, so it stays off in the dashboard's preview pane
+      if (!previewMode) confetti({
+        disableForReducedMotion: true,
         particleCount: 90,
         spread: 75,
         origin: { y: 0.6 },
-        colors: [theme.accent_color || '#C59B27', '#9E5A44', '#E8C8C0', '#2C2523'],
+        colors: [accent, theme.border_color || '#E8E0D7', surface, muted],
       });
     } catch (err: any) {
       console.error('RSVP submission error:', err);
-      setErrorMessage('Unable to save your RSVP right now. Please try again.');
+      setErrorMessage(tr.rsvpSaveError);
     } finally {
       setIsSubmitting(false);
     }
@@ -352,7 +488,7 @@ export default function GuestPortalView({
     if (!file) return;
 
     if (file.size > 10 * 1024 * 1024) {
-      setUploadMessage('Image exceeds 10MB limit.');
+      setUploadMessage(tr.photoTooLarge);
       return;
     }
 
@@ -369,32 +505,10 @@ export default function GuestPortalView({
 
       if (res?.success && res.photo) {
         setPhotos((prev) => [res.photo as PhotoRecord, ...prev]);
-        setUploadMessage('Photo added to stream! ✨');
+        setUploadMessage(tr.photoAdded);
         setPhotoCaption('');
       } else {
-        // Fallback: Read as base64 and save to database
-        const reader = new FileReader();
-        reader.onloadend = async () => {
-          const base64Url = reader.result as string;
-          const { data, error } = await supabase
-            .from('photos')
-            .insert({
-              event_id: event.id,
-              guest_id: activeGuest.id,
-              image_url: base64Url,
-              caption: photoCaption || `Captured by ${activeGuest.first_name}`,
-              is_approved: true,
-            })
-            .select()
-            .single();
-
-          if (data) {
-            setPhotos((prev) => [data as PhotoRecord, ...prev]);
-            setUploadMessage('Photo added to stream! ✨');
-            setPhotoCaption('');
-          }
-        };
-        reader.readAsDataURL(file);
+        setUploadMessage((res as any)?.error || tr.photoUploadError);
       }
     } catch (err) {
       console.error('Photo upload failed:', err);
@@ -410,6 +524,7 @@ export default function GuestPortalView({
     if (!activeCashFund) return;
 
     setIsPledging(true);
+    setPledgeError('');
     const amountNum = parseFloat(pledgeAmount) || 0;
 
     try {
@@ -421,8 +536,12 @@ export default function GuestPortalView({
       formData.append('message', pledgeMessage);
 
       const res = await contributeToRegistryAction(formData);
+      if (!res?.success) {
+        setPledgeError(res?.error || tr.giftError);
+        return;
+      }
 
-      const newTotal = res?.newAmount ?? ((activeCashFund.current_amount || 0) + amountNum);
+      const newTotal = res.newAmount ?? ((activeCashFund.current_amount || 0) + amountNum);
 
       setRegistryList((prev) =>
         prev.map((item) =>
@@ -444,1369 +563,1906 @@ export default function GuestPortalView({
   };
 
   const partyNames = allGuests.map((g) => g?.first_name || 'Guest').join(' & ');
+  const menuOptions = getMenuOptions(event);
+  const musicUrl: string | undefined = (event.custom_sections as any)?.music?.url;
   const customSections = (event.custom_sections || {}) as any;
   const faqList = customSections.faq?.items || [];
   const localRecsList = customSections.local_recs?.items || [];
   const weddingPartyList = customSections.wedding_party?.members || [];
   const travelInfo = customSections.travel || {};
 
-  const fontClass =
-    theme.font_family === 'modern-sans'
-      ? 'font-sans'
-      : theme.font_family === 'vintage-editorial'
-      ? 'font-editorial'
-      : 'font-serif';
+  // Body text: Garamond for the serif themes (headings set their own display face)
+  const fontClass = theme.font_family === 'modern-sans' ? 'font-sans' : 'font-editorial';
 
   const canvasMaxWidthClass =
     theme.canvas_width === 'narrow'
       ? 'max-w-md'
       : theme.canvas_width === 'wide'
       ? 'max-w-2xl'
+      : theme.canvas_width === 'full'
+      ? 'max-w-5xl'
       : 'max-w-xl';
+
+  const studioLayout = isStudioDesign(theme);
+  const heroStyle = studioLayout ? computeSectionStyle(theme, 'hero') : null;
+  // Studio designs carry their own layout; built-in themes follow the couple's chapter order and hidden chapters.
+  const chapters = chapterSettings(event?.theme_config as { section_order?: string[]; hidden_sections?: string[] });
+  const renderOrder = studioLayout
+    ? orderedVisibleSections(theme)
+    : orderedVisibleSections({ section_order: chapters.order, hidden_sections: chapters.hidden });
+
+  // Premium layout settings (Builder → Presets / Typography)
+  const accent = theme.accent_color || '#9E5A44';
+  const pageBg = theme.bg_color || '#FAF7F2';
+  // The stationery frame and monogram ring: the preset's gilt when it has one, otherwise the accent
+  const frameColor = theme.frame_color || accent;
+  const ink = theme.text_color || '#2C2523';
+  // The RSVP letter takes the preset's own shape: its rule, its corners and the shape of its buttons
+  const rsvpCard = theme.rsvp_card;
+  const btnShape =
+    rsvpCard === 'square' ? 'rounded-none'
+    : rsvpCard === 'stitch' ? 'rounded-md'
+    : rsvpCard === 'stamp' ? 'rounded-sm'
+    : rsvpCard === 'girih' ? 'rounded-[3px]' // a tile, carrying a mihrab arch beside its label
+    : rsvpCard === 'deckle' ? 'rounded-[2.4rem_1rem_2rem_0.8rem/1.6rem_1.9rem_0.9rem_1.7rem]' // a river pebble
+    : 'rounded-full';
+  const doubleRule = (c: string) =>
+    `inset 0 0 0 1px color-mix(in srgb, ${c} 45%, transparent), inset 0 0 0 6px ${pageBg}, inset 0 0 0 7px color-mix(in srgb, ${c} 30%, transparent)`;
+  const rsvpCardStyle: React.CSSProperties =
+    rsvpCard === 'square'
+      ? { boxShadow: `inset 0 0 0 1px ${ink}`, borderRadius: 0 }
+      : rsvpCard === 'stitch'
+        ? { boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${accent} 35%, transparent)`, outline: `1.5px dashed color-mix(in srgb, ${accent} 70%, transparent)`, outlineOffset: '-9px' }
+        : rsvpCard === 'deckle'
+          ? { backgroundColor: theme.surface_color || '#FFFFFF', clipPath: DECKLE, borderRadius: 0 }
+          : rsvpCard === 'gilt-corners'
+            ? {}
+            : rsvpCard === 'girih'
+            ? { boxShadow: `inset 0 0 0 1px ${frameColor}` }
+            : { boxShadow: doubleRule(accent) };
+  const heroLayout = theme.hero_layout || (event.cover_image_url ? 'photo' : 'stationery');
+  const showPhotoHero = heroLayout === 'photo' && !!event.cover_image_url;
+  const scriptNames = theme.name_style !== 'serif';
+  const nameClass = `couple-names ${scriptNames ? 'font-script font-normal leading-[0.95]' : 'font-serif font-normal tracking-tight leading-[1.08]'}`;
+  // Script is kept for the couple's names; section headings are set large in the text face
+  const headingClass = scriptNames
+    ? 'font-editorial text-3xl sm:text-4xl font-medium leading-tight tracking-[0.01em] [text-wrap:balance]'
+    : 'font-serif text-2xl sm:text-3xl font-medium [text-wrap:balance]';
+  const nameParts = (event.couple_names || '').split(/\s+(?:&|and)\s+/i);
+  const coupleNamesStacked =
+    nameParts.length === 2 ? (
+      <>
+        <span className="block">{nameParts[0]}</span>
+        <span className="block font-editorial italic text-[0.42em] leading-tight my-1 opacity-80">&amp;</span>
+        <span className="block">{nameParts[1]}</span>
+      </>
+    ) : (
+      event.couple_names
+    );
+  // "Chapter I, II…" above every section when the couple turns labels on; otherwise a small ornament,
+  // kept to a few key moments (the wording, Our Story, the RSVP) so it stays special
+  const chapterLabel = (
+    <span className="text-xs uppercase tracking-[0.3em] block" style={{ color: 'var(--section-accent, ' + accent + ')' }}>
+      <span className="chapter-label" />
+    </span>
+  );
+  const ornament = (
+    <span aria-hidden="true" className="flex items-center justify-center gap-3" style={{ color: 'var(--section-accent, ' + accent + ')' }}>
+      <span className="h-px w-8 bg-current opacity-40" />
+      <span className="text-base leading-none">{theme.floron || '✦'}</span>
+      <span className="h-px w-8 bg-current opacity-40" />
+    </span>
+  );
+  const chapterMark = theme.show_chapter_labels ? chapterLabel : null;
+  const keyMark = theme.show_chapter_labels ? chapterLabel : ornament;
+  // The RSVP sits on a band of the accent colour, with text chosen to stay readable on it
+  // Prefer the theme's own page or text colour on the band; fall back to plain white or near-black
+  const bandInk = [pageBg, ink].find((c) => contrastRatio(c, accent) >= 4.5) ?? readableOn(accent, [pageBg, ink, '#FFFFFF', '#1A1A1A']);
+  const surface = theme.surface_color || '#FFFFFF';
+  // Secondary text keeps the couple's hue but is nudged until it reads comfortably on the page; 5:1 leaves
+  // room for the tinted calendar band and the RSVP card, which sit a shade off the page colour
+  const muted = ensureContrast(theme.muted_color || '#7D746D', pageBg, 5, ink);
+  // Outlines of the RSVP choices must be seen (3:1, WCAG non-text contrast) on the page and on cards
+  const choiceLine = ensureContrast(ensureContrast(theme.border_color || '#E8E0D7', pageBg, 3, ink), surface, 3, ink);
+  const darkTheme = isDarkBackground(pageBg);
+  // Every colour on the invitation comes from the theme through these variables, so dark themes work too
+  const paletteVars = {
+    '--ink': ink,
+    '--muted': muted,
+    '--accent': accent,
+    '--on-accent': bandInk,
+    '--on-ink': readableOn(ink, [surface, pageBg, '#FFFFFF', '#1A1A1A']),
+    '--surface': surface,
+    '--field-bg': surface,
+    '--line': theme.border_color || '#E8E0D7',
+    '--tint': `color-mix(in srgb, ${accent} 9%, ${surface})`,
+    '--error': darkTheme ? '#FCA5A5' : '#B91C1C',
+  } as React.CSSProperties;
+  // The window behind the invitation takes the theme's page colour, so dark themes never flash cream when a
+  // phone overscrolls or the opening plays (important, to outrank the root layout's cream utility on <body>);
+  // left alone in the dashboard's preview pane
+  const safePageBg = /^#[0-9a-f]{3,8}$/i.test(pageBg) ? pageBg : '#FAF7F2';
+  const windowBackdrop = previewMode ? null : (
+    <>
+      <meta name="theme-color" content={safePageBg} />
+      <style>{`html,body{background-color:${safePageBg}!important;color-scheme:${darkTheme ? 'dark' : 'light'}}`}</style>
+    </>
+  );
+  const weddingDateLong = new Date(event.wedding_date).toLocaleDateString(locale, {
+    timeZone: 'UTC', // dates are stored as midnight UTC
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const replyByShort = event.rsvp_deadline
+    ? new Date(event.rsvp_deadline).toLocaleDateString(locale, { timeZone: 'UTC', month: 'long', day: 'numeric' })
+    : '';
+
+  // Save-the-date mode: the same link shows a short announcement until the couple switches to the full invitation.
+  if (event.invitation_mode === 'save_the_date' && hasFeature(event, 'save_the_date')) {
+    const where = [event.venue_name, event.venue_address].filter(Boolean).join(', ');
+    return (
+      <div
+        lang={portalLanguageOf(event.language)}
+        style={{ ...paletteVars, backgroundColor: theme.bg_color || '#FAF7F2', color: theme.text_color || '#2C2523' }}
+        className={`invite-root ${theme.font_family === 'vintage-editorial' ? 'theme-vintage' : ''} ${theme.name_style === 'serif' ? 'names-serif' : ''} ${theme.name_font ? `name-face-${theme.name_font}` : ''} min-h-screen flex items-center justify-center px-5 py-12 ${fontClass}`}
+      >
+        {windowBackdrop}
+        <main className="max-w-md w-full text-center space-y-6">
+          <p className="text-sm uppercase tracking-[0.3em] font-semibold" style={{ color: theme.accent_color }}>
+            {tr.saveTheDate}
+          </p>
+          <h1 className="font-serif text-4xl sm:text-5xl font-semibold leading-tight">{event.couple_names}</h1>
+          <p className="font-editorial text-2xl">
+            {new Date(event.wedding_date).toLocaleDateString(locale, {
+              timeZone: 'UTC',
+              weekday: 'long',
+              month: 'long',
+              day: 'numeric',
+              year: 'numeric',
+            })}
+          </p>
+          {where && <p className="text-sm uppercase tracking-[0.2em]" style={{ color: theme.accent_color }}>{where}</p>}
+          <div className="flex items-center justify-center gap-6 border-y py-4" style={{ borderColor: theme.border_color }}>
+            {countdownUnits(timeLeft).map((unit) => (
+              <div key={unit}>
+                <span className="font-editorial text-3xl font-semibold block leading-none">{timeLeft[unit]}</span>
+                <span className="text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">{timeLeft[unit] === 1 ? tr[UNIT_SINGULAR[unit]] : tr[unit]}</span>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              downloadIcs(
+                'save-the-date.ics',
+                buildIcs([{ uid: `${event.id}-wedding`, title: `${event.couple_names}'s Wedding`, start: String(event.wedding_date).slice(0, 10), location: where }])
+              )
+            }
+            className="min-h-[44px] rounded-full px-6 text-base font-semibold tracking-wide text-[color:var(--on-accent)]"
+            style={{ backgroundColor: theme.accent_color || '#9E5A44' }}
+          >
+            {tr.addToCalendar}
+          </button>
+          <p className="font-editorial italic opacity-75">{tr.formalToFollow}</p>
+        </main>
+      </div>
+    );
+  }
+
+  const sectionBlocks: Record<GuestPortalSectionId, React.ReactNode> = {
+    'our-story': (
+      <>
+            {/* 2. OUR STORY & WELCOME */}
+            {(event.welcome_message || event.our_story || event.story_image_url || onEditText) && (
+              <section className="text-center space-y-6">
+                <div className="space-y-2">
+                  {keyMark}
+                  <h2 className={headingClass}>{tr.ourStory}</h2>
+                </div>
+
+                {(event.welcome_message || onEditText) && (
+                  <p className="font-editorial text-lg sm:text-xl italic max-w-md mx-auto leading-relaxed opacity-90">
+                    "{editable('event.welcome_message', event.welcome_message, 'welcome message', true)}"
+                  </p>
+                )}
+
+                {event.story_image_url && (
+                  <div
+                    className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl shadow-sm border"
+                    style={{ borderColor: theme.border_color || '#E8E0D7' }}
+                  >
+                    <img
+                      src={event.story_image_url}
+                      loading="lazy"
+                      decoding="async"
+                      alt="Couple Story"
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                )}
+
+                {(event.our_story || onEditText) && (
+                  <p
+                    className="text-sm sm:text-base leading-relaxed max-w-lg mx-auto text-left opacity-80"
+                    style={{ color: theme.text_color }}
+                  >
+                    {editable('event.our_story', event.our_story, 'your story', true)}
+                  </p>
+                )}
+              </section>
+            )}
+      </>
+    ),
+    'schedule': (
+      <>
+            {/* 3. SEAMLESS TIMELINE / ITINERARY */}
+            {visibleSchedule.length > 0 && (
+              <section className="space-y-8">
+                <div className="text-center space-y-2">
+                  {chapterMark}
+                  <h2 className={headingClass}>{tr.theItinerary}</h2>
+                </div>
+
+                {theme.schedule_style === 'menu' ? (
+                  // Tuscan: the day set like a menu card, course by course
+                  <div className="mx-auto max-w-sm border-y py-8 text-center" style={{ borderColor: `color-mix(in srgb, ${accent} 35%, transparent)` }}>
+                    {visibleSchedule.map((item, idx) => (
+                      <div key={item.id}>
+                        {idx > 0 && (
+                          <p aria-hidden="true" className="my-5 text-base leading-none" style={{ color: accent }}>
+                            {theme.floron || '✦'}
+                          </p>
+                        )}
+                        <p className="mx-auto max-w-[24ch] font-editorial text-lg vintage-caps [text-wrap:balance]">{item.title.replace(/ & /g, '\u00a0& ')}</p>
+                        <p className="mt-1 font-editorial text-base italic" style={{ color: accent }}>
+                          {new Date(item.start_time).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}
+                          {item.location_name ? ` · ${item.location_name}` : ''}
+                        </p>
+                        {item.description && <p className="mt-1 text-sm leading-relaxed text-[color:var(--muted)]">{item.description}</p>}
+                        {item.dress_code && <p className="mt-1 text-sm italic text-[color:var(--muted)]">{item.dress_code}</p>}
+                      </div>
+                    ))}
+                  </div>
+                ) : theme.schedule_style === 'programme' ? (
+                  // Royal: an order of service, each part under a fine gilt rule
+                  <div className="mx-auto max-w-sm text-center">
+                    {visibleSchedule.map((item, idx) => (
+                      <div key={item.id} className={idx > 0 ? 'mt-6' : ''}>
+                        {idx > 0 && (
+                          // A laurel sprig between the parts: two branches meeting at a berry, as on the crest
+                          <svg aria-hidden="true" viewBox="0 0 64 16" className="mx-auto mb-6 h-5 w-20" fill={frameColor}>
+                            {[1, -1].map((dir) => (
+                              <g key={dir} transform={dir === -1 ? 'translate(64 0) scale(-1 1)' : undefined}>
+                                <path d="M29 8 C 22 8.6, 12 8.6, 3 7" fill="none" stroke={frameColor} strokeWidth="0.8" />
+                                {/* Almond leaves in pairs, swept out toward the branch tip */}
+                                {[11, 19, 27].map((x) => (
+                                  <g key={x}>
+                                    <path d={`M${x} 8 Q ${x - 2.4} 2.6, ${x - 8} 3 Q ${x - 4.4} 6.8, ${x} 8 Z`} />
+                                    <path d={`M${x} 8 Q ${x - 2.4} 13.4, ${x - 8} 13 Q ${x - 4.4} 9.2, ${x} 8 Z`} />
+                                  </g>
+                                ))}
+                              </g>
+                            ))}
+                            <circle cx="32" cy="8" r="2" />
+                          </svg>
+                        )}
+                        <p className="font-editorial text-sm uppercase tracking-[0.24em]" style={{ color: accent }}>
+                          {new Date(item.start_time).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}
+                        </p>
+                        <p className="mt-1 font-editorial text-2xl">{item.title}</p>
+                        {item.location_name && <p className="mt-0.5 font-editorial text-base italic text-[color:var(--muted)]">{item.location_name}</p>}
+                        {item.description && <p className="mt-1 text-sm leading-relaxed text-[color:var(--muted)]">{item.description}</p>}
+                        {item.dress_code && <p className="mt-1 text-sm italic text-[color:var(--muted)]">{item.dress_code}</p>}
+                      </div>
+                    ))}
+                  </div>
+                ) : theme.schedule_style === 'ledger' ? (
+                  // Modern: a ledger, hairline rows, the time set in the name face
+                  <div className="border-t" style={{ borderColor: ink }}>
+                    {visibleSchedule.map((item) => (
+                      <div key={item.id} className="grid grid-cols-[6rem_1fr] gap-4 border-b py-4" style={{ borderColor: 'var(--line)' }}>
+                        <span className="couple-names text-xl leading-tight">{new Date(item.start_time).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}</span>
+                        <div className="space-y-0.5">
+                          <p className="font-editorial text-lg">{item.title}</p>
+                          {item.location_name && <p className="text-sm text-[color:var(--muted)]">{item.location_name}</p>}
+                          {item.description && <p className="text-sm leading-relaxed text-[color:var(--muted)]">{item.description}</p>}
+                          {item.dress_code && <p className="text-sm italic text-[color:var(--muted)]">{item.dress_code}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : theme.schedule_style === 'constellation' ? (
+                  // Celestial: the evening as a constellation, each part a star joined by a dotted line
+                  <div className="mx-auto max-w-sm text-center">
+                    {visibleSchedule.map((item, idx) => (
+                      <div key={item.id}>
+                        {idx > 0 && <span aria-hidden="true" className="mx-auto my-3 block h-10 w-0 border-l border-dotted" style={{ borderColor: accent }} />}
+                        <svg aria-hidden="true" viewBox="-12 -12 24 24" className="mx-auto h-5 w-5" fill={accent}>
+                          <path d="M0 -11 Q 1.6 -1.6, 11 0 Q 1.6 1.6, 0 11 Q -1.6 1.6, -11 0 Q -1.6 -1.6, 0 -11 Z" />
+                        </svg>
+                        <p className="mt-2 couple-names text-2xl leading-none">{new Date(item.start_time).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}</p>
+                        <p className="mt-2 font-editorial text-xl">{item.title}</p>
+                        {item.location_name && <p className="mt-0.5 text-sm italic text-[color:var(--muted)]">{item.location_name}</p>}
+                        {item.description && <p className="mt-0.5 text-sm leading-relaxed text-[color:var(--muted)]">{item.description}</p>}
+                        {item.dress_code && <p className="mt-0.5 text-sm italic text-[color:var(--muted)]">{item.dress_code}</p>}
+                      </div>
+                    ))}
+                  </div>
+                ) : theme.schedule_style === 'garland' ? (
+                  // Marigold: each ceremony under its own small garland, named in the festive face
+                  <div className="mx-auto max-w-sm space-y-9 text-center">
+                    {visibleSchedule.map((item) => (
+                      <div key={item.id}>
+                        <span aria-hidden="true" className="mx-auto flex w-fit items-center gap-1">
+                          <span className="h-3 w-3 opacity-70"><MarigoldHead tone={accent} /></span>
+                          <span className="h-4 w-4"><MarigoldHead tone={accent} /></span>
+                          <span className="h-3 w-3 opacity-70"><MarigoldHead tone={accent} /></span>
+                        </span>
+                        <p className="mt-3 couple-names text-2xl leading-tight">{item.title}</p>
+                        <p className="mt-1 font-editorial text-base italic" style={{ color: accent }}>{new Date(item.start_time).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}</p>
+                        {item.location_name && <p className="mt-0.5 text-sm italic text-[color:var(--muted)]">{item.location_name}</p>}
+                        {item.description && <p className="mt-0.5 text-sm leading-relaxed text-[color:var(--muted)]">{item.description}</p>}
+                        {item.dress_code && <p className="mt-0.5 text-sm italic text-[color:var(--muted)]">{item.dress_code}</p>}
+                      </div>
+                    ))}
+                  </div>
+                ) : theme.schedule_style === 'panels' ? (
+                  // Persian: the whole day in one hairline cartouche, its parts divided by finer rules
+                  <div>
+                    <div className="px-5" style={{ border: `1px solid color-mix(in srgb, ${frameColor} 70%, transparent)` }}>
+                    {visibleSchedule.map((item, idx) => (
+                      <div key={item.id} style={idx ? { borderTop: `1px solid color-mix(in srgb, ${frameColor} 40%, transparent)` } : undefined}>
+                        <div className="py-5 text-center">
+                          <p className="font-editorial text-base vintage-caps tracking-[0.08em]" style={{ color: accent }}>{new Date(item.start_time).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}</p>
+                          <p className="mt-1 couple-names text-xl">{item.title}</p>
+                        {item.location_name && <p className="mt-0.5 text-sm italic text-[color:var(--muted)]">{item.location_name}</p>}
+                        {item.description && <p className="mt-0.5 text-sm leading-relaxed text-[color:var(--muted)]">{item.description}</p>}
+                        {item.dress_code && <p className="mt-0.5 text-sm italic text-[color:var(--muted)]">{item.dress_code}</p>}
+                        </div>
+                      </div>
+                    ))}
+                    </div>
+                  </div>
+                ) : theme.schedule_style === 'handwritten' ? (
+                  // Boho: times written in by hand beside each part of the day
+                  <div className="space-y-7">
+                    {visibleSchedule.map((item) => (
+                      <div key={item.id} className="grid grid-cols-[6.5rem_1fr] items-baseline gap-4">
+                        <span className="font-editorial text-lg italic leading-none" style={{ color: accent }}>{new Date(item.start_time).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}</span>
+                        <div className="space-y-0.5">
+                          <p className="font-editorial text-lg">
+                            <svg aria-hidden="true" viewBox="0 0 28 16" className="mr-2 inline-block h-4 w-7 -translate-y-0.5" fill={accent} stroke={accent} strokeWidth="1" strokeLinecap="round">
+                              <path d="M1 14 C 9 13, 18 9, 27 3" fill="none" />
+                              <path d="M9 12.6 C 7 9, 8.4 5.2, 12 4 C 13.4 7.6, 12.4 10.6, 9 12.6 Z" fillOpacity="0.45" />
+                              <path d="M18 8.6 C 17.6 5, 19.6 2, 23.4 1.4 C 24 5, 22 7.6, 18 8.6 Z" fillOpacity="0.45" />
+                            </svg>
+                            {item.title.replace(/ & /g, '\u00a0& ')}
+                          </p>
+                        {item.location_name && <p className="text-sm italic text-[color:var(--muted)]">{item.location_name}</p>}
+                        {item.description && <p className="text-sm leading-relaxed text-[color:var(--muted)]">{item.description}</p>}
+                        {item.dress_code && <p className="text-sm italic text-[color:var(--muted)]">{item.dress_code}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : theme.schedule_style === 'timetable' ? (
+                  // Riviera: a harbour departures board, each destination dotted across to its time
+                  <div className="border-y-2" style={{ borderColor: accent }}>
+                    {visibleSchedule.map((item) => (
+                      <div key={item.id} className="border-b border-dashed py-4 last:border-b-0" style={{ borderColor: 'var(--line)' }}>
+                        <div className="flex items-baseline gap-2">
+                          <p className="font-editorial text-lg font-semibold">{item.title}</p>
+                          <span aria-hidden="true" className="min-w-6 flex-1 border-b-2 border-dotted" style={{ borderColor: `color-mix(in srgb, ${accent} 45%, transparent)` }} />
+                          <span className="font-editorial text-lg font-semibold [font-variant-numeric:tabular-nums]" style={{ color: accent }}>
+                            {new Date(item.start_time).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}
+                          </span>
+                        </div>
+                        <div className="space-y-0.5">
+                          {item.location_name && <p className="text-sm text-[color:var(--muted)]">{item.location_name}</p>}
+                          {item.description && <p className="text-sm leading-relaxed text-[color:var(--muted)]">{item.description}</p>}
+                          {item.dress_code && <p className="text-sm italic text-[color:var(--muted)]">{item.dress_code}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                // Seamless vertical timeline (the default)
+                <div className="relative pl-6 sm:pl-8 space-y-8 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-px before:bg-gradient-to-b before:from-transparent before:via-[color:var(--line)] before:to-transparent">
+                  {visibleSchedule.map((item, idx) => (
+                    <div key={item.id} className="relative group">
+                      {/* Timeline Dot Indicator */}
+                      <span
+                        className="absolute -left-[21px] sm:-left-[29px] top-1.5 h-2.5 w-2.5 rounded-full transition-transform duration-300 group-hover:scale-125"
+                        style={{
+                          backgroundColor: accent,
+                          boxShadow: `0 0 0 4px ${pageBg}`,
+                        }}
+                      />
+
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <h3 className="font-editorial text-lg sm:text-xl font-semibold tracking-tight">
+                            {item.title}
+                          </h3>
+                          <span
+                            className="text-sm uppercase tracking-widest font-semibold"
+                            style={{ color: theme.accent_color }}
+                          >
+                            {new Date(item.start_time).toLocaleTimeString(locale, {
+                              hour: 'numeric',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+
+                        {item.location_name && (
+                          <p className="text-sm opacity-75 flex items-center gap-1">
+                            <MapPin className="h-3 w-3 inline" /> {item.location_name}
+                          </p>
+                        )}
+
+                        {item.description && (
+                          <p className="text-sm leading-relaxed opacity-70 pt-1">
+                            {item.description}
+                          </p>
+                        )}
+
+                        {item.dress_code && (
+                          <div className="pt-1">
+                            <span
+                              className="inline-block text-xs uppercase tracking-wider px-2.5 py-0.5 rounded-full border"
+                              style={{
+                                borderColor: theme.border_color || '#E8E0D7',
+                                backgroundColor: theme.surface_color || '#FFFFFF',
+                              }}
+                            >
+                              Attire: {item.dress_code}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                )}
+              </section>
+            )}
+
+            {/* Dress code, with the couple's palette as swatches */}
+            {(event.dress_code || (customSections.dress_palette || []).length > 0) && (
+              <section className="mt-16 text-center space-y-4">
+                <p className="font-editorial text-lg italic" style={{ color: muted }}>
+                  {tr.dressCode}
+                </p>
+                {event.dress_code && <p className="font-editorial text-2xl sm:text-3xl italic">{event.dress_code}</p>}
+                {(customSections.dress_palette || []).length > 0 && (
+                  <div className="space-y-3 pt-2">
+                    <div className="flex items-center justify-center gap-3">
+                      {(customSections.dress_palette as string[]).slice(0, 6).map((c, i) => (
+                        <span
+                          key={i}
+                          title={c}
+                          className="h-10 w-10 rounded-full"
+                          style={{ backgroundColor: c, boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.08)' }}
+                        />
+                      ))}
+                    </div>
+                    <p className="text-sm italic text-[color:var(--muted)]">{tr.ourPalette}</p>
+                  </div>
+                )}
+              </section>
+            )}
+      </>
+    ),
+    'travel': (
+      <>
+            {/* 4. THE VENUE & TRAVEL LOGISTICS */}
+            <section className="text-center space-y-6">
+              <div className="space-y-2">
+                {chapterMark}
+                <h2 className={headingClass}>{tr.venueAndTravel}</h2>
+              </div>
+
+              {event.venue_image_url && (
+                <div
+                  className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl shadow-sm border"
+                  style={{ borderColor: theme.border_color || '#E8E0D7' }}
+                >
+                  <img
+                    src={event.venue_image_url}
+                      loading="lazy"
+                      decoding="async"
+                    alt={event.venue_name}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <h3 className="font-editorial text-2xl font-semibold vintage-caps">{event.venue_name}</h3>
+                <p className="text-sm opacity-75">{event.venue_address}</p>
+
+                {event.venue_address && (
+                  <div className="pt-1.5 flex justify-center">
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                        `${event.venue_name ? event.venue_name + ', ' : ''}${event.venue_address}`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex min-h-[44px] items-center text-lg italic underline decoration-1 underline-offset-4 hover:opacity-80 cursor-pointer"
+                      style={{ color: accent }}
+                    >
+                      {tr.getDirections}
+                    </a>
+                  </div>
+                )}
+
+                {(event.travel_info || onEditText) && (
+                  <p
+                    className="mt-3 text-sm leading-relaxed p-4 rounded-2xl text-left border"
+                    style={{
+                      backgroundColor: theme.surface_color || '#FFFFFF',
+                      borderColor: theme.border_color || '#E8E0D7',
+                    }}
+                  >
+                    <strong className="block mb-1 text-sm uppercase tracking-wider font-semibold">
+                      {tr.travelGuidance}
+                    </strong>
+                    {editable('event.travel_info', event.travel_info, 'travel guidance', true)}
+                  </p>
+                )}
+
+                {/* Travel Cards from Custom Sections */}
+                {(travelInfo.hotel_info || travelInfo.shuttle_info || onEditText) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-left text-sm">
+                    {(travelInfo.hotel_info || onEditText) && (
+                      <div
+                        className="p-4 rounded-2xl border space-y-1"
+                        style={{
+                          backgroundColor: theme.surface_color || '#FFFFFF',
+                          borderColor: theme.border_color || '#E8E0D7',
+                        }}
+                      >
+                        <div className="flex items-center gap-1.5 font-semibold text-[color:var(--ink)]">
+                          <Hotel className="h-4 w-4 text-[color:var(--accent)]" />
+                          <span>{tr.accommodations}</span>
+                        </div>
+                        <p className="text-xs opacity-75 leading-relaxed">{editable('sections.travel.hotel_info', travelInfo.hotel_info, 'accommodation details', true)}</p>
+                      </div>
+                    )}
+
+                    {(travelInfo.shuttle_info || onEditText) && (
+                      <div
+                        className="p-4 rounded-2xl border space-y-1"
+                        style={{
+                          backgroundColor: theme.surface_color || '#FFFFFF',
+                          borderColor: theme.border_color || '#E8E0D7',
+                        }}
+                      >
+                        <div className="flex items-center gap-1.5 font-semibold text-[color:var(--ink)]">
+                          <Compass className="h-4 w-4 text-[color:var(--accent)]" />
+                          <span>{tr.shuttleTransit}</span>
+                        </div>
+                        <p className="text-xs opacity-75 leading-relaxed">{editable('sections.travel.shuttle_info', travelInfo.shuttle_info, 'shuttle details', true)}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="pt-3">
+                  <button
+                    type="button"
+                    onClick={handleAddToCalendar}
+                    className="min-h-[44px] inline-flex items-center text-lg italic underline decoration-1 underline-offset-4 hover:opacity-80 cursor-pointer"
+                    style={{ color: accent }}
+                  >
+                    {visibleSchedule.length > 0 ? tr.addItineraryToCalendar : tr.addToMyCalendar}
+                  </button>
+                </div>
+              </div>
+            </section>
+      </>
+    ),
+    'wedding-party': (
+      <>
+            {/* 5. WEDDING PARTY (CMS SECTION) */}
+            {weddingPartyList.length > 0 && (
+              <section className="space-y-6 text-center">
+                <div className="space-y-2">
+                  {chapterMark}
+                  <h2 className={headingClass}>{tr.weddingParty}</h2>
+                  <p className="text-sm font-editorial italic opacity-75">
+                    Standing alongside {event.couple_names}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
+                  {weddingPartyList.map((member: any, i: number) => (
+                    <div
+                      key={i}
+                      className="rounded-2xl border p-4 space-y-2 flex items-start gap-3.5"
+                      style={{
+                        backgroundColor: theme.surface_color || '#FFFFFF',
+                        borderColor: theme.border_color || '#E8E0D7',
+                      }}
+                    >
+                      <div className="h-12 w-12 rounded-full bg-[color:var(--tint)] flex items-center justify-center font-editorial text-xl font-semibold shrink-0 text-[color:var(--ink)]">
+                        {member.name ? member.name.charAt(0) : '✦'}
+                      </div>
+                      <div>
+                        <h3 className="font-editorial text-lg font-semibold" style={{ color: theme.text_color }}>
+                          {editable(`sections.wedding_party.members.${i}.name`, member.name, 'name')}
+                        </h3>
+                        <span
+                          className="text-xs font-bold uppercase tracking-wider block"
+                          style={{ color: theme.accent_color }}
+                        >
+                          {editable(`sections.wedding_party.members.${i}.role`, member.role, 'role')}
+                        </span>
+                        {(member.bio || onEditText) && (
+                          <p className="text-xs opacity-75 mt-1 leading-relaxed">
+                            {editable(`sections.wedding_party.members.${i}.bio`, member.bio, 'bio', true)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+      </>
+    ),
+    'local-recs': (
+      <>
+            {/* 6. LOCAL RECOMMENDATIONS CONCIERGE (CMS SECTION) */}
+            {localRecsList.length > 0 && (
+              <section className="space-y-6 text-center">
+                <div className="space-y-2">
+                  {chapterMark}
+                  <h2 className={headingClass}>{tr.localConcierge}</h2>
+                  <p className="text-sm font-editorial italic opacity-75">
+                    {tr.favoriteSpots}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
+                  {localRecsList.map((rec: any, i: number) => (
+                    <div
+                      key={i}
+                      className="rounded-2xl border p-4 space-y-1.5"
+                      style={{
+                        backgroundColor: theme.surface_color || '#FFFFFF',
+                        borderColor: theme.border_color || '#E8E0D7',
+                      }}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="font-editorial text-lg font-semibold" style={{ color: theme.text_color }}>
+                          {editable(`sections.local_recs.items.${i}.name`, rec.name, 'place name')}
+                        </h3>
+                        <span className="text-xs uppercase font-bold tracking-wider rounded-full px-2 py-0.5 bg-[color:var(--tint)] text-[color:var(--ink)]">
+                          {rec.type || tr.spot}
+                        </span>
+                      </div>
+                      <p className="text-xs opacity-75 leading-relaxed">
+                        {editable(`sections.local_recs.items.${i}.description`, rec.description, 'description', true)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+      </>
+    ),
+    'faq': (
+      <>
+            {/* 7. FREQUENTLY ASKED QUESTIONS (CMS SECTION) */}
+            {faqList.length > 0 && (
+              <section className="space-y-6 text-center">
+                <div className="space-y-2">
+                  {chapterMark}
+                  <h2 className={headingClass}>{tr.goodToKnow}</h2>
+                </div>
+
+                <div className="space-y-3 text-left max-w-lg mx-auto">
+                  {faqList.map((faq: any, idx: number) => {
+                    const isOpen = openFaqIndex === idx || !!onEditText;
+                    return (
+                      <div
+                        key={idx}
+                        className="rounded-2xl border overflow-hidden transition-all"
+                        style={{
+                          backgroundColor: theme.surface_color || '#FFFFFF',
+                          borderColor: theme.border_color || '#E8E0D7',
+                        }}
+                      >
+                        {onEditText ? (
+                          // In the Editor preview the question is edited in place, so it isn't a toggle button.
+                          <div className="w-full p-4 min-h-[48px] text-left font-medium text-sm">
+                          <span className="font-semibold text-[color:var(--ink)]">{editable(`sections.faq.items.${idx}.question`, faq.question, 'question')}</span>
+                        </div>
+                        ) : (
+                        <button
+                          type="button"
+                          onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
+                          className="w-full p-4 min-h-[48px] text-left font-medium text-sm flex items-center justify-between gap-3 hover:bg-[color:var(--tint)] cursor-pointer"
+                        >
+                          <span className="font-semibold text-[color:var(--ink)]">{editable(`sections.faq.items.${idx}.question`, faq.question, 'question')}</span>
+                          {isOpen ? (
+                            <ChevronUp className="h-4 w-4 text-[color:var(--muted)] shrink-0" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4 text-[color:var(--muted)] shrink-0" />
+                          )}
+                        </button>
+                        )}
+                        {isOpen && (
+                          <div className="px-4 pb-4 text-sm opacity-80 leading-relaxed border-t border-[color:var(--line)] pt-3">
+                            {editable(`sections.faq.items.${idx}.answer`, faq.answer, 'answer', true)}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+      </>
+    ),
+    'rsvp': publicView ? (
+      <section id="rsvp" className="text-center space-y-3 pt-4">
+        <h2 className={headingClass}>{tr.rsvpTitle}</h2>
+        <p className="text-base opacity-80">{tr.usePersonalLink}</p>
+      </section>
+    ) : (
+      <>
+            {/* 8. FORMAL STATIONERY RESPONSE CARD (4-STEP TACTILE RSVP WIZARD) */}
+            <section id="rsvp" className="space-y-8 pt-4">
+              {/* On the colour band this heading is the strip of colour; the letter sits below it on the page */}
+              <div className="rsvp-head text-center space-y-2">
+                {keyMark}
+                <h2 className={headingClass}>
+                  {tr.rsvpTitle}
+                </h2>
+                <p className="text-base font-editorial italic">
+                  {hasReplied ? (
+                    tr.thanksForReply
+                  ) : (
+                    <>
+                      {tr.kindlyReplyBy}{' '}
+                      {new Date(event.rsvp_deadline).toLocaleDateString(locale, {
+                        timeZone: 'UTC', // dates are stored as midnight UTC
+                        month: 'long',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
+                    </>
+                  )}
+                </p>
+              </div>
+
+              {/* Physical Response Card Frame */}
+              <div
+                ref={rsvpCardRef}
+                className={`relative overflow-hidden rounded-[2px] p-7 sm:p-11 scroll-mt-20 ${rsvpCard === 'girih' ? 'pt-14 sm:pt-16' : rsvpCard === 'beads' ? 'py-14 sm:py-16' : ''}`}
+                style={{ color: ink, ...rsvpCardStyle }}
+              >
+                <RsvpCardMark variant={theme.rsvp_card} accent={accent} frameColor={frameColor} pageBg={pageBg} />
+                {isRsvpLocked ? (
+                  <div className="py-6 text-center space-y-2 font-editorial text-base">
+                    <Lock className="h-6 w-6 mx-auto opacity-70" />
+                    <h3 className="font-editorial text-lg font-semibold">{tr.rsvpClosedTitle}</h3>
+                    <p className="text-sm opacity-70">
+                      {event.rsvp_locked ? tr.rsvpLocked : tr.deadlinePassed} If you need
+                      to make an adjustment, please contact the couple directly.
+                    </p>
+                  </div>
+                ) : rsvpStep === 5 ? (
+                  /* STEP 5: A short note from the couple, sealed */
+                  <div className="py-6 text-center space-y-5">
+                    {theme.opening_style === 'envelope' ? (
+                      <div className="mx-auto h-12 w-20 invite-rise" aria-hidden="true">
+                        <BowSvg accent={theme.envelope_detail === 'twine' ? TWINE : accent} twine={theme.envelope_detail === 'twine'} />
+                      </div>
+                    ) : (
+                      <div className="mx-auto h-16 w-16 invite-rise" aria-hidden="true">
+                        <SealSvg initials={monogram(event.couple_names)} accent={accent} />
+                      </div>
+                    )}
+                    <p className="font-editorial text-2xl sm:text-3xl">
+                      {tr.dear} {partyNames},
+                    </p>
+                    <p className="font-editorial text-2xl sm:text-3xl italic leading-snug max-w-sm mx-auto">
+                      {allGuests.some((g) => partyState[g.id]?.rsvp_status === 'attending') ? tr.thankNoteAttending : tr.thankNoteDeclined}
+                    </p>
+                    <p className="italic text-[color:var(--muted)]">
+                      {tr.withLove} {event.couple_names}
+                    </p>
+
+                    <span aria-hidden="true" className="mx-auto block h-px w-12 bg-[color:var(--line)]" />
+
+                    <ul className="space-y-1 text-base" aria-label={tr.recordedAttendance}>
+                      {allGuests.map((g) => {
+                        const gs = partyState[g.id];
+                        const st = gs?.rsvp_status;
+                        const choices = st === 'attending'
+                          ? [gs?.meal_choice, gs?.dietary_tags?.length ? gs.dietary_tags.map(dietLabel).join(', ') : '', gs?.dietary_notes].filter(Boolean)
+                          : [];
+                        return (
+                          <li key={g.id}>
+                            {g.first_name} {g.last_name || ''}
+                            {(st === 'attending' || st === 'declined') && (
+                              <span className="italic text-[color:var(--muted)]"> {st === 'attending' ? tr.willAttend : tr.willNotAttend}</span>
+                            )}
+                            {choices.length > 0 && <span className="block text-sm text-[color:var(--muted)]">{choices.join(' · ')}</span>}
+                          </li>
+                        );
+                      })}
+                    </ul>
+
+                    <button
+                      type="button"
+                      onClick={() => setRsvpStep(1)}
+                      className="min-h-[44px] inline-flex items-center text-base italic underline decoration-1 underline-offset-4 text-[color:var(--muted)] hover:text-[color:var(--ink)] cursor-pointer"
+                    >
+                      {tr.editRsvp}
+                    </button>
+                  </div>
+                ) : (
+                  /* WIZARD CONTAINER */
+                  <div className="space-y-6 font-editorial text-base">
+                    {rsvpStep === 1 && (
+                      <p className="font-editorial text-2xl sm:text-3xl" style={{ color: ink }}>
+                        {tr.dear} {partyNames},
+                      </p>
+                    )}
+
+                    <p className="sr-only" aria-live="polite">{fill(tr.stepOf, { step: rsvpStep })}</p>
+
+                    {/* STEP 1: HOUSEHOLD PARTY ATTENDANCE */}
+                    {rsvpStep === 1 && (
+                      <div className="space-y-6">
+                        <div className="space-y-1">
+                          <h3 className="font-editorial text-xl font-semibold" style={{ color: theme.text_color }}>
+                            {tr.willYouCelebrate}
+                          </h3>
+                          <p className="italic opacity-75">
+                            {tr.indicateAttendance}
+                          </p>
+                        </div>
+
+                        <div className="space-y-4">
+                          {allGuests.map((guest) => {
+                            const gState = partyState[guest.id] || { rsvp_status: 'pending' };
+                            return (
+                              <div
+                                key={guest.id}
+                                className="space-y-3 border-t pt-5 first:border-t-0 first:pt-0"
+                                style={{ borderColor: theme.border_color || '#E8E0D7' }}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-editorial text-lg font-semibold" style={{ color: theme.text_color }}>
+                                    {guest.first_name} {guest.last_name || ''}
+                                  </span>
+                                  
+                                </div>
+
+                                <div className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-3">
+                                  <button
+                                    type="button"
+                                    aria-pressed={gState.rsvp_status === 'attending'}
+                                    onClick={() => handleStatusChange(guest.id, 'attending')}
+                                    className={`min-h-[44px] flex items-center justify-center gap-2 ${btnShape} border py-3 text-base font-semibold tracking-wide transition-all cursor-pointer ${
+                                      gState.rsvp_status === 'attending' ? 'text-[color:var(--on-accent)] shadow-sm' : 'hover:opacity-80'
+                                    }`}
+                                    style={
+                                      gState.rsvp_status === 'attending'
+                                        ? { backgroundColor: theme.accent_color, borderColor: theme.accent_color }
+                                        : { borderColor: choiceLine, color: theme.text_color }
+                                    }
+                                  >
+                                    <span className="relative">
+                                      {rsvpCard === 'girih' && gState.rsvp_status === 'attending' && (
+                                        // A pointed mihrab arch frames the chosen answer only; it hangs off the label so the label never moves
+                                        <svg aria-hidden="true" viewBox="0 0 12 16" className="absolute right-full top-1/2 mr-2 h-4 w-3 -translate-y-1/2" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round">
+                                          <path d="M1 15.5 V7 C 1 3.6, 4.4 2.4, 6 0.6 C 7.6 2.4, 11 3.6, 11 7 V15.5" />
+                                        </svg>
+                                      )}
+                                      {tr.joyfullyAccept}
+                                    </span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    aria-pressed={gState.rsvp_status === 'declined'}
+                                    onClick={() => handleStatusChange(guest.id, 'declined')}
+                                    className={`min-h-[44px] flex items-center justify-center gap-2 ${btnShape} border py-3 text-base font-semibold tracking-wide transition-all cursor-pointer ${
+                                      gState.rsvp_status === 'declined' ? 'text-[color:var(--on-ink)] shadow-sm' : 'hover:opacity-80'
+                                    }`}
+                                    style={
+                                      gState.rsvp_status === 'declined'
+                                        ? { backgroundColor: theme.text_color, borderColor: theme.text_color }
+                                        : { borderColor: choiceLine, color: theme.text_color }
+                                    }
+                                  >
+                                    <span className="relative">
+                                      {rsvpCard === 'girih' && gState.rsvp_status === 'declined' && (
+                                        // A pointed mihrab arch frames the chosen answer only; it hangs off the label so the label never moves
+                                        <svg aria-hidden="true" viewBox="0 0 12 16" className="absolute right-full top-1/2 mr-2 h-4 w-3 -translate-y-1/2" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round">
+                                          <path d="M1 15.5 V7 C 1 3.6, 4.4 2.4, 6 0.6 C 7.6 2.4, 11 3.6, 11 7 V15.5" />
+                                        </svg>
+                                      )}
+                                      {tr.regretfullyDecline}
+                                    </span>
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="pt-2 flex items-center justify-end gap-3">
+                          {!allAnswered && (
+                            <span className="text-sm opacity-70">{tr.answerForEveryone}</span>
+                          )}
+                          <button
+                            type="button"
+                            disabled={!allAnswered}
+                            onClick={() => {
+                              if (hasAnyAttending) setRsvpStep(3);
+                              else setRsvpStep(4); // Skip to review if all declined
+                            }}
+                            className={`min-h-[44px] ${btnShape} border px-6 py-3 text-base font-semibold tracking-wide transition-all flex items-center gap-2 ${
+                              allAnswered
+                                ? 'text-[color:var(--on-accent)] shadow-md hover:opacity-95 cursor-pointer'
+                                : 'text-[color:var(--muted)] border-[color:var(--line)] cursor-not-allowed'
+                            }`}
+                            style={allAnswered ? { backgroundColor: accent, borderColor: accent } : undefined}
+                          >
+                            <span>{tr.continue}</span>
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* STEP 3: DINING PREFERENCES & CUSTOM QUESTIONS */}
+                    {rsvpStep === 3 && (
+                      <div className="space-y-6">
+                        {/* Which events (folded in from its own step) */}
+                        {visibleSchedule.length > 0 && (
+                          <div className="space-y-6 border-b pb-6" style={{ borderColor: theme.border_color }}>
+                        <div className="space-y-1">
+                          <h3 className="font-editorial text-xl font-semibold" style={{ color: theme.text_color }}>
+                            {tr.selectEvents}
+                          </h3>
+                        </div>
+
+                        {/* Everyone is down for all of it; only a guest who'll miss something opens the list */}
+                        <p className="italic text-[color:var(--muted)]">
+                          {tr.allOfIt} {visibleSchedule.map((item) => item.title).join(' · ')}
+                        </p>
+                        <details
+                          className="group"
+                          open={attendingGuestsInParty.some((g) => visibleSchedule.some((item) => subEventRsvps[g.id]?.[item.id] === 'declined'))}
+                        >
+                          <summary className="min-h-[44px] flex items-center gap-2 cursor-pointer list-none italic text-[color:var(--muted)] hover:text-[color:var(--ink)]">
+                            <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden="true" />
+                            {tr.missPartOfDay}
+                          </summary>
+                          <div className="space-y-4 pt-3">
+                            {attendingGuestsInParty.map((guest) => (
+                              <fieldset key={guest.id} className="space-y-1">
+                                {attendingGuestsInParty.length > 1 && (
+                                  <legend className="font-editorial text-lg font-semibold">{guest.first_name}</legend>
+                                )}
+                                {visibleSchedule.map((item) => {
+                                  const isAttendingItem = subEventRsvps[guest.id]?.[item.id] !== 'declined';
+                                  return (
+                                    <label key={item.id} className="flex min-h-[44px] items-center gap-3 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={isAttendingItem}
+                                        onChange={(e) => handleSubEventStatusChange(guest.id, item.id, e.target.checked ? 'attending' : 'declined')}
+                                        className="h-5 w-5 shrink-0 cursor-pointer"
+                                        style={{ accentColor: accent }}
+                                      />
+                                      <span>
+                                        {item.title}
+                                        <span className="italic text-[color:var(--muted)]">
+                                          {' '}· {new Date(item.start_time).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}
+                                        </span>
+                                      </span>
+                                    </label>
+                                  );
+                                })}
+                              </fieldset>
+                            ))}
+                          </div>
+                        </details>
+                          </div>
+                        )}
+
+                        <div className="space-y-1">
+                          <h3 className="font-editorial text-xl font-semibold" style={{ color: theme.text_color }}>
+                            {tr.diningDetails}
+                          </h3>
+                          <p className="text-sm opacity-75">
+                            {tr.specifyDetails}
+                          </p>
+                        </div>
+
+                        {/* Guests Dining Cards */}
+                        <div className="space-y-4">
+                          {attendingGuestsInParty.map((guest) => {
+                            const gState = partyState[guest.id] || {
+                              meal_choice: '',
+                              dietary_notes: '',
+                              dietary_tags: [],
+                              plus_one_name: '',
+                              plus_one_meal: '',
+                            };
+
+                            return (
+                              <div
+                                key={guest.id}
+                                className="space-y-3 border-t pt-5 first:border-t-0 first:pt-0"
+                                style={{ borderColor: theme.border_color }}
+                              >
+                                <span className="font-editorial text-lg font-semibold block" style={{ color: theme.text_color }}>
+                                  {guest.first_name}
+                                </span>
+
+                                {/* Entrée: only when the couple has set a menu */}
+                                {menuOptions.length > 0 && (
+                                <div>
+                                  <label className="block text-base italic mb-1 text-[color:var(--muted)]">
+                                    {tr.entreePreference}
+                                  </label>
+                                  {menuOptions.length > 0 ? (
+                                    <div role="radiogroup" aria-label={`${tr.mealFor} ${guest.first_name}`} className="space-y-2">
+                                      {menuOptions.map((option) => {
+                                        const isSelected = gState.meal_choice === option.name;
+                                        return (
+                                          <button
+                                            key={option.name}
+                                            type="button"
+                                            role="radio"
+                                            aria-checked={isSelected}
+                                            onClick={() =>
+                                              setPartyState((prev) => ({
+                                                ...prev,
+                                                [guest.id]: { ...prev[guest.id], meal_choice: option.name },
+                                              }))
+                                            }
+                                            className="w-full min-h-[44px] rounded-xl border p-3.5 text-left transition-colors cursor-pointer"
+                                            style={{
+                                              borderColor: isSelected ? theme.accent_color : theme.border_color,
+                                              backgroundColor: isSelected ? `color-mix(in srgb, ${accent} 10%, ${surface})` : surface,
+                                            }}
+                                          >
+                                            <span className="block text-base font-semibold">{option.name}</span>
+                                            {option.description && (
+                                              <span className="block text-sm opacity-75 mt-0.5">{option.description}</span>
+                                            )}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : null}
+                                </div>
+                                )}
+
+                                {/* Dietary needs, tucked away until a guest has some */}
+                                <details
+                                  className="group"
+                                  open={(gState.dietary_tags || []).length > 0 || !!gState.dietary_notes}
+                                >
+                                  <summary className="min-h-[44px] flex items-center gap-2 cursor-pointer list-none italic text-[color:var(--muted)] hover:text-[color:var(--ink)]">
+                                    <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden="true" />
+                                    {tr.anyDietaryNeeds}
+                                  </summary>
+                                  <div className="space-y-4 pt-3">
+                                {/* Dietary Tag Selector */}
+                                <fieldset className="m-0 min-w-0 border-0 p-0">
+                                  <legend className="block p-0 text-base italic mb-1.5 text-[color:var(--muted)]">
+                                    {tr.dietaryRestrictions}
+                                  </legend>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {Object.keys(COMMON_DIETARY_TAGS).map((tag) => {
+                                      const isSelected = (gState.dietary_tags || []).includes(tag);
+                                      return (
+                                        <button
+                                          key={tag}
+                                          type="button"
+                                          aria-pressed={isSelected}
+                                          onClick={() => handleToggleDietaryTag(guest.id, tag)}
+                                          className={`min-h-[44px] ${btnShape} px-4 py-3 text-sm font-medium transition-colors cursor-pointer ${
+                                            isSelected
+                                              ? 'bg-[color:var(--accent)] text-[color:var(--on-accent)] shadow-xs'
+                                              : 'border bg-[color:var(--field-bg)] text-[color:var(--ink)] hover:bg-[color:var(--tint)]'
+                                          }`}
+                                          style={{ borderColor: isSelected ? 'transparent' : theme.border_color }}
+                                        >
+                                          {dietLabel(tag)}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </fieldset>
+
+                                {/* Dietary Notes Input */}
+                                <div>
+                                  <label htmlFor={`allergy-${guest.id}`} className="block text-base italic mb-1 text-[color:var(--muted)]">
+                                    {tr.allergyNotes}
+                                  </label>
+                                  <input
+                                    id={`allergy-${guest.id}`}
+                                    type="text"
+                                    placeholder={tr.allergyPlaceholder}
+                                    value={gState.dietary_notes}
+                                    onChange={(e) =>
+                                      setPartyState((prev) => ({
+                                        ...prev,
+                                        [guest.id]: {
+                                          ...prev[guest.id],
+                                          dietary_notes: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                    className="w-full rounded-xl border p-3.5 bg-[color:var(--field-bg)] focus:outline-none text-base"
+                                    style={{ borderColor: theme.border_color }}
+                                  />
+                                </div>
+
+                                  </div>
+                                </details>
+
+                                {/* Plus-One Form */}
+                                {guest.plus_one_allowed && (
+                                  <div className="space-y-2 border-t pt-4 mt-2" style={{ borderColor: theme.border_color }}>
+                                    <span className="text-base italic block" style={{ color: accent }}>
+                                      {tr.plusOneDetails}
+                                    </span>
+                                    <label className="block space-y-1">
+                                      <span className="block text-base italic text-[color:var(--muted)]">{tr.plusOneName}</span>
+                                      <input
+                                      type="text"
+                                      
+                                      value={gState.plus_one_name}
+                                      onChange={(e) =>
+                                        setPartyState((prev) => ({
+                                          ...prev,
+                                          [guest.id]: {
+                                            ...prev[guest.id],
+                                            plus_one_name: e.target.value,
+                                          },
+                                        }))
+                                      }
+                                      className="w-full rounded-xl border p-3 bg-[color:var(--field-bg)] focus:outline-none text-base"
+                                      style={{ borderColor: theme.border_color }}
+                                    />
+                                    </label>
+                                    {menuOptions.length > 0 ? (
+                                      <select
+                                        aria-label={tr.plusOneMeal}
+                                        value={gState.plus_one_meal}
+                                        onChange={(e) =>
+                                          setPartyState((prev) => ({
+                                            ...prev,
+                                            [guest.id]: { ...prev[guest.id], plus_one_meal: e.target.value },
+                                          }))
+                                        }
+                                        className="w-full min-h-[44px] rounded-xl border p-3 bg-[color:var(--field-bg)] focus:outline-none text-base"
+                                        style={{ borderColor: theme.border_color }}
+                                      >
+                                        <option value="">{tr.plusOneMealChoice}</option>
+                                        {menuOptions.map((option) => (
+                                          <option key={option.name} value={option.name}>
+                                            {option.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <label className="block space-y-1">
+                                        <span className="block text-base italic text-[color:var(--muted)]">{tr.plusOneMealText}</span>
+                                        <input
+                                        type="text"
+                                        
+                                        value={gState.plus_one_meal}
+                                        onChange={(e) =>
+                                          setPartyState((prev) => ({
+                                            ...prev,
+                                            [guest.id]: {
+                                              ...prev[guest.id],
+                                              plus_one_meal: e.target.value,
+                                            },
+                                          }))
+                                        }
+                                        className="w-full rounded-xl border p-3 bg-[color:var(--field-bg)] focus:outline-none text-base"
+                                        style={{ borderColor: theme.border_color }}
+                                      />
+                                      </label>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Custom RSVP Questions */}
+                        {customQuestions.length > 0 && (
+                          <div className="space-y-4 pt-2">
+                            <h3 className="font-editorial text-lg font-semibold" style={{ color: theme.text_color }}>
+                              {tr.extraDetails}
+                            </h3>
+
+                            {customQuestions.map((q) => {
+                              const val = customAnswers[q.id] || '';
+
+                              return (
+                                <div key={q.id} className="space-y-1.5 border-t pt-5" style={{ borderColor: theme.border_color }}>
+                                  <label className="block text-sm font-semibold">
+                                    {q.prompt} {q.is_required && <span className="text-[color:var(--accent)]">*</span>}
+                                  </label>
+
+                                  {q.question_type === 'single_choice' ? (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                                      {q.options.map((opt, i) => {
+                                        const isOptSelected = val === opt;
+                                        return (
+                                          <button
+                                            key={i}
+                                            type="button"
+                                            onClick={() =>
+                                              setCustomAnswers((prev) => ({ ...prev, [q.id]: opt }))
+                                            }
+                                            className={`min-h-[44px] rounded-xl p-3 text-sm text-left border transition-all cursor-pointer flex items-center justify-between ${
+                                              isOptSelected
+                                                ? 'border-[color:var(--accent)] bg-[color:var(--tint)] font-semibold'
+                                                : 'border-[color:var(--line)] bg-[color:var(--field-bg)] hover:bg-[color:var(--tint)]'
+                                            }`}
+                                          >
+                                            <span>{opt}</span>
+                                            {isOptSelected && <Check className="h-3.5 w-3.5 text-[color:var(--accent)]" />}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : q.question_type === 'multiple_choice' ? (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                                      {q.options.map((opt, i) => {
+                                        const currentVals: string[] = Array.isArray(val) ? val : [];
+                                        const isChecked = currentVals.includes(opt);
+                                        return (
+                                          <button
+                                            key={i}
+                                            type="button"
+                                            onClick={() => {
+                                              const nextVals = isChecked
+                                                ? currentVals.filter((v) => v !== opt)
+                                                : [...currentVals, opt];
+                                              setCustomAnswers((prev) => ({ ...prev, [q.id]: nextVals }));
+                                            }}
+                                            className={`rounded-xl p-2.5 text-sm text-left border transition-all cursor-pointer flex items-center justify-between ${
+                                              isChecked
+                                                ? 'border-[color:var(--accent)] bg-[color:var(--tint)] font-semibold'
+                                                : 'border-[color:var(--line)] bg-[color:var(--field-bg)] hover:bg-[color:var(--tint)]'
+                                            }`}
+                                          >
+                                            <span>{opt}</span>
+                                            {isChecked && <Check className="h-3.5 w-3.5 text-[color:var(--accent)]" />}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <input
+                                      type="text"
+                                      placeholder={tr.yourResponse}
+                                      value={val}
+                                      onChange={(e) =>
+                                        setCustomAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))
+                                      }
+                                      className="w-full rounded-xl border p-3.5 bg-[color:var(--field-bg)] focus:outline-none text-base"
+                                      style={{ borderColor: theme.border_color }}
+                                    />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        <div className="pt-2 flex flex-col-reverse gap-3 min-[420px]:flex-row min-[420px]:justify-between">
+                          <button
+                            type="button"
+                            onClick={() => setRsvpStep(1)}
+                            className={`${btnShape} justify-center whitespace-nowrap px-5 py-3.5 text-base font-semibold tracking-wide border flex items-center gap-1.5 opacity-80 hover:opacity-100 cursor-pointer min-h-[44px]`}
+                            style={{ borderColor: theme.border_color }}
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                            <span>{tr.back}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setRsvpStep(4)}
+                            className={`${btnShape} justify-center whitespace-nowrap px-6 py-3.5 text-base font-semibold tracking-wide text-[color:var(--on-accent)] shadow-md flex items-center gap-1.5 hover:opacity-95 cursor-pointer min-h-[44px]`}
+                            style={{ backgroundColor: accent }}
+                          >
+                            <span>{tr.reviewSummary}</span>
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* STEP 4: SUMMARY REVIEW */}
+                    {rsvpStep === 4 && (
+                      <div className="space-y-6">
+                        <div className="space-y-1">
+                          <h3 className="font-editorial text-xl font-semibold" style={{ color: theme.text_color }}>
+                            {tr.reviewTitle}
+                          </h3>
+                          <p className="text-sm opacity-75">
+                            {tr.reviewIntro}
+                          </p>
+                        </div>
+
+                        <div className="border-y py-5 space-y-4" style={{ borderColor: theme.border_color }}>
+                          {allGuests.map((guest) => {
+                            const st = partyState[guest.id] || { rsvp_status: 'pending' };
+                            const isAtt = st.rsvp_status === 'attending';
+
+                            return (
+                              <div key={guest.id} className="border-b last:border-b-0 pb-3 space-y-1 text-sm">
+                                <div className="flex items-center justify-between">
+                                  <strong className="text-base font-semibold">{guest.first_name} {guest.last_name || ''}</strong>
+                                  <span
+                                    className="text-base italic"
+                                    style={{ color: isAtt ? accent : muted }}
+                                  >
+                                    {st.rsvp_status === 'attending' ? tr.willAttend : st.rsvp_status === 'declined' ? tr.willNotAttend : tr.pending}
+                                  </span>
+                                </div>
+
+                                {isAtt && (st.meal_choice || st.dietary_tags?.length > 0 || st.dietary_notes || st.plus_one_name) && (
+                                  <div className="text-sm opacity-80 space-y-0.5 pt-1 pl-3 border-l border-[color:var(--line)]">
+                                    {st.meal_choice && <p>{tr.entree}: {st.meal_choice}</p>}
+                                    {st.dietary_tags?.length > 0 && <p>{tr.dietaryLabel}: {st.dietary_tags.map(dietLabel).join(', ')}</p>}
+                                    {st.dietary_notes && <p>{tr.allergyNote}: {st.dietary_notes}</p>}
+                                    {st.plus_one_name && <p>{tr.accompaniedBy}: {st.plus_one_name} ({st.plus_one_meal || tr.standard})</p>}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+
+                          {customQuestions.length > 0 && (
+                            <div className="pt-2 border-t text-sm space-y-1" style={{ borderColor: theme.border_color }}>
+                              <span className="text-base italic text-[color:var(--muted)]">
+                                {tr.customAnswers}
+                              </span>
+                              {customQuestions.map((q) => {
+                                const ans = customAnswers[q.id];
+                                return (
+                                  <div key={q.id} className="text-xs opacity-80">
+                                    <strong>{q.prompt}:</strong> {Array.isArray(ans) ? ans.join(', ') : ans || '—'}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {errorMessage && (
+                          <p className="text-sm text-[color:var(--error)] text-center font-semibold">
+                            {errorMessage}
+                          </p>
+                        )}
+
+                        <div className="pt-2 flex flex-col-reverse gap-3 min-[420px]:flex-row min-[420px]:justify-between">
+                          <button
+                            type="button"
+                            onClick={() => setRsvpStep(hasAnyAttending ? 3 : 1)}
+                            className={`${btnShape} justify-center whitespace-nowrap px-5 py-3.5 text-base font-semibold tracking-wide border flex items-center gap-1.5 opacity-80 hover:opacity-100 cursor-pointer min-h-[44px]`}
+                            style={{ borderColor: theme.border_color }}
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                            <span>{tr.editSelections}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isSubmitting}
+                            onClick={handleFinalRsvpSubmit}
+                            className={`min-h-[44px] ${btnShape} justify-center whitespace-nowrap px-8 py-3 text-sm font-semibold tracking-wide text-[color:var(--on-accent)] shadow-md hover:opacity-90 disabled:opacity-50 cursor-pointer flex items-center gap-2`}
+                            style={{ backgroundColor: accent }}
+                          >
+                            {isSubmitting ? (
+                              <span>{tr.recordingRsvp}</span>
+                            ) : (
+                              <>
+                                <span>{tr.confirmAttendance}</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </section>
+      </>
+    ),
+    'photos': (
+      <>
+            {/* 9. PHOTO STREAM & ZERO-LOGIN GUEST UPLOADS */}
+            <section className="space-y-6 text-center">
+              <div className="space-y-2">
+                {chapterMark}
+                <h2 className={headingClass}>{tr.sharedMemories}</h2>
+                <p className="text-sm font-editorial italic opacity-75">
+                  {tr.sharedMemoriesIntro}
+                </p>
+                {event.album_token && hasFeature(event, 'memories') && (
+                  <a
+                    href={`/album/${event.album_token}`}
+                    className="inline-block pt-1 text-sm font-semibold underline underline-offset-4"
+                    style={{ color: theme.accent_color }}
+                  >
+                    {tr.openAlbum}
+                  </a>
+                )}
+              </div>
+
+              {/* Upload Button (not on the public short link) */}
+              {!publicView && (
+              <div className="pt-2">
+                <input
+                  type="file"
+                  id="stream-upload"
+                  accept="image/png, image/jpeg, image/webp"
+                  onChange={handlePhotoUpload}
+                  disabled={isUploadingPhoto}
+                  className="hidden"
+                />
+                <label
+                  htmlFor="stream-upload"
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-full px-6 py-3 text-base font-semibold tracking-wide transition-all hover:scale-105 shadow-sm text-[color:var(--on-accent)]"
+                  style={{ backgroundColor: accent }}
+                >
+                  <span>{isUploadingPhoto ? tr.uploadingPhoto : tr.addPhoto}</span>
+                </label>
+                {uploadMessage && (
+                  <p className="mt-2 text-sm font-medium" style={{ color: theme.accent_color }}>
+                    {uploadMessage}
+                  </p>
+                )}
+              </div>
+              )}
+
+              {/* Staggered Photo Grid */}
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 pt-4">
+                {photos.map((p) => (
+                  <div
+                    key={p.id}
+                    className="group relative aspect-square overflow-hidden rounded-2xl shadow-sm border"
+                    style={{ borderColor: theme.border_color }}
+                  >
+                    <img
+                      src={p.image_url}
+                      loading="lazy"
+                      decoding="async"
+                      alt={p.caption || 'Wedding Photo'}
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                    {p.caption && (
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2.5 text-xs text-white text-left">
+                        <p className="line-clamp-1">{p.caption}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+      </>
+    ),
+    'registry': (
+      <>
+            {/* 10. GIFT REGISTRY & HONEYMOON CASH FUND */}
+            {registryList.length > 0 && (
+              <section className="space-y-6 text-center">
+                <div className="space-y-2">
+                  {chapterMark}
+                  <h2 className={headingClass}>{tr.giftRegistry}</h2>
+                  <p className="text-sm font-editorial italic opacity-75 max-w-sm mx-auto">
+                    {tr.registryIntro}
+                  </p>
+                </div>
+
+                <div className="space-y-4 max-w-md mx-auto text-left">
+                  {registryList.map((item) => (
+                    <div
+                      key={item.id}
+                      className="rounded-2xl border p-5 space-y-3"
+                      style={{
+                        backgroundColor: theme.surface_color || '#FFFFFF',
+                        borderColor: theme.border_color || '#E8E0D7',
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-editorial text-lg font-semibold" style={{ color: theme.text_color }}>
+                            {item.title}
+                          </h3>
+                          {item.description && (
+                            <p className="text-sm opacity-75 mt-0.5">{item.description}</p>
+                          )}
+                        </div>
+
+                        {item.is_cash_fund ? (
+                          publicView ? null : <button
+                            onClick={() => setActiveCashFund(item)}
+                            className="rounded-full px-4 py-3.5 text-sm font-semibold text-[color:var(--on-accent)] transition-opacity hover:opacity-90 cursor-pointer shrink-0 min-h-[44px]"
+                            style={{ backgroundColor: theme.accent_color }}
+                          >
+                            {tr.contribute}
+                          </button>
+                        ) : item.external_url ? (
+                          <a
+                            href={item.external_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-full border px-4 py-1.5 text-sm font-semibold transition-colors inline-flex items-center gap-1 shrink-0"
+                            style={{ borderColor: theme.border_color, color: theme.text_color }}
+                          >
+                            <span>{tr.registry}</span>
+                            <ExternalLink className="h-3 w-3 opacity-60" />
+                          </a>
+                        ) : null}
+                      </div>
+
+                      {item.is_cash_fund && item.target_amount && (
+                        <div className="space-y-1 pt-1">
+                          <div className="flex justify-between text-xs font-semibold opacity-70 uppercase tracking-wider">
+                            <span>${item.current_amount || 0} {tr.pledged}</span>
+                            <span>{tr.goal}: ${item.target_amount}</span>
+                          </div>
+                          <div
+                            className="h-1.5 w-full rounded-full overflow-hidden"
+                            style={{ backgroundColor: `${theme.accent_color}25` }}
+                          >
+                            <div
+                              className="h-full transition-all duration-500 rounded-full"
+                              style={{
+                                backgroundColor: theme.accent_color,
+                                width: `${Math.min(
+                                  100,
+                                  ((item.current_amount || 0) / item.target_amount) * 100
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+      </>
+    ),
+  };
+
+  const floatingControls = (
+    <>
+      {musicUrl && hasOpened && (
+        <button
+          type="button"
+          onClick={toggleMusic}
+          aria-label={musicPlaying ? tr.pauseMusic : tr.playMusic}
+          className={`${previewMode ? 'absolute pointer-events-auto' : 'fixed bottom-5'} right-5 z-40 flex h-11 w-11 items-center justify-center rounded-full shadow-lg text-[color:var(--on-accent)]`}
+          style={{ backgroundColor: theme.accent_color || '#9E5A44' }}
+        >
+          {musicPlaying ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+        </button>
+      )}
+      {hasOpened && pastCalendar && !publicView && !isRsvpLocked && !rsvpInView && (
+        <a
+          href="#rsvp"
+          className={`rsvp-pill ${previewMode ? 'relative pointer-events-auto' : 'fixed bottom-5 left-1/2 -translate-x-1/2'} z-40 inline-flex min-h-[46px] items-center gap-3 whitespace-nowrap rounded-full px-6 shadow-lg transition-opacity hover:opacity-90`}
+          style={{ backgroundColor: accent, color: bandInk }}
+        >
+          <span className="font-editorial text-lg tracking-[0.12em]">RSVP</span>
+          {hasReplied ? (
+            <span className="font-editorial text-sm italic">{tr.editRsvp}</span>
+          ) : (
+            replyByShort && (
+              <span className="font-editorial text-sm italic">
+                {tr.replyBy} {replyByShort}
+              </span>
+            )
+          )}
+        </a>
+      )}
+    </>
+  );
 
   return (
     <div
+      lang={portalLanguageOf(event.language)}
       style={{
+        ...paletteVars,
         backgroundColor: theme.bg_color || '#FAF7F2',
         color: theme.text_color || '#2C2523',
+        ...(studioLayout ? pageBackgroundStyle(theme) : {}),
       }}
-      className={`min-h-screen selection:bg-aisle-terracotta selection:text-white pb-28 ${fontClass} transition-colors duration-500`}
+      className={`invite-root ${theme.font_family === 'vintage-editorial' ? 'theme-vintage' : ''} ${theme.name_style === 'serif' ? 'names-serif' : ''} ${theme.name_font ? `name-face-${theme.name_font}` : ''} ${theme.rsvp_card === 'square' ? 'corners-square' : ''} min-h-screen selection:bg-[color:var(--accent)] selection:text-[color:var(--on-accent)] pb-28 ${fontClass} transition-colors duration-500 ${theme.paper_texture ? 'paper-grain relative' : ''}`}
     >
+      {windowBackdrop}
       {/* 1. Tactile Wax-Seal / Envelope Opening Reveal */}
       {!hasOpened && (
         <WaxSealOpening
           coupleNames={event.couple_names}
           openingStyle={theme.opening_style}
-          guestName={partyNames}
-          onOpen={() => setHasOpened(true)}
+          nameStyle={scriptNames ? 'script' : 'serif'}
+          palette={{
+            bg: theme.bg_color,
+            surface: theme.surface_color || '#FFFFFF',
+            text: theme.text_color,
+            accent: theme.accent_color,
+            border: theme.border_color,
+            paper: theme.envelope_paper,
+            liner: theme.envelope_liner,
+            detail: theme.envelope_detail,
+          }}
+          strings={tr}
+          guestName={publicView ? undefined : partyNames}
+          onOpen={() => {
+            setHasOpened(true);
+            setJustOpened(true);
+            // Opening is a tap, so browsers allow sound to start here.
+            if (musicUrl && !previewMode) {
+              audioRef.current?.play().then(() => setMusicPlaying(true)).catch(() => setMusicPlaying(false));
+            }
+          }}
         />
       )}
 
-      {/* Main Flowing Stationery Canvas */}
-      <main className={`mx-auto ${canvasMaxWidthClass} px-5 sm:px-8 py-10 sm:py-16 space-y-16 sm:space-y-24`}>
-        
-        {/* 1. EDITORIAL HERO & INVITATION */}
-        <header className="text-center space-y-6 pt-4">
-          {/* Floron Motif & Eyebrow */}
-          <div className="flex items-center justify-center gap-3">
-            <span
-              className="h-px w-10 sm:w-16"
-              style={{ backgroundColor: theme.accent_color || '#C59B27', opacity: 0.4 }}
-            />
-            <span
-              className="text-xs uppercase tracking-[0.3em] font-semibold"
-              style={{ color: theme.accent_color || '#9E5A44' }}
-            >
-              {theme.floron || '✦'} {theme.eyebrow_text || 'Wedding Celebration'} {theme.floron || '✦'}
-            </span>
-            <span
-              className="h-px w-10 sm:w-16"
-              style={{ backgroundColor: theme.accent_color || '#C59B27', opacity: 0.4 }}
-            />
-          </div>
+      {musicUrl && <audio ref={audioRef} src={musicUrl} loop preload="none" />}
 
-          {/* Poetic Line / Invitation Line */}
-          <p
-            className="font-editorial text-base sm:text-lg italic tracking-wide"
-            style={{ color: theme.muted_color || '#7D746D' }}
-          >
-            "{theme.poetic_line || 'Two hearts, one horizon'}"
-          </p>
+      {/* Floating music button and RSVP pill. On the live page they float over the window; in the dashboard's
+          preview pane (whose transform traps position: fixed) they sit in a sticky bar at the pane's foot instead. */}
+      {!previewMode && floatingControls}
 
-          <div className="space-y-2 pt-2">
-            <p className="text-xs uppercase tracking-[0.25em] text-aisle-muted">
-              Together with their families
-            </p>
-
-            <h1
-              className="font-serif text-3xl sm:text-5xl font-semibold tracking-tight leading-[1.12]"
-              style={{ color: theme.text_color }}
-            >
-              {event.couple_names}
-            </h1>
-
-            <p
-              className="text-xs sm:text-sm font-editorial italic pt-1 max-w-sm mx-auto leading-relaxed"
-              style={{ color: theme.muted_color }}
-            >
-              {theme.invitation_phrase || 'request the honour of your presence at their marriage'}
-            </p>
-          </div>
-
-          {/* Date & Location */}
-          <div className="space-y-1 pt-2">
-            <p className="font-serif text-base sm:text-lg font-medium tracking-wide">
-              {new Date(event.wedding_date).toLocaleDateString('en-US', {
-                weekday: 'long',
-                month: 'long',
-                day: 'numeric',
-                year: 'numeric',
-              })}
-            </p>
-            <p
-              className="text-xs uppercase tracking-[0.2em] font-medium"
-              style={{ color: theme.accent_color }}
-            >
-              {event.venue_name} · {event.venue_address}
-            </p>
-          </div>
-
-          {/* Designed Cover Photo (Arched Top or Clean Plate) */}
-          {event.cover_image_url && (
-            <div className="relative pt-4">
-              <div
-                className={`relative mx-auto aspect-[4/5] sm:aspect-[16/11] w-full overflow-hidden shadow-wedding ${
-                  theme.border_flair === 'arch'
-                    ? 'rounded-t-[140px] rounded-b-2xl'
-                    : theme.border_flair === 'botanical-crest'
-                    ? 'rounded-3xl border-2'
-                    : 'rounded-2xl border'
-                }`}
-                style={{
-                  borderColor: theme.border_color || '#E8E0D7',
-                }}
-              >
-                <img
-                  src={event.cover_image_url}
-                  alt={event.couple_names}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Minimal Inline Countdown */}
+      {/* 1. COVER: the couple's photo full-bleed, names over it. The page slides up over it like a curtain. */}
+      {showPhotoHero && (
+        <section
+          // In the dashboard's preview pane the cover fills the pane, not the whole window
+          className={`sticky top-0 z-0 w-full overflow-hidden ${previewMode ? 'h-[70vh] lg:h-[calc(100vh-9rem)] min-h-[480px]' : 'h-[100svh] min-h-[560px]'}`}
+          aria-label={event.couple_names}
+        >
+          <img src={event.cover_image_url!} alt={event.couple_names} className="absolute inset-0 h-full w-full object-cover" />
           <div
-            className="pt-6 border-y py-4 my-6"
-            style={{ borderColor: theme.border_color || '#E8E0D7' }}
-          >
-            <div className="flex items-center justify-center gap-6 sm:gap-10 text-center">
-              <div>
-                <span className="font-editorial text-2xl sm:text-3xl font-semibold block leading-none">
-                  {timeLeft.days}
-                </span>
-                <span className="text-[9px] uppercase tracking-[0.2em] opacity-70 mt-1 block">
-                  Days
-                </span>
-              </div>
-              <span className="opacity-30 text-base">·</span>
-              <div>
-                <span className="font-editorial text-2xl sm:text-3xl font-semibold block leading-none">
-                  {timeLeft.hours}
-                </span>
-                <span className="text-[9px] uppercase tracking-[0.2em] opacity-70 mt-1 block">
-                  Hours
-                </span>
-              </div>
-              <span className="opacity-30 text-base">·</span>
-              <div>
-                <span className="font-editorial text-2xl sm:text-3xl font-semibold block leading-none">
-                  {timeLeft.minutes}
-                </span>
-                <span className="text-[9px] uppercase tracking-[0.2em] opacity-70 mt-1 block">
-                  Minutes
-                </span>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* 2. OUR STORY & WELCOME */}
-        {(event.welcome_message || event.our_story || event.story_image_url) && (
-          <section className="text-center space-y-6">
-            <div className="space-y-2">
-              <span
-                className="text-[10px] uppercase tracking-[0.3em] font-semibold block"
-                style={{ color: theme.accent_color }}
-              >
-                Chapter I
-              </span>
-              <h2 className="font-serif text-2xl sm:text-3xl font-semibold">Our Story</h2>
-            </div>
-
-            {event.welcome_message && (
-              <p className="font-editorial text-lg sm:text-xl italic max-w-md mx-auto leading-relaxed opacity-90">
-                "{event.welcome_message}"
+            className="absolute inset-0"
+            style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.04) 38%, rgba(0,0,0,0.58) 100%)' }}
+          />
+          <CoverFrame
+            flair={theme.border_flair}
+            accent={accent}
+            postmark={{
+              place: postmarkPlace(event.venue_name || ''),
+              day: new Date(event.wedding_date).toLocaleDateString(locale, { timeZone: 'UTC', day: 'numeric', month: 'short' }),
+              year: String(new Date(event.wedding_date).getUTCFullYear()),
+            }}
+          />
+          <div className="absolute inset-x-0 bottom-0 px-6 pb-[calc(5.5rem+4svh)] text-center text-white [text-shadow:0_1px_18px_rgba(0,0,0,0.35)]">
+            <p className="font-editorial text-xs sm:text-sm uppercase tracking-[0.22em] sm:tracking-[0.32em] opacity-90 [text-wrap:balance]">
+              {onEditText ? editable('theme.eyebrow_text', theme.eyebrow_text, 'top line') : coverLine || tr.weddingCelebration}
+            </p>
+            <h1 className={`${nameClass} mt-3 ${scriptNames ? 'text-7xl sm:text-8xl' : 'text-5xl sm:text-6xl'}`}>{coupleNamesStacked}</h1>
+            <div className="mt-5 flex items-center justify-center gap-3">
+              <span className="h-px w-8 bg-white/60" />
+              <p className="font-editorial text-sm uppercase tracking-[0.28em] [font-variant-numeric:lining-nums]">
+                {new Date(event.wedding_date).toLocaleDateString(locale, { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' })}
               </p>
-            )}
-
-            {event.story_image_url && (
-              <div
-                className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl shadow-sm border"
-                style={{ borderColor: theme.border_color || '#E8E0D7' }}
-              >
-                <img
-                  src={event.story_image_url}
-                  alt="Couple Story"
-                  className="h-full w-full object-cover"
-                />
-              </div>
-            )}
-
-            {event.our_story && (
-              <p
-                className="text-xs sm:text-sm leading-relaxed max-w-lg mx-auto text-left font-sans opacity-80"
-                style={{ color: theme.text_color }}
-              >
-                {event.our_story}
-              </p>
-            )}
-          </section>
-        )}
-
-        {/* 3. SEAMLESS TIMELINE / ITINERARY */}
-        {visibleSchedule.length > 0 && (
-          <section className="space-y-8">
-            <div className="text-center space-y-2">
-              <span
-                className="text-[10px] uppercase tracking-[0.3em] font-semibold block"
-                style={{ color: theme.accent_color }}
-              >
-                Chapter II
-              </span>
-              <h2 className="font-serif text-2xl sm:text-3xl font-semibold">The Itinerary</h2>
-              <p className="text-xs font-editorial italic opacity-75">
-                Curated for {partyNames}
-              </p>
+              <span className="h-px w-8 bg-white/60" />
             </div>
-
-            {/* Seamless Vertical Timeline */}
-            <div className="relative pl-6 sm:pl-8 space-y-8 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-px before:bg-gradient-to-b before:from-transparent before:via-aisle-gold/50 before:to-transparent">
-              {visibleSchedule.map((item, idx) => (
-                <div key={item.id} className="relative group">
-                  {/* Timeline Dot Indicator */}
-                  <span
-                    className="absolute -left-[21px] sm:-left-[29px] top-1.5 h-2.5 w-2.5 rounded-full ring-4 transition-transform duration-300 group-hover:scale-125"
-                    style={{
-                      backgroundColor: theme.accent_color || '#9E5A44',
-                      // @ts-ignore
-                      ringColor: theme.bg_color,
-                    }}
-                  />
-
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <h3 className="font-serif text-base sm:text-lg font-semibold tracking-tight">
-                        {item.title}
-                      </h3>
-                      <span
-                        className="text-xs uppercase tracking-widest font-semibold font-sans"
-                        style={{ color: theme.accent_color }}
-                      >
-                        {new Date(item.start_time).toLocaleTimeString('en-US', {
-                          hour: 'numeric',
-                          minute: '2-digit',
-                        })}
-                      </span>
-                    </div>
-
-                    {item.location_name && (
-                      <p className="text-xs opacity-75 flex items-center gap-1 font-sans">
-                        <MapPin className="h-3 w-3 inline" /> {item.location_name}
-                      </p>
-                    )}
-
-                    {item.description && (
-                      <p className="text-xs leading-relaxed font-sans opacity-70 pt-1">
-                        {item.description}
-                      </p>
-                    )}
-
-                    {item.dress_code && (
-                      <div className="pt-1">
-                        <span
-                          className="inline-block text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-full border font-sans"
-                          style={{
-                            borderColor: theme.border_color || '#E8E0D7',
-                            backgroundColor: theme.surface_color || '#FFFFFF',
-                          }}
-                        >
-                          Attire: {item.dress_code}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* 4. THE VENUE & TRAVEL LOGISTICS */}
-        <section className="text-center space-y-6">
-          <div className="space-y-2">
-            <span
-              className="text-[10px] uppercase tracking-[0.3em] font-semibold block"
-              style={{ color: theme.accent_color }}
-            >
-              Chapter III
-            </span>
-            <h2 className="font-serif text-2xl sm:text-3xl font-semibold">The Venue & Travel</h2>
-          </div>
-
-          {event.venue_image_url && (
-            <div
-              className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl shadow-sm border"
-              style={{ borderColor: theme.border_color || '#E8E0D7' }}
-            >
-              <img
-                src={event.venue_image_url}
-                alt={event.venue_name}
-                className="h-full w-full object-cover"
-              />
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <h3 className="font-serif text-xl font-semibold">{event.venue_name}</h3>
-            <p className="text-xs font-sans opacity-75">{event.venue_address}</p>
-
-            {event.venue_address && (
-              <div className="pt-1.5 flex justify-center">
-                <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                    `${event.venue_name ? event.venue_name + ', ' : ''}${event.venue_address}`
-                  )}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-4 py-1.5 rounded-full border transition-all shadow-sm hover:opacity-80 cursor-pointer"
-                  style={{
-                    borderColor: theme.border_color || '#E8E0D7',
-                    backgroundColor: theme.surface_color || '#FFFFFF',
-                    color: theme.accent_color || '#9E5A44',
-                  }}
-                >
-                  <MapPin className="h-3 w-3" />
-                  <span>Get Directions & Map</span>
-                  <ExternalLink className="h-3 w-3 opacity-60" />
-                </a>
-              </div>
-            )}
-
-            {event.travel_info && (
-              <p
-                className="mt-3 text-xs leading-relaxed font-sans p-4 rounded-2xl text-left border"
-                style={{
-                  backgroundColor: theme.surface_color || '#FFFFFF',
-                  borderColor: theme.border_color || '#E8E0D7',
-                }}
-              >
-                <strong className="block mb-1 text-xs uppercase tracking-wider font-semibold">
-                  Travel Guidance & Arrival
-                </strong>
-                {event.travel_info}
-              </p>
-            )}
-
-            {/* Travel Cards from Custom Sections */}
-            {(travelInfo.hotel_info || travelInfo.shuttle_info) && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-left font-sans text-xs">
-                {travelInfo.hotel_info && (
-                  <div
-                    className="p-4 rounded-2xl border space-y-1"
-                    style={{
-                      backgroundColor: theme.surface_color || '#FFFFFF',
-                      borderColor: theme.border_color || '#E8E0D7',
-                    }}
-                  >
-                    <div className="flex items-center gap-1.5 font-semibold text-aisle-charcoal">
-                      <Hotel className="h-4 w-4 text-aisle-terracotta" />
-                      <span>Accommodations</span>
-                    </div>
-                    <p className="text-[11px] opacity-75 leading-relaxed">{travelInfo.hotel_info}</p>
-                  </div>
-                )}
-
-                {travelInfo.shuttle_info && (
-                  <div
-                    className="p-4 rounded-2xl border space-y-1"
-                    style={{
-                      backgroundColor: theme.surface_color || '#FFFFFF',
-                      borderColor: theme.border_color || '#E8E0D7',
-                    }}
-                  >
-                    <div className="flex items-center gap-1.5 font-semibold text-aisle-charcoal">
-                      <Compass className="h-4 w-4 text-aisle-terracotta" />
-                      <span>Shuttle & Transit</span>
-                    </div>
-                    <p className="text-[11px] opacity-75 leading-relaxed">{travelInfo.shuttle_info}</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="pt-3">
-              <a
-                href={`https://maps.google.com/?q=${encodeURIComponent(
-                  event.venue_name + ' ' + event.venue_address
-                )}`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-xs font-semibold uppercase tracking-wider font-sans transition-all hover:scale-105 shadow-sm"
-                style={{
-                  backgroundColor: theme.surface_color || '#FFFFFF',
-                  borderColor: theme.border_color || '#E8E0D7',
-                  color: theme.text_color,
-                }}
-              >
-                <MapPin className="h-3.5 w-3.5" style={{ color: theme.accent_color }} />
-                <span>Open in Google Maps</span>
-                <ExternalLink className="h-3 w-3 opacity-60" />
-              </a>
-            </div>
+            {event.venue_name && <p className="font-editorial text-lg italic mt-2 opacity-90">{event.venue_name}</p>}
           </div>
         </section>
+      )}
 
-        {/* 5. WEDDING PARTY (CMS SECTION) */}
-        {weddingPartyList.length > 0 && (
-          <section className="space-y-6 text-center">
-            <div className="space-y-2">
-              <span
-                className="text-[10px] uppercase tracking-[0.3em] font-semibold block"
-                style={{ color: theme.accent_color }}
-              >
-                The Entourage
-              </span>
-              <h2 className="font-serif text-2xl sm:text-3xl font-semibold">Wedding Party</h2>
-              <p className="text-xs font-editorial italic opacity-75">
-                Standing alongside {event.couple_names}
+      {/* The invitation itself (counterReset numbers the .chapter-label spans in the order the sections render) */}
+      <main
+        className={`relative z-10 ${justOpened ? 'invite-rise' : ''}`}
+        style={{ counterReset: 'chapter', backgroundColor: pageBg, ...(studioLayout ? pageBackgroundStyle(theme) : {}) }}
+      >
+        {/* 2. THE INVITATION WORDING: framed stationery, or a quiet text block under the cover photo */}
+        <div className={`mx-auto ${canvasMaxWidthClass} px-5 sm:px-8 pt-14 sm:pt-20 pb-4`}>
+          {showPhotoHero ? (
+            <header className="text-center space-y-5 max-w-md sm:max-w-xl mx-auto">
+              {keyMark}
+              <p className="font-editorial text-lg italic" style={{ color: muted }}>
+                {tr.togetherWithFamilies}
               </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left font-sans">
-              {weddingPartyList.map((member: any, i: number) => (
+              <p className={`${nameClass} ${scriptNames ? 'text-5xl sm:text-6xl' : 'text-3xl sm:text-4xl'}`} style={{ color: ink }}>
+                {event.couple_names}
+              </p>
+              <p className="font-editorial text-lg sm:text-2xl leading-relaxed [text-wrap:balance]">
+                {onEditText ? editable('theme.invitation_phrase', theme.invitation_phrase, 'invitation line', true) : theme.invitation_phrase || 'request the honour of your presence at their marriage'}
+              </p>
+              <div className="pt-2 space-y-1">
+                <p className="font-editorial text-xl vintage-caps">{weddingDateLong}</p>
+                <p className="font-editorial text-base italic" style={{ color: muted }}>
+                  {[event.venue_name, event.venue_address].filter(Boolean).join(' · ')}
+                </p>
+              </div>
+              <p className="font-editorial text-lg sm:text-xl italic leading-relaxed" style={{ color: muted }}>
+                &ldquo;{onEditText ? editable('theme.poetic_line', theme.poetic_line, 'poetic line') : theme.poetic_line || 'Two hearts, one horizon'}&rdquo;
+              </p>
+            </header>
+          ) : (
+            <header
+              className={heroStyle ? `text-center ${containerClassName(heroStyle)}` : 'relative mx-auto max-w-lg p-1.5'}
+              // A preset's own gilt is drawn at full strength; the accent frame stays a soft hairline
+              style={heroStyle ? containerInlineStyle(heroStyle) : { border: `1px solid ${theme.frame_color || `color-mix(in srgb, ${frameColor} 55%, transparent)`}` }}
+            >
+              {!heroStyle && theme.rsvp_card === 'girih' && (
+                // An eight-point girih star set on the frame's head rule
+                <svg aria-hidden="true" viewBox="-12 -12 24 24" className="absolute left-1/2 top-0 h-10 w-10 -translate-x-1/2 -translate-y-1/2" fill={pageBg} stroke={frameColor} strokeWidth="0.9" strokeLinejoin="round">
+                  <path d={GIRIH} />
+                  <circle r="2.4" />
+                </svg>
+              )}
+              <div
+                className="text-center space-y-6 px-6 py-12 sm:px-10 sm:py-16"
+                style={heroStyle ? undefined : { border: `1px solid color-mix(in srgb, ${frameColor} ${theme.frame_color ? 70 : 30}%, transparent)` }}
+              >
+                {/* Monogram */}
                 <div
-                  key={i}
-                  className="rounded-2xl border p-4 space-y-2 flex items-start gap-3.5"
-                  style={{
-                    backgroundColor: theme.surface_color || '#FFFFFF',
-                    borderColor: theme.border_color || '#E8E0D7',
-                  }}
+                  className="mx-auto grid h-16 w-16 place-items-center rounded-full border font-editorial text-lg tracking-[0.12em]"
+                  style={{ borderColor: `color-mix(in srgb, ${frameColor} 60%, transparent)`, color: accent, boxShadow: `inset 0 0 0 3px ${pageBg}, inset 0 0 0 4px color-mix(in srgb, ${frameColor} 30%, transparent)` }}
+                  aria-hidden="true"
                 >
-                  <div className="h-12 w-12 rounded-full bg-aisle-sand flex items-center justify-center font-serif text-lg font-bold shrink-0 text-aisle-charcoal">
-                    {member.name ? member.name.charAt(0) : '✦'}
-                  </div>
-                  <div>
-                    <h4 className="font-serif text-sm font-semibold" style={{ color: theme.text_color }}>
-                      {member.name}
-                    </h4>
-                    <span
-                      className="text-[10px] font-bold uppercase tracking-wider block"
-                      style={{ color: theme.accent_color }}
-                    >
-                      {member.role}
-                    </span>
-                    {member.bio && (
-                      <p className="text-[11px] opacity-75 mt-1 leading-relaxed">
-                        {member.bio}
-                      </p>
-                    )}
-                  </div>
+                  {monogram(event.couple_names).split('').join(' & ')}
                 </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* 6. LOCAL RECOMMENDATIONS CONCIERGE (CMS SECTION) */}
-        {localRecsList.length > 0 && (
-          <section className="space-y-6 text-center">
-            <div className="space-y-2">
-              <span
-                className="text-[10px] uppercase tracking-[0.3em] font-semibold block"
-                style={{ color: theme.accent_color }}
-              >
-                Curated Guide
-              </span>
-              <h2 className="font-serif text-2xl sm:text-3xl font-semibold">Local Concierge</h2>
-              <p className="text-xs font-editorial italic opacity-75">
-                Our favorite spots in the area for your stay
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left font-sans">
-              {localRecsList.map((rec: any, i: number) => (
-                <div
-                  key={i}
-                  className="rounded-2xl border p-4 space-y-1.5"
-                  style={{
-                    backgroundColor: theme.surface_color || '#FFFFFF',
-                    borderColor: theme.border_color || '#E8E0D7',
-                  }}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <h4 className="font-serif text-sm font-semibold" style={{ color: theme.text_color }}>
-                      {rec.name}
-                    </h4>
-                    <span className="text-[9px] uppercase font-bold tracking-wider rounded-full px-2 py-0.5 bg-aisle-sand text-aisle-charcoal">
-                      {rec.type || 'Spot'}
-                    </span>
-                  </div>
-                  <p className="text-[11px] opacity-75 leading-relaxed">
-                    {rec.description}
+                <p className="font-editorial text-xs sm:text-sm uppercase tracking-[0.2em] sm:tracking-[0.3em] [text-wrap:balance]" style={{ color: accent }}>
+                  {onEditText ? editable('theme.eyebrow_text', theme.eyebrow_text, 'top line') : coverLine || tr.weddingCelebration}
+                </p>
+                <div className="space-y-3">
+                  <h1 className={`${nameClass} ${scriptNames ? 'text-6xl sm:text-7xl' : 'text-4xl sm:text-5xl'}`} style={{ color: ink }}>
+                    {coupleNamesStacked}
+                  </h1>
+                  <p className="font-editorial text-lg italic max-w-sm mx-auto leading-relaxed [text-wrap:balance]" style={{ color: muted }}>
+                    {onEditText ? editable('theme.invitation_phrase', theme.invitation_phrase, 'invitation line', true) : theme.invitation_phrase || 'request the honour of your presence at their marriage'}
                   </p>
                 </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* 7. FREQUENTLY ASKED QUESTIONS (CMS SECTION) */}
-        {faqList.length > 0 && (
-          <section className="space-y-6 text-center">
-            <div className="space-y-2">
-              <span
-                className="text-[10px] uppercase tracking-[0.3em] font-semibold block"
-                style={{ color: theme.accent_color }}
-              >
-                Questions & Answers
-              </span>
-              <h2 className="font-serif text-2xl sm:text-3xl font-semibold">Good to Know</h2>
-            </div>
-
-            <div className="space-y-3 text-left font-sans max-w-lg mx-auto">
-              {faqList.map((faq: any, idx: number) => {
-                const isOpen = openFaqIndex === idx;
-                return (
-                  <div
-                    key={idx}
-                    className="rounded-2xl border overflow-hidden transition-all"
-                    style={{
-                      backgroundColor: theme.surface_color || '#FFFFFF',
-                      borderColor: theme.border_color || '#E8E0D7',
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
-                      className="w-full p-4 text-left font-medium text-xs flex items-center justify-between gap-3 hover:bg-aisle-sand/20 cursor-pointer"
-                    >
-                      <span className="font-semibold text-aisle-charcoal">{faq.question}</span>
-                      {isOpen ? (
-                        <ChevronUp className="h-4 w-4 text-aisle-muted shrink-0" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4 text-aisle-muted shrink-0" />
-                      )}
-                    </button>
-                    {isOpen && (
-                      <div className="px-4 pb-4 text-xs opacity-80 leading-relaxed border-t border-aisle-border/40 pt-3">
-                        {faq.answer}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
-
-        {/* 8. FORMAL STATIONERY RESPONSE CARD (4-STEP TACTILE RSVP WIZARD) */}
-        <section id="rsvp" className="space-y-6 pt-4">
-          <div className="text-center space-y-2">
-            <span
-              className="text-[10px] uppercase tracking-[0.3em] font-semibold block"
-              style={{ color: theme.accent_color }}
-            >
-              Chapter IV
-            </span>
-            <h2 className="font-serif text-3xl sm:text-4xl font-semibold">
-              Répondez S'il Vous Plaît
-            </h2>
-            <p className="text-xs font-editorial italic opacity-75">
-              Kindly reply by{' '}
-              {new Date(event.rsvp_deadline).toLocaleDateString('en-US', {
-                month: 'long',
-                day: 'numeric',
-                year: 'numeric',
-              })}
-            </p>
-          </div>
-
-          {/* Physical Response Card Frame */}
-          <div
-            className="relative overflow-hidden rounded-3xl p-6 sm:p-10 border-2 shadow-wedding"
-            style={{
-              backgroundColor: theme.surface_color || '#FFFFFF',
-              borderColor: theme.accent_color || '#C59B27',
-            }}
-          >
-            {isRsvpLocked ? (
-              <div className="py-6 text-center space-y-2 font-sans">
-                <Lock className="h-6 w-6 mx-auto opacity-70" />
-                <h4 className="font-serif text-base font-semibold">RSVP Window Concluded</h4>
-                <p className="text-xs opacity-70">
-                  The deadline has passed. If you need to make an adjustment, please contact the
-                  couple directly.
+                <div className="space-y-1">
+                  <p className="font-editorial text-xl vintage-caps">{weddingDateLong}</p>
+                  <p className="font-editorial text-base italic" style={{ color: muted }}>
+                    {[event.venue_name, event.venue_address].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
+                <p className="font-editorial text-lg italic" style={{ color: muted }}>
+                  &ldquo;{onEditText ? editable('theme.poetic_line', theme.poetic_line, 'poetic line') : theme.poetic_line || 'Two hearts, one horizon'}&rdquo;
                 </p>
               </div>
-            ) : rsvpStep === 5 ? (
-              /* STEP 5: CONFIRMATION STATE */
-              <div className="py-8 text-center space-y-4 font-sans">
-                <CheckCircle2
-                  className="h-12 w-12 mx-auto animate-bounce"
-                  style={{ color: theme.accent_color }}
-                />
-                <h4 className="font-serif text-2xl sm:text-3xl font-semibold">
-                  Thank You, {partyNames}!
-                </h4>
-                <p className="text-xs opacity-80 max-w-sm mx-auto leading-relaxed">
-                  Your response has been confirmed for {event.couple_names}'s wedding celebration.
+            </header>
+          )}
+
+          {/* Cover photo under the stationery, when the couple chose the framed layout */}
+          {!showPhotoHero && event.cover_image_url && (
+            <div
+              className={`relative mx-auto mt-12 aspect-[4/5] sm:aspect-[16/11] w-full overflow-hidden shadow-wedding ${
+                theme.border_flair === 'arch' ? 'rounded-t-[140px] rounded-b-[2px]' : 'rounded-[2px]'
+              }`}
+            >
+              <img src={event.cover_image_url} alt={event.couple_names} className="h-full w-full object-cover" />
+            </div>
+          )}
+        </div>
+
+        {/* 3. SAVE THE DATE: the month with a hand-drawn heart around the day, and the countdown */}
+        {(() => {
+          const cal = calendarMonth(event.wedding_date);
+          const weekdays = Array.from({ length: 7 }, (_, i) =>
+            new Date(Date.UTC(2024, 0, 1 + i)).toLocaleDateString(locale, { weekday: 'short', timeZone: 'UTC' })
+          );
+          const monthLabel = new Date(Date.UTC(cal.year, cal.month, 1)).toLocaleDateString(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+          return (
+            <section
+              id="save-the-date"
+              aria-label={`${tr.saveTheDate}: ${weddingDateLong}`}
+              className="mt-10 px-5 py-16 sm:py-20"
+              style={{ backgroundColor: darkTheme ? `color-mix(in srgb, ${accent} 4%, ${surface})` : `color-mix(in srgb, ${accent} 7%, ${pageBg})` }}
+            >
+              <div className="mx-auto max-w-sm text-center">
+                <p className="font-editorial text-xl italic" style={{ color: accent }}>
+                  {tr.saveTheDate}
                 </p>
-
-                <div className="rounded-2xl border p-4 max-w-sm mx-auto text-left text-xs space-y-2 bg-[#FAF7F2]/60" style={{ borderColor: theme.border_color }}>
-                  <span className="font-semibold text-[10px] uppercase tracking-wider block opacity-70">
-                    Recorded Attendance
-                  </span>
-                  {allGuests.map((g) => {
-                    const st = partyState[g.id];
-                    return (
-                      <div key={g.id} className="flex items-center justify-between text-xs">
-                        <span>{g.first_name} {g.last_name || ''}</span>
-                        <span className={`font-semibold capitalize ${st?.rsvp_status === 'attending' ? 'text-emerald-700' : 'text-rose-700'}`}>
-                          {st?.rsvp_status || 'Pending'}
-                        </span>
-                      </div>
-                    );
-                  })}
+                <h2 className={`${headingClass} mt-2 capitalize`}>{monthLabel}</h2>
+                <div aria-hidden="true" className="mt-8 grid grid-cols-7 gap-y-2 border-y py-5 font-editorial" style={{ borderColor: `color-mix(in srgb, ${accent} 25%, transparent)` }}>
+                  {weekdays.map((w) => (
+                    <span key={w} className="pb-2 text-xs uppercase tracking-[0.15em] text-[color:var(--muted)]">
+                      {w.replace('.', '')}
+                    </span>
+                  ))}
+                  {cal.weeks.flat().map((d, i) => (
+                    <span key={i} className={`relative grid h-9 place-items-center text-lg ${d === cal.day ? 'font-semibold' : 'opacity-80'}`}>
+                      {d}
+                      {d === cal.day && <DateMark variant={theme.date_mark} accent={accent} ink={ink} frameColor={frameColor} />}
+                    </span>
+                  ))}
                 </div>
-
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setRsvpStep(1)}
-                    className="inline-flex items-center gap-1.5 text-xs font-sans uppercase tracking-wider underline opacity-75 hover:opacity-100 cursor-pointer"
-                  >
-                    <span>Edit RSVP Response</span>
-                  </button>
+                <div className="mt-6 flex items-start justify-center">
+                  {countdownUnits(timeLeft).map((unit, i) => (
+                    <div key={unit} className={`px-5 sm:px-7 ${i > 0 ? 'border-l' : ''}`} style={{ borderColor: `color-mix(in srgb, ${accent} 25%, transparent)` }}>
+                      <span
+                        className={`block leading-none ${
+                          theme.name_font && theme.name_style === 'serif' ? 'couple-names text-4xl not-italic' : 'font-editorial text-3xl italic'
+                        }`}
+                      >
+                        {timeLeft[unit]}
+                      </span>
+                      <span className="mt-1 block text-base italic lowercase text-[color:var(--muted)]">
+                        {timeLeft[unit] === 1 ? tr[UNIT_SINGULAR[unit]] : tr[unit]}
+                      </span>
+                    </div>
+                  ))}
                 </div>
+              </div>
+            </section>
+          );
+        })()}
+
+        {/* 4. CHAPTERS: Studio designs set their own order, visibility and containers */}
+        {studioLayout ? (
+          <div className={`mx-auto ${canvasMaxWidthClass} px-5 sm:px-8 py-10 sm:py-16 space-y-16 sm:space-y-24`}>
+            {renderOrder.map((id) => {
+              const sectionStyle = computeSectionStyle(theme, id);
+              return (
+                <div key={id} className={`empty:hidden ${containerClassName(sectionStyle)}`} style={containerInlineStyle(sectionStyle)}>
+                  {sectionBlocks[id]}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          renderOrder.map((id) =>
+            id === 'rsvp' && !publicView ? (
+              <div
+                key={id}
+                className="rsvp-band my-8 isolate px-5 sm:px-8 pb-12 sm:pb-16"
+                style={
+                  ((theme.rsvp_band ?? (darkTheme ? 'deep' : 'accent')) === 'deep'
+                    ? // Night themes: a deeper shade of the page between accent hairlines, not a flat block of gold
+                      {
+                        '--band-bg': `color-mix(in srgb, ${pageBg} 72%, #000)`,
+                        '--band-ink': ink,
+                        '--band-line': `color-mix(in srgb, ${accent} 45%, transparent)`,
+                      }
+                    : { '--band-bg': accent, '--band-ink': bandInk, '--band-line': 'transparent', ['--section-accent' as string]: bandInk }) as React.CSSProperties
+                }
+              >
+                <div className={`mx-auto ${canvasMaxWidthClass}`}>{sectionBlocks[id]}</div>
               </div>
             ) : (
-              /* WIZARD CONTAINER */
-              <div className="space-y-6 font-sans text-xs">
-                {/* Step Progress Pills */}
-                <div className="flex items-center justify-between border-b pb-4 text-[10px] uppercase font-bold tracking-wider" style={{ borderColor: theme.border_color }}>
-                  <div className="flex items-center gap-1.5">
-                    <span className="h-5 w-5 rounded-full bg-aisle-charcoal text-white flex items-center justify-center text-[10px]">
-                      {rsvpStep}
-                    </span>
-                    <span>
-                      {rsvpStep === 1 && 'Step 1: Household Attendance'}
-                      {rsvpStep === 2 && 'Step 2: Sub-Events Itinerary'}
-                      {rsvpStep === 3 && 'Step 3: Dining & Details'}
-                      {rsvpStep === 4 && 'Step 4: Summary Review'}
-                    </span>
-                  </div>
-                  <span className="opacity-60">{rsvpStep} of 4</span>
-                </div>
-
-                {/* STEP 1: HOUSEHOLD PARTY ATTENDANCE */}
-                {rsvpStep === 1 && (
-                  <div className="space-y-6">
-                    <div className="space-y-1">
-                      <h4 className="font-serif text-lg font-semibold" style={{ color: theme.text_color }}>
-                        Will you be celebrating with us?
-                      </h4>
-                      <p className="text-xs opacity-75">
-                        Please indicate attendance for each guest in your party:
-                      </p>
-                    </div>
-
-                    <div className="space-y-4">
-                      {allGuests.map((guest) => {
-                        const gState = partyState[guest.id] || { rsvp_status: 'pending' };
-                        return (
-                          <div
-                            key={guest.id}
-                            className="rounded-2xl border p-4 space-y-3"
-                            style={{
-                              backgroundColor: `${theme.accent_color}06`,
-                              borderColor: theme.border_color || '#E8E0D7',
-                            }}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="font-serif text-base font-semibold" style={{ color: theme.text_color }}>
-                                {guest.first_name} {guest.last_name || ''}
-                              </span>
-                              {guest.is_vip && (
-                                <span
-                                  className="rounded-full px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
-                                  style={{
-                                    backgroundColor: `${theme.accent_color}20`,
-                                    color: theme.accent_color,
-                                  }}
-                                >
-                                  VIP Guest
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
-                              <button
-                                type="button"
-                                onClick={() => handleStatusChange(guest.id, 'attending')}
-                                className={`flex items-center justify-center gap-2 rounded-xl py-3 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
-                                  gState.rsvp_status === 'attending'
-                                    ? 'bg-emerald-700 text-white shadow-sm ring-2 ring-emerald-600 ring-offset-1'
-                                    : 'border bg-white hover:bg-emerald-50/50 text-aisle-charcoal'
-                                }`}
-                                style={{ borderColor: theme.border_color }}
-                              >
-                                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                                <span>Joyfully Accept</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => handleStatusChange(guest.id, 'declined')}
-                                className={`flex items-center justify-center gap-2 rounded-xl py-3 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
-                                  gState.rsvp_status === 'declined'
-                                    ? 'bg-rose-700 text-white shadow-sm ring-2 ring-rose-600 ring-offset-1'
-                                    : 'border bg-white hover:bg-rose-50/50 text-aisle-charcoal'
-                                }`}
-                                style={{ borderColor: theme.border_color }}
-                              >
-                                <XCircle className="h-4 w-4 shrink-0" />
-                                <span>Regretfully Decline</span>
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <div className="pt-2 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (hasAnyAttending) setRsvpStep(2);
-                          else setRsvpStep(4); // Skip to review if all declined
-                        }}
-                        className="rounded-full px-6 py-3 text-xs font-semibold uppercase tracking-wider text-white shadow-md transition-all hover:opacity-95 flex items-center gap-2 cursor-pointer"
-                        style={{ backgroundColor: theme.text_color }}
-                      >
-                        <span>Continue</span>
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* STEP 2: SUB-EVENTS ITINERARY SELECTION */}
-                {rsvpStep === 2 && (
-                  <div className="space-y-6">
-                    <div className="space-y-1">
-                      <h4 className="font-serif text-lg font-semibold" style={{ color: theme.text_color }}>
-                        Select Itinerary Events
-                      </h4>
-                      <p className="text-xs opacity-75">
-                        Confirm which events attending members of your party will attend:
-                      </p>
-                    </div>
-
-                    <div className="space-y-4">
-                      {attendingGuestsInParty.map((guest) => (
-                        <div
-                          key={guest.id}
-                          className="rounded-2xl border p-4 space-y-3"
-                          style={{ borderColor: theme.border_color }}
-                        >
-                          <span className="font-serif text-sm font-semibold block" style={{ color: theme.text_color }}>
-                            {guest.first_name}’s Itinerary
-                          </span>
-
-                          <div className="space-y-2">
-                            {visibleSchedule.map((item) => {
-                              const isAttendingItem =
-                                subEventRsvps[guest.id]?.[item.id] !== 'declined';
-
-                              return (
-                                <div
-                                  key={item.id}
-                                  className="flex items-center justify-between p-2.5 rounded-xl border bg-white text-xs"
-                                  style={{ borderColor: theme.border_color }}
-                                >
-                                  <div>
-                                    <strong className="block font-medium">{item.title}</strong>
-                                    <span className="text-[10px] opacity-70">
-                                      {new Date(item.start_time).toLocaleTimeString('en-US', {
-                                        hour: 'numeric',
-                                        minute: '2-digit',
-                                      })}
-                                    </span>
-                                  </div>
-
-                                  <div className="flex gap-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSubEventStatusChange(guest.id, item.id, 'attending')}
-                                      className={`px-3 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-wider cursor-pointer ${
-                                        isAttendingItem
-                                          ? 'bg-emerald-700 text-white'
-                                          : 'bg-aisle-sand/50 text-aisle-charcoal'
-                                      }`}
-                                    >
-                                      Attending
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSubEventStatusChange(guest.id, item.id, 'declined')}
-                                      className={`px-3 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-wider cursor-pointer ${
-                                        !isAttendingItem
-                                          ? 'bg-rose-700 text-white'
-                                          : 'bg-aisle-sand/50 text-aisle-charcoal'
-                                      }`}
-                                    >
-                                      Decline
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="pt-2 flex justify-between">
-                      <button
-                        type="button"
-                        onClick={() => setRsvpStep(1)}
-                        className="rounded-full px-5 py-2.5 text-xs font-semibold uppercase tracking-wider border flex items-center gap-1.5 opacity-80 hover:opacity-100 cursor-pointer"
-                        style={{ borderColor: theme.border_color }}
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                        <span>Back</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setRsvpStep(3)}
-                        className="rounded-full px-6 py-2.5 text-xs font-semibold uppercase tracking-wider text-white shadow-md flex items-center gap-1.5 hover:opacity-95 cursor-pointer"
-                        style={{ backgroundColor: theme.text_color }}
-                      >
-                        <span>Continue</span>
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* STEP 3: DINING PREFERENCES & CUSTOM QUESTIONS */}
-                {rsvpStep === 3 && (
-                  <div className="space-y-6">
-                    <div className="space-y-1">
-                      <h4 className="font-serif text-lg font-semibold" style={{ color: theme.text_color }}>
-                        Dining & Custom Details
-                      </h4>
-                      <p className="text-xs opacity-75">
-                        Please specify entrée, allergies, and helpful details for the caterer:
-                      </p>
-                    </div>
-
-                    {/* Guests Dining Cards */}
-                    <div className="space-y-4">
-                      {attendingGuestsInParty.map((guest) => {
-                        const gState = partyState[guest.id] || {
-                          meal_choice: '',
-                          dietary_notes: '',
-                          dietary_tags: [],
-                          plus_one_name: '',
-                          plus_one_meal: '',
-                        };
-
-                        return (
-                          <div
-                            key={guest.id}
-                            className="rounded-2xl border p-4 space-y-3"
-                            style={{ borderColor: theme.border_color }}
-                          >
-                            <span className="font-serif text-sm font-semibold block" style={{ color: theme.text_color }}>
-                              {guest.first_name}’s Dining Details
-                            </span>
-
-                            {/* Entrée Input */}
-                            <div>
-                              <label className="block text-[11px] uppercase tracking-wider font-semibold mb-1 opacity-80">
-                                Entrée / Main Course Preference
-                              </label>
-                              <input
-                                type="text"
-                                placeholder="e.g. Pan-Seared Chilean Sea Bass or Filet Mignon"
-                                value={gState.meal_choice}
-                                onChange={(e) =>
-                                  setPartyState((prev) => ({
-                                    ...prev,
-                                    [guest.id]: {
-                                      ...prev[guest.id],
-                                      meal_choice: e.target.value,
-                                    },
-                                  }))
-                                }
-                                className="w-full rounded-xl border p-2.5 text-xs bg-white focus:outline-none"
-                                style={{ borderColor: theme.border_color }}
-                              />
-                            </div>
-
-                            {/* Dietary Tag Selector */}
-                            <div>
-                              <label className="block text-[11px] uppercase tracking-wider font-semibold mb-1.5 opacity-80">
-                                Dietary Restrictions (Select all that apply)
-                              </label>
-                              <div className="flex flex-wrap gap-1.5">
-                                {COMMON_DIETARY_TAGS.map((tag) => {
-                                  const isSelected = (gState.dietary_tags || []).includes(tag);
-                                  return (
-                                    <button
-                                      key={tag}
-                                      type="button"
-                                      onClick={() => handleToggleDietaryTag(guest.id, tag)}
-                                      className={`rounded-full px-2.5 py-1 text-[10px] font-semibold transition-colors cursor-pointer ${
-                                        isSelected
-                                          ? 'bg-aisle-terracotta text-white shadow-xs'
-                                          : 'border bg-white text-aisle-charcoal hover:bg-aisle-sand/40'
-                                      }`}
-                                      style={{ borderColor: isSelected ? 'transparent' : theme.border_color }}
-                                    >
-                                      {tag}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-
-                            {/* Dietary Notes Input */}
-                            <div>
-                              <label className="block text-[11px] uppercase tracking-wider font-semibold mb-1 opacity-80">
-                                Specific Allergy Notes
-                              </label>
-                              <input
-                                type="text"
-                                placeholder="e.g. Severe peanut allergy; requires separate prep"
-                                value={gState.dietary_notes}
-                                onChange={(e) =>
-                                  setPartyState((prev) => ({
-                                    ...prev,
-                                    [guest.id]: {
-                                      ...prev[guest.id],
-                                      dietary_notes: e.target.value,
-                                    },
-                                  }))
-                                }
-                                className="w-full rounded-xl border p-2.5 text-xs bg-white focus:outline-none"
-                                style={{ borderColor: theme.border_color }}
-                              />
-                            </div>
-
-                            {/* Plus-One Form */}
-                            {guest.plus_one_allowed && (
-                              <div
-                                className="rounded-2xl border p-3.5 space-y-2 mt-2"
-                                style={{
-                                  borderColor: theme.accent_color,
-                                  backgroundColor: `${theme.accent_color}08`,
-                                }}
-                              >
-                                <span className="text-[10px] font-bold uppercase tracking-widest block" style={{ color: theme.accent_color }}>
-                                  Accompanied Plus-One Details
-                                </span>
-                                <input
-                                  type="text"
-                                  placeholder="Plus-One Full Name"
-                                  value={gState.plus_one_name}
-                                  onChange={(e) =>
-                                    setPartyState((prev) => ({
-                                      ...prev,
-                                      [guest.id]: {
-                                        ...prev[guest.id],
-                                        plus_one_name: e.target.value,
-                                      },
-                                    }))
-                                  }
-                                  className="w-full rounded-xl border p-2 text-xs bg-white focus:outline-none"
-                                  style={{ borderColor: theme.border_color }}
-                                />
-                                <input
-                                  type="text"
-                                  placeholder="Plus-One Meal Choice & Dietary"
-                                  value={gState.plus_one_meal}
-                                  onChange={(e) =>
-                                    setPartyState((prev) => ({
-                                      ...prev,
-                                      [guest.id]: {
-                                        ...prev[guest.id],
-                                        plus_one_meal: e.target.value,
-                                      },
-                                    }))
-                                  }
-                                  className="w-full rounded-xl border p-2 text-xs bg-white focus:outline-none"
-                                  style={{ borderColor: theme.border_color }}
-                                />
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Custom RSVP Questions */}
-                    {customQuestions.length > 0 && (
-                      <div className="space-y-4 pt-2">
-                        <h4 className="font-serif text-base font-semibold" style={{ color: theme.text_color }}>
-                          A Few Extra Details
-                        </h4>
-
-                        {customQuestions.map((q) => {
-                          const val = customAnswers[q.id] || '';
-
-                          return (
-                            <div key={q.id} className="space-y-1.5 rounded-2xl border p-4 bg-white/70" style={{ borderColor: theme.border_color }}>
-                              <label className="block text-xs font-semibold">
-                                {q.prompt} {q.is_required && <span className="text-rose-500">*</span>}
-                              </label>
-
-                              {q.question_type === 'single_choice' ? (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                                  {q.options.map((opt, i) => {
-                                    const isOptSelected = val === opt;
-                                    return (
-                                      <button
-                                        key={i}
-                                        type="button"
-                                        onClick={() =>
-                                          setCustomAnswers((prev) => ({ ...prev, [q.id]: opt }))
-                                        }
-                                        className={`rounded-xl p-2.5 text-xs text-left border transition-all cursor-pointer flex items-center justify-between ${
-                                          isOptSelected
-                                            ? 'border-aisle-terracotta bg-aisle-sand/60 font-semibold'
-                                            : 'border-aisle-border bg-white hover:bg-aisle-sand/20'
-                                        }`}
-                                      >
-                                        <span>{opt}</span>
-                                        {isOptSelected && <Check className="h-3.5 w-3.5 text-aisle-terracotta" />}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              ) : q.question_type === 'multiple_choice' ? (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                                  {q.options.map((opt, i) => {
-                                    const currentVals: string[] = Array.isArray(val) ? val : [];
-                                    const isChecked = currentVals.includes(opt);
-                                    return (
-                                      <button
-                                        key={i}
-                                        type="button"
-                                        onClick={() => {
-                                          const nextVals = isChecked
-                                            ? currentVals.filter((v) => v !== opt)
-                                            : [...currentVals, opt];
-                                          setCustomAnswers((prev) => ({ ...prev, [q.id]: nextVals }));
-                                        }}
-                                        className={`rounded-xl p-2.5 text-xs text-left border transition-all cursor-pointer flex items-center justify-between ${
-                                          isChecked
-                                            ? 'border-aisle-terracotta bg-aisle-sand/60 font-semibold'
-                                            : 'border-aisle-border bg-white hover:bg-aisle-sand/20'
-                                        }`}
-                                      >
-                                        <span>{opt}</span>
-                                        {isChecked && <Check className="h-3.5 w-3.5 text-aisle-terracotta" />}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              ) : (
-                                <input
-                                  type="text"
-                                  placeholder="Your response..."
-                                  value={val}
-                                  onChange={(e) =>
-                                    setCustomAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))
-                                  }
-                                  className="w-full rounded-xl border p-2.5 text-xs bg-white focus:outline-none"
-                                  style={{ borderColor: theme.border_color }}
-                                />
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    <div className="pt-2 flex justify-between">
-                      <button
-                        type="button"
-                        onClick={() => setRsvpStep(2)}
-                        className="rounded-full px-5 py-2.5 text-xs font-semibold uppercase tracking-wider border flex items-center gap-1.5 opacity-80 hover:opacity-100 cursor-pointer"
-                        style={{ borderColor: theme.border_color }}
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                        <span>Back</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setRsvpStep(4)}
-                        className="rounded-full px-6 py-2.5 text-xs font-semibold uppercase tracking-wider text-white shadow-md flex items-center gap-1.5 hover:opacity-95 cursor-pointer"
-                        style={{ backgroundColor: theme.text_color }}
-                      >
-                        <span>Review Summary</span>
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* STEP 4: SUMMARY REVIEW */}
-                {rsvpStep === 4 && (
-                  <div className="space-y-6">
-                    <div className="space-y-1">
-                      <h4 className="font-serif text-lg font-semibold" style={{ color: theme.text_color }}>
-                        Review Your RSVP Summary
-                      </h4>
-                      <p className="text-xs opacity-75">
-                        Please review your party’s selections before confirming:
-                      </p>
-                    </div>
-
-                    <div className="rounded-2xl border p-5 space-y-4 bg-[#FAF7F2]/50" style={{ borderColor: theme.border_color }}>
-                      {allGuests.map((guest) => {
-                        const st = partyState[guest.id] || { rsvp_status: 'pending' };
-                        const isAtt = st.rsvp_status === 'attending';
-
-                        return (
-                          <div key={guest.id} className="border-b last:border-b-0 pb-3 space-y-1 text-xs">
-                            <div className="flex items-center justify-between">
-                              <strong className="text-sm font-semibold">{guest.first_name} {guest.last_name || ''}</strong>
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                isAtt ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                              }`}>
-                                {st.rsvp_status}
-                              </span>
-                            </div>
-
-                            {isAtt && (
-                              <div className="text-[11px] opacity-80 space-y-0.5 pt-1 pl-2 border-l-2 border-aisle-gold/40">
-                                {st.meal_choice && <p>🍽️ Entrée: {st.meal_choice}</p>}
-                                {st.dietary_tags?.length > 0 && <p>🏷️ Dietary: {st.dietary_tags.join(', ')}</p>}
-                                {st.dietary_notes && <p>⚠️ Allergy Note: {st.dietary_notes}</p>}
-                                {st.plus_one_name && <p>👤 Accompanied by: {st.plus_one_name} ({st.plus_one_meal || 'Standard'})</p>}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-
-                      {customQuestions.length > 0 && (
-                        <div className="pt-2 border-t text-xs space-y-1" style={{ borderColor: theme.border_color }}>
-                          <span className="text-[10px] uppercase font-bold tracking-wider opacity-60">
-                            Custom Question Responses
-                          </span>
-                          {customQuestions.map((q) => {
-                            const ans = customAnswers[q.id];
-                            return (
-                              <div key={q.id} className="text-[11px] opacity-80">
-                                <strong>{q.prompt}:</strong> {Array.isArray(ans) ? ans.join(', ') : ans || '—'}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    {errorMessage && (
-                      <p className="text-xs text-rose-600 text-center font-semibold">
-                        {errorMessage}
-                      </p>
-                    )}
-
-                    <div className="pt-2 flex justify-between">
-                      <button
-                        type="button"
-                        onClick={() => setRsvpStep(hasAnyAttending ? 3 : 1)}
-                        className="rounded-full px-5 py-2.5 text-xs font-semibold uppercase tracking-wider border flex items-center gap-1.5 opacity-80 hover:opacity-100 cursor-pointer"
-                        style={{ borderColor: theme.border_color }}
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                        <span>Edit Selections</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={isSubmitting}
-                        onClick={handleFinalRsvpSubmit}
-                        className="rounded-full px-8 py-3 text-xs font-semibold uppercase tracking-widest text-white shadow-md hover:opacity-90 disabled:opacity-50 cursor-pointer flex items-center gap-2"
-                        style={{ backgroundColor: theme.text_color }}
-                      >
-                        {isSubmitting ? (
-                          <span>Recording RSVP...</span>
-                        ) : (
-                          <>
-                            <Sparkles className="h-4 w-4" />
-                            <span>Confirm My Attendance</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                )}
+              <div key={id} className={`mx-auto ${canvasMaxWidthClass} px-5 sm:px-8 py-10 sm:py-14 empty:hidden`}>
+                {sectionBlocks[id]}
               </div>
-            )}
-          </div>
-        </section>
-
-        {/* 9. PHOTO STREAM & ZERO-LOGIN GUEST UPLOADS */}
-        <section className="space-y-6 text-center">
-          <div className="space-y-2">
-            <span
-              className="text-[10px] uppercase tracking-[0.3em] font-semibold block"
-              style={{ color: theme.accent_color }}
-            >
-              Chapter V
-            </span>
-            <h2 className="font-serif text-2xl sm:text-3xl font-semibold">Shared Memories</h2>
-            <p className="text-xs font-editorial italic opacity-75">
-              Snap and upload your candid moments to the live wedding gallery
-            </p>
-          </div>
-
-          {/* Upload Button */}
-          <div className="pt-2">
-            <input
-              type="file"
-              id="stream-upload"
-              accept="image/png, image/jpeg, image/webp"
-              onChange={handlePhotoUpload}
-              disabled={isUploadingPhoto}
-              className="hidden"
-            />
-            <label
-              htmlFor="stream-upload"
-              className="inline-flex cursor-pointer items-center gap-2 rounded-full px-6 py-3 text-xs font-semibold uppercase tracking-wider font-sans transition-all hover:scale-105 shadow-sm text-white"
-              style={{ backgroundColor: theme.text_color }}
-            >
-              <Camera className="h-4 w-4" />
-              <span>{isUploadingPhoto ? 'Uploading Photo...' : 'Add A Photo'}</span>
-            </label>
-            {uploadMessage && (
-              <p className="mt-2 text-xs font-medium font-sans" style={{ color: theme.accent_color }}>
-                {uploadMessage}
-              </p>
-            )}
-          </div>
-
-          {/* Staggered Photo Grid */}
-          <div className="grid grid-cols-2 gap-3 sm:gap-4 pt-4">
-            {photos.map((p) => (
-              <div
-                key={p.id}
-                className="group relative aspect-square overflow-hidden rounded-2xl shadow-sm border"
-                style={{ borderColor: theme.border_color }}
-              >
-                <img
-                  src={p.image_url}
-                  alt={p.caption || 'Wedding Photo'}
-                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-                {p.caption && (
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2.5 text-[10px] text-white font-sans text-left">
-                    <p className="line-clamp-1">{p.caption}</p>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* 10. GIFT REGISTRY & HONEYMOON CASH FUND */}
-        {registryList.length > 0 && (
-          <section className="space-y-6 text-center">
-            <div className="space-y-2">
-              <span
-                className="text-[10px] uppercase tracking-[0.3em] font-semibold block"
-                style={{ color: theme.accent_color }}
-              >
-                Chapter VI
-              </span>
-              <h2 className="font-serif text-2xl sm:text-3xl font-semibold">Gift Registry</h2>
-              <p className="text-xs font-editorial italic opacity-75 max-w-sm mx-auto">
-                Your love and presence is all we wish for. For those who have asked:
-              </p>
-            </div>
-
-            <div className="space-y-4 max-w-md mx-auto text-left font-sans">
-              {registryList.map((item) => (
-                <div
-                  key={item.id}
-                  className="rounded-2xl border p-5 space-y-3"
-                  style={{
-                    backgroundColor: theme.surface_color || '#FFFFFF',
-                    borderColor: theme.border_color || '#E8E0D7',
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h4 className="font-serif text-base font-semibold" style={{ color: theme.text_color }}>
-                        {item.title}
-                      </h4>
-                      {item.description && (
-                        <p className="text-xs opacity-75 mt-0.5">{item.description}</p>
-                      )}
-                    </div>
-
-                    {item.is_cash_fund ? (
-                      <button
-                        onClick={() => setActiveCashFund(item)}
-                        className="rounded-full px-4 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-90 cursor-pointer shrink-0"
-                        style={{ backgroundColor: theme.accent_color }}
-                      >
-                        Contribute
-                      </button>
-                    ) : item.external_url ? (
-                      <a
-                        href={item.external_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors inline-flex items-center gap-1 shrink-0"
-                        style={{ borderColor: theme.border_color, color: theme.text_color }}
-                      >
-                        <span>Registry</span>
-                        <ExternalLink className="h-3 w-3 opacity-60" />
-                      </a>
-                    ) : null}
-                  </div>
-
-                  {item.is_cash_fund && item.target_amount && (
-                    <div className="space-y-1 pt-1">
-                      <div className="flex justify-between text-[10px] font-semibold opacity-70 uppercase tracking-wider">
-                        <span>${item.current_amount || 0} pledged</span>
-                        <span>Goal: ${item.target_amount}</span>
-                      </div>
-                      <div
-                        className="h-1.5 w-full rounded-full overflow-hidden"
-                        style={{ backgroundColor: `${theme.accent_color}25` }}
-                      >
-                        <div
-                          className="h-full transition-all duration-500 rounded-full"
-                          style={{
-                            backgroundColor: theme.accent_color,
-                            width: `${Math.min(
-                              100,
-                              ((item.current_amount || 0) / item.target_amount) * 100
-                            )}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
+            )
+          )
         )}
 
         {/* CASH FUND CONTRIBUTION MODAL */}
         {activeCashFund && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 font-sans">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
             <div
               className="w-full max-w-sm rounded-3xl p-6 shadow-2xl space-y-4 border"
               style={{
@@ -1815,26 +2471,31 @@ export default function GuestPortalView({
                 color: theme.text_color,
               }}
             >
-              <h3 className="font-serif text-xl font-semibold">
-                Contribute to {activeCashFund.title}
+              <h3 className="font-editorial text-2xl font-semibold">
+                {tr.contributeTo} {activeCashFund.title}
               </h3>
-              <p className="text-xs opacity-75">
-                Send a personalized gift contribution to {event.couple_names}.
+              <p className="text-sm opacity-75">
+                {fill(tr.contributionIntro, { couple: event.couple_names })}
               </p>
 
               {pledgeSuccess ? (
-                <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-5 text-center text-emerald-900 text-xs space-y-2">
-                  <div className="text-xl">🎉</div>
-                  <h4 className="font-serif text-base font-semibold">Gift Contribution Recorded!</h4>
-                  <p className="text-[11px] opacity-80 leading-relaxed">
+                <div className="rounded-2xl bg-[color:var(--tint)] border border-[color:var(--line)] p-5 text-center text-sm space-y-2">
+                  <CheckCircle2 className="mx-auto h-6 w-6 text-[color:var(--accent)]" aria-hidden="true" />
+                  <h3 className="font-editorial text-lg font-semibold">{tr.giftRecorded}</h3>
+                  <p className="text-xs opacity-80 leading-relaxed">
                     Thank you {pledgeName}! Your gift and warm message have been recorded for {event.couple_names}.
                   </p>
                 </div>
               ) : (
-                <form onSubmit={handleCashFundPledge} className="space-y-4 text-xs">
+                <form onSubmit={handleCashFundPledge} className="space-y-4 text-sm">
+                  {pledgeError && (
+                    <p role="alert" className="rounded-xl border border-[color:var(--error)] px-4 py-3 text-sm text-[color:var(--error)]">
+                      {pledgeError}
+                    </p>
+                  )}
                   <div>
-                    <label className="block uppercase tracking-wider text-[10px] font-semibold mb-1 opacity-80">
-                      Select Amount ($)
+                    <label className="block text-base italic mb-1 text-[color:var(--muted)]">
+                      {tr.selectAmount}
                     </label>
                     <div className="grid grid-cols-4 gap-2 mb-2">
                       {['25', '50', '100', '250'].map((preset) => (
@@ -1842,10 +2503,10 @@ export default function GuestPortalView({
                           key={preset}
                           type="button"
                           onClick={() => setPledgeAmount(preset)}
-                          className={`rounded-xl py-2 text-xs font-semibold border transition-all cursor-pointer ${
+                          className={`min-h-[44px] rounded-xl py-3 text-sm font-semibold border transition-all cursor-pointer ${
                             pledgeAmount === preset
-                              ? 'bg-aisle-charcoal text-white border-aisle-charcoal'
-                              : 'bg-white border-aisle-border text-aisle-charcoal hover:bg-aisle-sand/30'
+                              ? 'bg-[color:var(--ink)] text-[color:var(--on-ink)] border-[color:var(--ink)]'
+                              : 'bg-[color:var(--field-bg)] border-[color:var(--line)] text-[color:var(--ink)] hover:bg-[color:var(--tint)]'
                           }`}
                         >
                           ${preset}
@@ -1855,20 +2516,20 @@ export default function GuestPortalView({
                     <input
                       type="number"
                       min="1"
-                      step="5"
+                      step="1"
                       value={pledgeAmount}
                       onChange={(e) => setPledgeAmount(e.target.value)}
                       required
-                      className="w-full rounded-xl border p-2.5 bg-white/90 focus:outline-none"
+                      className="w-full rounded-xl border p-3.5 bg-[color:var(--field-bg)] focus:outline-none text-base"
                       style={{ borderColor: theme.border_color }}
                     />
                   </div>
 
                   {/* Direct Payment Handles (Option 1) */}
                   {customSections.registry && (
-                    <div className="space-y-2 pt-2 border-t border-aisle-border/60">
-                      <label className="block uppercase tracking-wider text-[10px] font-semibold opacity-80">
-                        Send Directly To Couple (0% Fee)
+                    <div className="space-y-2 pt-2 border-t border-[color:var(--line)]">
+                      <label className="block text-base italic text-[color:var(--muted)]">
+                        {tr.sendDirectly}
                       </label>
 
                       <div className="space-y-1.5">
@@ -1878,15 +2539,15 @@ export default function GuestPortalView({
                             href={`https://venmo.com/${customSections.registry.venmo_handle.replace('@', '')}?txn=pay&amount=${pledgeAmount || '0'}&note=${encodeURIComponent(`Wedding Gift for ${event.couple_names}`)}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center justify-between p-2.5 rounded-xl border border-blue-200 bg-blue-50/60 text-blue-900 font-semibold hover:bg-blue-100/60 transition-colors shadow-xs"
+                            className="flex items-center justify-between p-2.5 rounded-xl border border-[color:var(--line)] bg-[color:var(--tint)] text-[color:var(--ink)] font-semibold hover:border-[color:var(--accent)] transition-colors shadow-xs"
                           >
                             <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-xs">Venmo</span>
-                              <span className="text-[11px] font-normal opacity-80">
+                              <span className="font-bold text-sm">Venmo</span>
+                              <span className="text-xs font-normal opacity-80">
                                 @{customSections.registry.venmo_handle.replace('@', '')}
                               </span>
                             </div>
-                            <span className="text-[10px] font-bold text-blue-700 bg-white px-2 py-0.5 rounded-full border border-blue-200">
+                            <span className="text-xs font-bold text-[color:var(--accent)] bg-[color:var(--field-bg)] px-2 py-0.5 rounded-full border border-[color:var(--line)]">
                               Open Venmo ↗
                             </span>
                           </a>
@@ -1894,10 +2555,10 @@ export default function GuestPortalView({
 
                         {/* Zelle */}
                         {customSections.registry.zelle_info && (
-                          <div className="flex items-center justify-between p-2.5 rounded-xl border border-purple-200 bg-purple-50/60 text-purple-900 font-semibold shadow-xs">
+                          <div className="flex items-center justify-between p-2.5 rounded-xl border border-[color:var(--line)] bg-[color:var(--tint)] text-[color:var(--ink)] font-semibold hover:border-[color:var(--accent)] shadow-xs">
                             <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-xs">Zelle</span>
-                              <span className="text-[11px] font-mono font-normal opacity-90">
+                              <span className="font-bold text-sm">Zelle</span>
+                              <span className="text-xs font-mono font-normal opacity-90">
                                 {customSections.registry.zelle_info}
                               </span>
                             </div>
@@ -1908,9 +2569,9 @@ export default function GuestPortalView({
                                 setCopiedZelle(true);
                                 setTimeout(() => setCopiedZelle(false), 2000);
                               }}
-                              className="text-[10px] font-bold text-purple-800 bg-white px-2.5 py-0.5 rounded-full border border-purple-200 hover:bg-purple-50 cursor-pointer"
+                              className="text-xs font-bold text-[color:var(--accent)] bg-[color:var(--field-bg)] px-2.5 py-3 rounded-full border border-[color:var(--line)] cursor-pointer min-h-[44px]"
                             >
-                              {copiedZelle ? 'Copied!' : 'Copy'}
+                              {copiedZelle ? 'Copied!' : tr.copy}
                             </button>
                           </div>
                         )}
@@ -1921,15 +2582,15 @@ export default function GuestPortalView({
                             href={`https://cash.app/$${customSections.registry.cashapp_tag.replace('$', '')}/${pledgeAmount || ''}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center justify-between p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/60 text-emerald-900 font-semibold hover:bg-emerald-100/60 transition-colors shadow-xs"
+                            className="flex items-center justify-between p-2.5 rounded-xl border border-[color:var(--line)] bg-[color:var(--tint)] text-[color:var(--ink)] font-semibold hover:border-[color:var(--accent)] transition-colors shadow-xs"
                           >
                             <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-xs">Cash App</span>
-                              <span className="text-[11px] font-normal opacity-80">
+                              <span className="font-bold text-sm">Cash App</span>
+                              <span className="text-xs font-normal opacity-80">
                                 ${customSections.registry.cashapp_tag.replace('$', '')}
                               </span>
                             </div>
-                            <span className="text-[10px] font-bold text-emerald-700 bg-white px-2 py-0.5 rounded-full border border-emerald-200">
+                            <span className="text-xs font-bold text-[color:var(--accent)] bg-[color:var(--field-bg)] px-2 py-0.5 rounded-full border border-[color:var(--line)]">
                               Open Cash App ↗
                             </span>
                           </a>
@@ -1945,15 +2606,15 @@ export default function GuestPortalView({
                             }
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center justify-between p-2.5 rounded-xl border border-sky-200 bg-sky-50/60 text-sky-900 font-semibold hover:bg-sky-100/60 transition-colors shadow-xs"
+                            className="flex items-center justify-between p-2.5 rounded-xl border border-[color:var(--line)] bg-[color:var(--tint)] text-[color:var(--ink)] font-semibold hover:border-[color:var(--accent)] transition-colors shadow-xs"
                           >
                             <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-xs">PayPal</span>
-                              <span className="text-[11px] font-normal opacity-80">
+                              <span className="font-bold text-sm">PayPal</span>
+                              <span className="text-xs font-normal opacity-80">
                                 {customSections.registry.paypal_handle}
                               </span>
                             </div>
-                            <span className="text-[10px] font-bold text-sky-700 bg-white px-2 py-0.5 rounded-full border border-sky-200">
+                            <span className="text-xs font-bold text-[color:var(--accent)] bg-[color:var(--field-bg)] px-2 py-0.5 rounded-full border border-[color:var(--line)]">
                               Open PayPal ↗
                             </span>
                           </a>
@@ -1961,7 +2622,7 @@ export default function GuestPortalView({
 
                         {/* Custom Payout Note */}
                         {customSections.registry.payout_note && (
-                          <p className="text-[11px] opacity-75 italic p-2 rounded-xl bg-black/5 leading-relaxed">
+                          <p className="text-xs opacity-75 italic p-2 rounded-xl bg-black/5 leading-relaxed">
                             "{customSections.registry.payout_note}"
                           </p>
                         )}
@@ -1970,29 +2631,29 @@ export default function GuestPortalView({
                   )}
 
                   <div>
-                    <label className="block uppercase tracking-wider text-[10px] font-semibold mb-1 opacity-80">
-                      Your Name
+                    <label className="block text-base italic mb-1 text-[color:var(--muted)]">
+                      {tr.yourName}
                     </label>
                     <input
                       type="text"
                       value={pledgeName}
                       onChange={(e) => setPledgeName(e.target.value)}
                       required
-                      className="w-full rounded-xl border p-2.5 bg-white/90 focus:outline-none"
+                      className="w-full rounded-xl border p-3.5 bg-[color:var(--field-bg)] focus:outline-none text-base"
                       style={{ borderColor: theme.border_color }}
                     />
                   </div>
 
                   <div>
-                    <label className="block uppercase tracking-wider text-[10px] font-semibold mb-1 opacity-80">
-                      Warm Wishes / Note for Couple
+                    <label className="block text-base italic mb-1 text-[color:var(--muted)]">
+                      {tr.warmWishes}
                     </label>
                     <textarea
                       rows={2}
-                      placeholder="Wishing you a lifetime of happiness..."
+                      placeholder={tr.warmWishesPlaceholder}
                       value={pledgeMessage}
                       onChange={(e) => setPledgeMessage(e.target.value)}
-                      className="w-full rounded-xl border p-2.5 bg-white/90 focus:outline-none"
+                      className="w-full rounded-xl border p-3.5 bg-[color:var(--field-bg)] focus:outline-none text-base"
                       style={{ borderColor: theme.border_color }}
                     />
                   </div>
@@ -2001,18 +2662,18 @@ export default function GuestPortalView({
                     <button
                       type="button"
                       onClick={() => setActiveCashFund(null)}
-                      className="flex-1 rounded-full border py-2.5 text-xs font-semibold uppercase tracking-wider opacity-75 hover:opacity-100 cursor-pointer"
+                      className="flex-1 rounded-full border py-3.5 text-base font-semibold tracking-wide opacity-75 hover:opacity-100 cursor-pointer min-h-[44px]"
                       style={{ borderColor: theme.border_color }}
                     >
-                      Cancel
+                      {tr.cancel}
                     </button>
                     <button
                       type="submit"
                       disabled={isPledging}
-                      className="flex-1 rounded-full py-2.5 text-xs font-semibold uppercase tracking-wider text-white shadow-sm hover:opacity-90 disabled:opacity-50 cursor-pointer"
+                      className="flex-1 rounded-full py-3.5 text-base font-semibold tracking-wide text-[color:var(--on-accent)] shadow-sm hover:opacity-90 disabled:opacity-50 cursor-pointer min-h-[44px]"
                       style={{ backgroundColor: theme.accent_color }}
                     >
-                      {isPledging ? 'Recording...' : 'Record Gift in Ledger'}
+                      {isPledging ? tr.recordingGift : tr.recordGift}
                     </button>
                   </div>
                 </form>
@@ -2021,6 +2682,379 @@ export default function GuestPortalView({
           </div>
         )}
       </main>
+
+      {previewMode && showFloating && (
+        <div className="pointer-events-none sticky bottom-0 z-40 -mt-20 flex h-20 items-center justify-center">{floatingControls}</div>
+      )}
     </div>
   );
+}
+
+/** One hand-drawn signature detail over the photo cover, chosen by the preset's border_flair. */
+export function CoverFrame({ flair, accent, postmark }: { flair?: string; accent: string; postmark?: { place: string; day: string; year: string } }) {
+  const line = 'rgba(255,255,255,0.6)';
+  // Light accents (champagne, marigold) read on a photo; deep ones fall back to white
+  const tone = contrastRatio(accent, '#000000') > 7 ? accent : line;
+  switch (flair) {
+    case 'botanical-crest': {
+      // An upright laurel wreath: two leafy branches rising from a crossed stem and curving in towards each other
+      const branch = (t: number) => {
+        // Cubic bezier for the left branch, (46,78) → (36,6); the right branch mirrors it
+        const [p0, p1, p2, p3] = [[46, 78], [14, 70], [6, 30], [36, 6]];
+        const u = 1 - t;
+        const at = (i: 0 | 1) => u ** 3 * p0[i] + 3 * u * u * t * p1[i] + 3 * u * t * t * p2[i] + t ** 3 * p3[i];
+        const d = (i: 0 | 1) => 3 * u * u * (p1[i] - p0[i]) + 6 * u * t * (p2[i] - p1[i]) + 3 * t * t * (p3[i] - p2[i]);
+        // Rounded so server and browser render identical numbers
+        const r = (n: number) => Math.round(n * 100) / 100;
+        return { x: r(at(0)), y: r(at(1)), angle: r((Math.atan2(d(1), d(0)) * 180) / Math.PI) };
+      };
+      const leaves = [0.14, 0.26, 0.38, 0.5, 0.62, 0.74, 0.86].map(branch);
+      return (
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 100 84"
+          className="pointer-events-none absolute left-1/2 top-[7svh] h-20 w-24 -translate-x-1/2 [filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.35))]"
+          fill="none"
+          stroke={line}
+          strokeWidth="1"
+          strokeLinecap="round"
+        >
+          <path d="M46 78 C 14 70, 6 30, 36 6" />
+          <path d="M54 78 C 86 70, 94 30, 64 6" />
+          <path d="M42 82 L 58 74 M58 82 L 42 74" />
+          {leaves.map(({ x, y, angle }, i) => (
+            <g key={i}>
+              <ellipse cx={x - 4} cy={y} rx="5" ry="2.2" transform={`rotate(${angle + 40} ${x - 4} ${y})`} />
+              <ellipse cx={x + 3} cy={y + 1} rx="5" ry="2.2" transform={`rotate(${angle - 40} ${x + 3} ${y + 1})`} />
+              <ellipse cx={100 - x + 4} cy={y} rx="5" ry="2.2" transform={`rotate(${180 - angle - 40} ${100 - x + 4} ${y})`} />
+              <ellipse cx={100 - x - 3} cy={y + 1} rx="5" ry="2.2" transform={`rotate(${180 - angle + 40} ${100 - x - 3} ${y + 1})`} />
+            </g>
+          ))}
+        </svg>
+      );
+    }
+    // Frames stop 5.5rem above the cover's foot, clear of the floating RSVP button
+    case 'double-line':
+      return (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-x-4 top-4 bottom-[5.5rem] border p-1.5" style={{ borderColor: line }}>
+          <div className="h-full w-full border" style={{ borderColor: 'rgba(255,255,255,0.35)' }} />
+        </div>
+      );
+    case 'hairline-gold': {
+      // A true gold hairline with a single wave at its head; champagne gold reads on any photo
+      const gold = '#D9C08A';
+      return (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-x-5 top-5 bottom-[5.5rem] border" style={{ borderColor: gold }}>
+          <svg viewBox="0 0 80 12" className="absolute left-1/2 top-3 h-4 w-24 -translate-x-1/2" fill="none" stroke={gold} strokeWidth="1.3" strokeLinecap="round">
+            <path d="M2 6 C 10 0, 18 0, 26 6 S 42 12, 50 6 S 66 0, 78 6" />
+          </svg>
+        </div>
+      );
+    }
+    case 'arch':
+      // An arched window with a grapevine sprig at its crown
+      return (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-x-6 top-8 bottom-[5.5rem] rounded-t-full border" style={{ borderColor: line }}>
+          <svg viewBox="0 0 90 40" className="absolute left-1/2 top-0 h-10 w-24 -translate-x-1/2 -translate-y-1/2" fill="none" stroke={line} strokeWidth="1.2" strokeLinecap="round">
+            <path d="M8 20 C 25 10, 45 10, 82 20" />
+            <ellipse cx="22" cy="12" rx="6" ry="3" transform="rotate(-25 22 12)" />
+            <ellipse cx="66" cy="12" rx="6" ry="3" transform="rotate(25 66 12)" />
+            {[[42, 18], [48, 18], [45, 23], [39, 23], [51, 23], [45, 28]].map(([cx, cy]) => (
+              <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="2.6" />
+            ))}
+          </svg>
+        </div>
+      );
+    case 'arabesque':
+      // A double rule with a marigold toran swagged across its head
+      return (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-x-4 top-4 bottom-[5.5rem] border p-1.5" style={{ borderColor: tone }}>
+          <div className="h-full w-full border" style={{ borderColor: tone, opacity: 0.6 }} />
+          {/* A marigold toran hung from corner to corner of the frame: the string sags across the full width,
+              the flower heads stay round (placed along the curve, never stretched), and strands hang below */}
+          <Toran tone={tone} />
+        </div>
+      );
+    case 'clay':
+      // Boho: a clay line drawn by hand in two passes, the corners loose and uneven like a potter's rim
+      return (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-x-5 top-5 bottom-[5.5rem] [filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.4))]">
+          <div className="absolute inset-0 border-2 border-[#EBCDB4]" style={{ borderRadius: '255px 18px 225px 18px / 18px 225px 18px 255px' }} />
+          <div className="absolute -inset-1 border border-[#EBCDB4]/60" style={{ borderRadius: '18px 225px 18px 255px / 255px 18px 225px 18px', transform: 'rotate(-0.4deg)' }} />
+        </div>
+      );
+    case 'stars':
+      // A single gold hairline: the foil stars belong to the envelope
+      return <div aria-hidden="true" className="pointer-events-none absolute inset-x-5 top-5 bottom-[5.5rem] border" style={{ borderColor: tone }} />;
+    case 'airmail': {
+      // Riviera: the airmail envelope carried onto the cover, a striped border with a postmark at its corner
+      return (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-x-4 top-4 bottom-[5.5rem]">
+          <div
+            className="cover-airmail absolute inset-0"
+            style={{ padding: 3, background: `repeating-linear-gradient(-45deg, ${accent} 0 7px, #FFFFFF 7px 12px, #C0463A 12px 19px, #FFFFFF 19px 24px)` }}
+          />
+          {/* A postmark carrying the place and the date */}
+          <svg viewBox="0 0 96 56" className="absolute right-4 top-5 h-28 w-48 [filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.45))]" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="1.1">
+            <defs>
+              <path id="postmark-ring" d="M8 28 A 20 20 0 0 1 48 28" />
+            </defs>
+            <circle cx="28" cy="28" r="25" />
+            <circle cx="28" cy="28" r="15" strokeWidth="0.6" />
+            {/* The place set along the top of the ring, as a cancellation stamp does */}
+            <text fill="rgba(255,255,255,0.92)" stroke="none" fontSize={Math.round(Math.min(5.6, 66 / Math.max(1, postmark?.place.length || 1)) * 100) / 100} letterSpacing="0.9" textAnchor="middle" className="font-editorial uppercase">
+              <textPath href="#postmark-ring" startOffset="50%">
+                {postmark?.place}
+              </textPath>
+            </text>
+            <text x="28" y="27" textAnchor="middle" fill="rgba(255,255,255,0.95)" stroke="none" fontSize="7" letterSpacing="0.4" className="font-editorial uppercase">
+              {postmark?.day}
+            </text>
+            <text x="28" y="35" textAnchor="middle" fill="rgba(255,255,255,0.95)" stroke="none" fontSize="6" letterSpacing="0.6" className="font-editorial">
+              {postmark?.year}
+            </text>
+            {[18, 24, 30, 36].map((y) => (
+              <path key={y} d={`M56 ${y} C 64 ${y - 3}, 72 ${y + 3}, 80 ${y} S 92 ${y - 3}, 96 ${y}`} />
+            ))}
+          </svg>
+        </div>
+      );
+    }
+    case 'deboss':
+      // Blind-debossed rules above and below the names: pressed into the paper, no ink
+      return (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-x-8 top-6 bottom-[5.5rem]">
+          <span className="absolute inset-x-0 top-0 h-px bg-white/70 shadow-[0_1px_0_rgba(0,0,0,0.35)]" />
+          <span className="absolute inset-x-0 bottom-0 h-px bg-white/70 shadow-[0_1px_0_rgba(0,0,0,0.35)]" />
+        </div>
+      );
+    default:
+      return null;
+  }
+}
+
+/** The place a postmark can carry round its ring: whole words up to 16 letters, never a word cut in half
+ *  never ending on a particle, and dropping a generic leading noun when the full name will not fit. */
+function postmarkPlace(venue: string) {
+  const particles = /^(the|of|de|du|des|di|da|del|della|la|le|les|el|y|e|et|and|&)$/i;
+  const generic = /^(grand|hotel|hôtel|villa|château|chateau|castello|palazzo|domaine|masseria|tenuta|the)$/i;
+  let words = venue.trim().split(/\s+/);
+  // "Hotel du Cap-Eden-Roc" → "Cap-Eden-Roc": the name that makes the place, not the kind of building
+  while (words.length > 1 && (generic.test(words[0]) || particles.test(words[0])) && words.join(' ').length > 16) {
+    words = words.slice(1);
+    // never open on the particle the dropped word leaves behind ("du Cap-Eden-Roc")
+    while (words.length > 1 && particles.test(words[0])) words = words.slice(1);
+  }
+  const kept: string[] = [];
+  for (const word of words) {
+    if ([...kept, word].join(' ').length > 16) break;
+    kept.push(word);
+  }
+  while (kept.length > 1 && particles.test(kept[kept.length - 1])) kept.pop();
+  return kept.join(' ') || venue.slice(0, 16);
+}
+
+/** One marigold head: eight round petals about a seed. */
+function MarigoldHead({ tone }: { tone: string }) {
+  const r = (n: number) => Math.round(n * 100) / 100;
+  return (
+    <svg viewBox="-8 -8 16 16" className="h-full w-full" fill={tone}>
+      {Array.from({ length: 8 }, (_, k) => (
+        <circle key={k} cx={r(Math.cos((k / 8) * 2 * Math.PI) * 4.4)} cy={r(Math.sin((k / 8) * 2 * Math.PI) * 4.4)} r="3" />
+      ))}
+      <circle r="3.4" />
+      <circle r="1.6" fill="#000" opacity="0.25" />
+    </svg>
+  );
+}
+
+/** Marigold's toran: a swag strung from corner to corner, round flower heads along it and strands hanging below.
+ *  On wider screens the swag sags deeper (34px up to 80px) and the heads close up, so it stays a garland rather than a string of lights. */
+function Toran({ tone }: { tone: string }) {
+  const heads = 21;
+  const r = (n: number) => Math.round(n * 100) / 100;
+  // Depth along the swag as a share of --sag
+  const at = (t: number) => `calc(var(--sag) * ${r(4 * t * (1 - t))})`;
+  const head = (t: number, key: string, extra = '') => (
+    <span key={key} className={`absolute h-4 w-4 sm:h-5 sm:w-5 -translate-x-1/2 -translate-y-1/2 ${extra}`} style={{ left: `${r(t * 100)}%`, top: at(t) }}>
+      <MarigoldHead tone={tone} />
+    </span>
+  );
+  return (
+    <div className="absolute inset-x-1.5 top-1.5 h-[4.5rem] [--sag:clamp(34px,6vw,80px)]">
+      <svg viewBox="0 0 100 10" preserveAspectRatio="none" className="absolute inset-x-0 top-0 h-[var(--sag)] w-full overflow-visible" fill="none" stroke={tone} strokeOpacity="0.7">
+        <path d="M0 0 Q 50 20, 100 0" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+      </svg>
+      {Array.from({ length: heads }, (_, i) => head(i / (heads - 1), `h${i}`))}
+      {/* From sm the gaps close: two more heads between each pair, so the strand stays continuous */}
+      {Array.from({ length: heads - 1 }, (_, i) => head((i + 1 / 3) / (heads - 1), `a${i}`, 'hidden sm:block'))}
+      {Array.from({ length: heads - 1 }, (_, i) => head((i + 2 / 3) / (heads - 1), `b${i}`, 'hidden sm:block'))}
+      {/* Latkans: strands of varied length hanging from the swag, each ending in a small head */}
+      {[0.2, 0.35, 0.5, 0.65, 0.8].map((t, i) => (
+        <span key={t} className="absolute w-[1.5px] -translate-x-1/2" style={{ left: `${t * 100}%`, top: `calc(${at(t)} + 8px)`, height: [20, 30, 40, 30, 20][i], backgroundColor: tone, opacity: 0.8 }}>
+          <span className="absolute -bottom-2 left-1/2 h-3 w-3 -translate-x-1/2">
+            <MarigoldHead tone={tone} />
+          </span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** The mark round the wedding day in the calendar: a hand-drawn heart, or the preset's own. */
+function DateMark({ variant, accent, ink, frameColor }: { variant?: string; accent: string; ink: string; frameColor: string }) {
+  const box = 'pointer-events-none absolute left-1/2 top-1/2 h-14 w-14 -translate-x-1/2 -translate-y-1/2';
+  switch (variant) {
+    case 'square':
+      // Modern: a ruled square, nothing more
+      return <span className="pointer-events-none absolute left-1/2 top-1/2 h-10 w-10 -translate-x-1/2 -translate-y-1/2 border" style={{ borderColor: ink }} />;
+    case 'star':
+      return (
+        <svg viewBox="-12 -12 24 24" className="pointer-events-none absolute left-1/2 top-1/2 h-[3.75rem] w-14 -translate-x-1/2 -translate-y-1/2" fill="none" stroke={accent} strokeWidth="0.6" strokeLinejoin="round">
+          <path d="M0 -11.5 Q 3.4 -3.4, 11.5 0 Q 3.4 3.4, 0 11.5 Q -3.4 3.4, -11.5 0 Q -3.4 -3.4, 0 -11.5 Z" />
+        </svg>
+      );
+    case 'wreath':
+      // Royal: a laurel wreath open at the top, as on the crest
+      return (
+        <svg viewBox="-12 -12 24 24" className={box} fill={frameColor}>
+          {Array.from({ length: 9 }, (_, k) => {
+            const a = (Math.PI / 180) * (120 + k * 15);
+            return [1, -1].map((side) => {
+              const x = Math.round(side * Math.cos(a) * 1000) / 100;
+              const y = Math.round(-Math.sin(a) * 1000) / 100;
+              // Along the ring, tilted outward like a laurel leaf
+              const deg = Math.round((Math.atan2(-Math.cos(a), -side * Math.sin(a)) * 180) / Math.PI + side * 25);
+              return <ellipse key={`${k}${side}`} cx={x} cy={y} rx="1.9" ry="0.75" transform={`rotate(${deg} ${x} ${y})`} />;
+            });
+          })}
+        </svg>
+      );
+    case 'postmark':
+      // Riviera: the day cancelled like a stamp
+      return (
+        <svg viewBox="-12 -12 24 24" className={box} fill="none" stroke={accent} strokeWidth="0.6">
+          <circle r="10.5" />
+          <circle r="9" strokeDasharray="1.2 1" />
+        </svg>
+      );
+    case 'girih':
+      // Two interlaced squares (a khatam): the open centre leaves the date clear
+      return (
+        <svg viewBox="-12 -12 24 24" className="pointer-events-none absolute left-1/2 top-1/2 h-16 w-16 -translate-x-1/2 -translate-y-1/2" fill="none" stroke={frameColor} strokeWidth="0.5" strokeLinejoin="round">
+          <rect x="-7.5" y="-7.5" width="15" height="15" />
+          <rect x="-7.5" y="-7.5" width="15" height="15" transform="rotate(45)" />
+        </svg>
+      );
+    case 'beads':
+      // Marigold: a garland of small marigold heads round the day
+      return (
+        <span className={box}>
+          {Array.from({ length: 12 }, (_, i) => (
+            <span
+              key={i}
+              className="absolute h-[18%] w-[18%] -translate-x-1/2 -translate-y-1/2"
+              style={{ left: `${Math.round((50 + Math.cos((i / 12) * 2 * Math.PI) * 42) * 100) / 100}%`, top: `${Math.round((50 + Math.sin((i / 12) * 2 * Math.PI) * 42) * 100) / 100}%` }}
+            >
+              <MarigoldHead tone={accent} />
+            </span>
+          ))}
+        </span>
+      );
+    case 'ring':
+      // Boho: a loose ring drawn once round the day, not quite closed
+      return (
+        <svg viewBox="0 0 60 54" className={box} fill="none">
+          <path d="M33 6 C 50 7, 57 21, 52 34 C 47 46, 30 50, 17 44 C 6 38, 4 23, 11 14 C 17 7, 27 4, 40 8" stroke={accent} strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      );
+    default:
+      return (
+        <svg viewBox="0 0 60 54" className={box} fill="none">
+          <path d="M31 49 C 14 38, 3 27, 6 15 C 9 4, 23 2, 30 13.5 C 35 3, 49 2, 54 12 C 59 24, 47 37, 29 50.5" stroke={accent} strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      );
+  }
+}
+
+/** A torn, deckled paper edge for Boho's RSVP letter: small irregular notches along all four sides. */
+const DECKLE = (() => {
+  const jag = [0, 2, 1, 3, 0, 2, 3, 1, 2, 0, 3, 1, 2, 3, 0, 1, 3, 2, 0, 2];
+  const pts: string[] = [];
+  jag.forEach((j, i) => pts.push(`${(i / jag.length) * 100}% ${j}px`));
+  jag.forEach((j, i) => pts.push(`calc(100% - ${j}px) ${(i / jag.length) * 100}%`));
+  jag.forEach((j, i) => pts.push(`${100 - (i / jag.length) * 100}% calc(100% - ${j}px)`));
+  jag.forEach((j, i) => pts.push(`${j}px ${100 - (i / jag.length) * 100}%`));
+  return `polygon(${pts.join(', ')})`;
+})();
+
+/** An eight-point girih star, centred on 0,0 within a 24-unit box. */
+const GIRIH = 'M0 -11 L2.07 -4.99 L7.78 -7.78 L4.99 -2.07 L11 0 L4.99 2.07 L7.78 7.78 L2.07 4.99 L0 11 L-2.07 4.99 L-7.78 7.78 L-4.99 2.07 L-11 0 L-4.99 -2.07 L-7.78 -7.78 L-2.07 -4.99 Z';
+
+/** The small mark a preset leaves on its RSVP letter: gilt corners, foil stars, beads, a girih star or a stamp. */
+function RsvpCardMark({ variant, accent, frameColor, pageBg }: { variant?: string; accent: string; frameColor: string; pageBg: string }) {
+  const corner = 'pointer-events-none absolute h-5 w-5';
+  switch (variant) {
+    case 'gilt-corners': {
+      // Gilt brackets in each corner, like a framed card (the preset's own gilt)
+      return (
+        <span aria-hidden="true">
+          {[
+            ['left-3 top-3', 'border-l-[1.5px] border-t-[1.5px]'],
+            ['right-3 top-3', 'border-r-[1.5px] border-t-[1.5px]'],
+            ['left-3 bottom-3', 'border-l-[1.5px] border-b-[1.5px]'],
+            ['right-3 bottom-3', 'border-r-[1.5px] border-b-[1.5px]'],
+          ].map(([pos, sides]) => (
+            <span key={pos} className={`${corner} ${pos} ${sides}`} style={{ borderColor: frameColor }} />
+          ))}
+        </span>
+      );
+    }
+    case 'stars':
+      return (
+        <span aria-hidden="true">
+          {['left-3 top-3', 'right-3 top-3', 'left-3 bottom-3', 'right-3 bottom-3'].map((pos) => (
+            <svg key={pos} viewBox="-5 -5 10 10" className={`pointer-events-none absolute h-3 w-3 ${pos}`} fill={accent}>
+              <path d="M0 -5 Q 0 0, 5 0 Q 0 0, 0 5 Q 0 0, -5 0 Q 0 0, 0 -5 Z" />
+            </svg>
+          ))}
+        </span>
+      );
+    case 'beads':
+      // A short garland of marigold heads at the head and foot of the letter
+      return (
+        <span aria-hidden="true">
+          {['top-5', 'bottom-5'].map((pos) => (
+            <span key={pos} className={`pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center gap-0.5 ${pos}`}>
+              {[3, 3.5, 4, 3.5, 3].map((size, i) => (
+                <span key={i} style={{ width: size * 4, height: size * 4 }}>
+                  <MarigoldHead tone={accent} />
+                </span>
+              ))}
+            </span>
+          ))}
+        </span>
+      );
+    case 'girih':
+      // An eight-point girih star set on the head rule, in gilt
+      return (
+        <svg aria-hidden="true" viewBox="-12 -12 24 24" className="pointer-events-none absolute left-1/2 top-1 h-9 w-9 -translate-x-1/2" fill={pageBg} stroke={frameColor} strokeWidth="0.9" strokeLinejoin="round">
+          <path d={GIRIH} />
+          <circle r="2.4" />
+        </svg>
+      );
+    case 'stamp':
+      // A postage stamp in the corner: perforated edge, a single wave
+      return (
+        <span aria-hidden="true" className="pointer-events-none absolute right-4 top-4 grid h-11 w-9 rotate-[4deg] place-items-center border-2 border-dotted p-0.5" style={{ borderColor: accent }}>
+          <svg viewBox="0 0 20 24" className="h-full w-full" fill="none" stroke={accent} strokeWidth="1.2">
+            <rect x="1" y="1" width="18" height="22" strokeWidth="0.6" />
+            <path d="M3 15 C 6 12, 9 18, 12 15 S 17 12, 17 15" />
+            <circle cx="13" cy="7" r="2.4" />
+          </svg>
+        </span>
+      );
+    default:
+      return null;
+  }
 }
