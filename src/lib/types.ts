@@ -437,7 +437,7 @@ export interface TemplateDesignRecord {
    *  a constellation, garlanded ceremonies, gilt panels or handwritten times. */
   schedule_style?: 'menu' | 'timetable' | 'programme' | 'ledger' | 'constellation' | 'garland' | 'panels' | 'handwritten';
   /** The mark drawn round the wedding day in the calendar: a heart (default) or the preset's own. */
-  date_mark?: 'square' | 'star' | 'beads' | 'girih' | 'ring';
+  date_mark?: 'square' | 'star' | 'beads' | 'girih' | 'ring' | 'wreath' | 'postmark';
   /** Colour of the stationery frame and monogram ring (e.g. gilt); defaults to the accent. */
   frame_color?: string;
   is_dark?: boolean;
