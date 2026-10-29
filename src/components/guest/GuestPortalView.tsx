@@ -852,11 +852,11 @@ export default function GuestPortalView({
                   <div className="mx-auto max-w-sm space-y-9 text-center">
                     {visibleSchedule.map((item) => (
                       <div key={item.id}>
-                        <span
-                          aria-hidden="true"
-                          className="mx-auto block h-2 w-24"
-                          style={{ background: `radial-gradient(circle, ${accent} 2.6px, transparent 3.1px) center / 11px 8px space no-repeat` }}
-                        />
+                        <span aria-hidden="true" className="mx-auto flex w-fit items-center gap-1">
+                          <span className="h-3 w-3 opacity-70"><MarigoldHead tone={accent} /></span>
+                          <span className="h-4 w-4"><MarigoldHead tone={accent} /></span>
+                          <span className="h-3 w-3 opacity-70"><MarigoldHead tone={accent} /></span>
+                        </span>
                         <p className="mt-3 couple-names text-2xl leading-tight">{item.title}</p>
                         <p className="mt-1 font-editorial text-base italic" style={{ color: accent }}>{new Date(item.start_time).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}</p>
                         {item.location_name && <p className="mt-0.5 text-sm italic text-[color:var(--muted)]">{item.location_name}</p>}
@@ -866,11 +866,12 @@ export default function GuestPortalView({
                     ))}
                   </div>
                 ) : theme.schedule_style === 'panels' ? (
-                  // Persian: each part in its own gilt cartouche, like a tile
-                  <div className="space-y-4">
-                    {visibleSchedule.map((item) => (
-                      <div key={item.id} className="p-1" style={{ border: `1px solid ${frameColor}` }}>
-                        <div className="px-5 py-5 text-center" style={{ border: `1px solid color-mix(in srgb, ${frameColor} 55%, transparent)` }}>
+                  // Persian: the whole day in one gilt cartouche, its parts divided by hairlines
+                  <div className="p-1" style={{ border: `1px solid ${frameColor}` }}>
+                    <div className="px-5" style={{ border: `1px solid color-mix(in srgb, ${frameColor} 55%, transparent)` }}>
+                    {visibleSchedule.map((item, idx) => (
+                      <div key={item.id} style={idx ? { borderTop: `1px solid color-mix(in srgb, ${frameColor} 40%, transparent)` } : undefined}>
+                        <div className="py-5 text-center">
                           <p className="font-editorial text-base vintage-caps tracking-[0.08em]" style={{ color: accent }}>{new Date(item.start_time).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}</p>
                           <p className="mt-1 couple-names text-xl">{item.title}</p>
                         {item.location_name && <p className="mt-0.5 text-sm italic text-[color:var(--muted)]">{item.location_name}</p>}
@@ -879,13 +880,14 @@ export default function GuestPortalView({
                         </div>
                       </div>
                     ))}
+                    </div>
                   </div>
                 ) : theme.schedule_style === 'handwritten' ? (
                   // Boho: times written in by hand beside each part of the day
                   <div className="space-y-7">
                     {visibleSchedule.map((item) => (
                       <div key={item.id} className="grid grid-cols-[6.5rem_1fr] items-baseline gap-4">
-                        <span className="couple-names text-2xl leading-none" style={{ color: accent }}>{new Date(item.start_time).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}</span>
+                        <span className="font-editorial text-lg italic leading-none" style={{ color: accent }}>{new Date(item.start_time).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}</span>
                         <div className="space-y-0.5">
                           <p className="font-editorial text-lg">{item.title}</p>
                         {item.location_name && <p className="text-sm italic text-[color:var(--muted)]">{item.location_name}</p>}
@@ -1332,13 +1334,18 @@ export default function GuestPortalView({
 
                     <ul className="space-y-1 text-base" aria-label={tr.recordedAttendance}>
                       {allGuests.map((g) => {
-                        const st = partyState[g.id]?.rsvp_status;
+                        const gs = partyState[g.id];
+                        const st = gs?.rsvp_status;
+                        const choices = st === 'attending'
+                          ? [gs?.meal_choice, gs?.dietary_tags?.length ? gs.dietary_tags.join(', ') : '', gs?.dietary_notes].filter(Boolean)
+                          : [];
                         return (
                           <li key={g.id}>
                             {g.first_name} {g.last_name || ''}
                             {(st === 'attending' || st === 'declined') && (
                               <span className="italic text-[color:var(--muted)]"> {st === 'attending' ? tr.willAttend : tr.willNotAttend}</span>
                             )}
+                            {choices.length > 0 && <span className="block text-sm text-[color:var(--muted)]">{choices.join(' · ')}</span>}
                           </li>
                         );
                       })}
@@ -2181,7 +2188,7 @@ export default function GuestPortalView({
             flair={theme.border_flair}
             accent={accent}
             postmark={{
-              place: (event.venue_name || '').slice(0, 26),
+              place: postmarkPlace(event.venue_name || ''),
               day: new Date(event.wedding_date).toLocaleDateString(locale, { timeZone: 'UTC', day: 'numeric', month: 'short' }),
               year: String(new Date(event.wedding_date).getUTCFullYear()),
             }}
@@ -2701,12 +2708,12 @@ export function CoverFrame({ flair, accent, postmark }: { flair?: string; accent
         </div>
       );
     case 'clay':
-      // Boho: a clay line drawn by hand, wavering and left open at one corner
+      // Boho: a clay line drawn by hand in two passes, the corners loose and uneven like a potter's rim
       return (
-        <svg aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-x-5 top-5 bottom-[5.5rem] h-[calc(100%-6.75rem)] w-[calc(100%-2.5rem)] overflow-visible" fill="none" stroke="#E2C2A8" strokeWidth="1.4" strokeLinecap="round" vectorEffect="non-scaling-stroke">
-          {/* Drawn freehand: a wavering line, left open at the top-right corner */}
-          <path vectorEffect="non-scaling-stroke" d="M84 0.6 C 60 1.6, 32 -0.2, 8 1.2 C 3 1.4, 0.4 3, 0.8 9 C 1.6 36, -0.2 64, 1 92 C 1.2 97.6, 3.4 99.4, 10 99 C 38 98.2, 64 100.4, 92 99.2 C 97.8 99, 99.6 97, 99.2 90 C 98.6 66, 100.2 42, 99.4 16" />
-        </svg>
+        <div aria-hidden="true" className="pointer-events-none absolute inset-x-5 top-5 bottom-[5.5rem] [filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.4))]">
+          <div className="absolute inset-0 border-2 border-[#EBCDB4]" style={{ borderRadius: '255px 18px 225px 18px / 18px 225px 18px 255px' }} />
+          <div className="absolute -inset-1 border border-[#EBCDB4]/60" style={{ borderRadius: '18px 225px 18px 255px / 255px 18px 225px 18px', transform: 'rotate(-0.4deg)' }} />
+        </div>
       );
     case 'stars':
       // A single gold hairline: the foil stars belong to the envelope
@@ -2727,7 +2734,7 @@ export function CoverFrame({ flair, accent, postmark }: { flair?: string; accent
             <circle cx="28" cy="28" r="25" />
             <circle cx="28" cy="28" r="15" strokeWidth="0.6" />
             {/* The place set along the top of the ring, as a cancellation stamp does */}
-            <text fill="rgba(255,255,255,0.92)" stroke="none" fontSize="5.6" letterSpacing="0.9" textAnchor="middle" className="font-editorial uppercase">
+            <text fill="rgba(255,255,255,0.92)" stroke="none" fontSize={Math.round(Math.min(5.6, 66 / Math.max(1, postmark?.place.length || 1)) * 100) / 100} letterSpacing="0.9" textAnchor="middle" className="font-editorial uppercase">
               <textPath href="#postmark-ring" startOffset="50%">
                 {postmark?.place}
               </textPath>
@@ -2758,13 +2765,21 @@ export function CoverFrame({ flair, accent, postmark }: { flair?: string; accent
   }
 }
 
-/** Marigold's toran: a swag strung from corner to corner, round flower heads along it and strands hanging below. */
-function Toran({ tone }: { tone: string }) {
-  const heads = 21;
-  const sag = 34; // px at the middle of the swag
+/** The place a postmark can carry round its ring: whole words up to 16 letters, never a word cut in half. */
+function postmarkPlace(venue: string) {
+  let out = '';
+  for (const word of venue.trim().split(/\s+/)) {
+    const next = out ? `${out} ${word}` : word;
+    if (next.length > 16) break;
+    out = next;
+  }
+  return out || venue.slice(0, 16);
+}
+
+/** One marigold head: eight round petals about a seed. */
+function MarigoldHead({ tone }: { tone: string }) {
   const r = (n: number) => Math.round(n * 100) / 100;
-  const at = (t: number) => r(4 * t * (1 - t) * sag);
-  const flower = (
+  return (
     <svg viewBox="-8 -8 16 16" className="h-full w-full" fill={tone}>
       {Array.from({ length: 8 }, (_, k) => (
         <circle key={k} cx={r(Math.cos((k / 8) * 2 * Math.PI) * 4.4)} cy={r(Math.sin((k / 8) * 2 * Math.PI) * 4.4)} r="3" />
@@ -2773,22 +2788,31 @@ function Toran({ tone }: { tone: string }) {
       <circle r="1.6" fill="#000" opacity="0.25" />
     </svg>
   );
+}
+
+/** Marigold's toran: a swag strung from corner to corner, round flower heads along it and strands hanging below.
+ *  On wider screens the swag sags deeper and the heads close up, so it stays a garland rather than a string of lights. */
+function Toran({ tone }: { tone: string }) {
+  const heads = 21;
+  const r = (n: number) => Math.round(n * 100) / 100;
+  // Depth along the swag as a share of --sag (34px on phones, 52px from sm)
+  const at = (t: number) => `calc(var(--sag) * ${r(4 * t * (1 - t))})`;
+  const head = (t: number, key: string, extra = '') => (
+    <span key={key} className={`absolute h-4 w-4 sm:h-5 sm:w-5 -translate-x-1/2 -translate-y-1/2 ${extra}`} style={{ left: `${r(t * 100)}%`, top: at(t) }}>
+      <MarigoldHead tone={tone} />
+    </span>
+  );
   return (
-    <div className="absolute inset-x-1.5 top-1.5 h-[4.5rem]">
-      <svg viewBox="0 0 100 10" preserveAspectRatio="none" className="absolute inset-x-0 top-0 h-[34px] w-full overflow-visible" fill="none" stroke={tone} strokeOpacity="0.7">
+    <div className="absolute inset-x-1.5 top-1.5 h-[4.5rem] [--sag:34px] sm:[--sag:52px]">
+      <svg viewBox="0 0 100 10" preserveAspectRatio="none" className="absolute inset-x-0 top-0 h-[var(--sag)] w-full overflow-visible" fill="none" stroke={tone} strokeOpacity="0.7">
         <path d="M0 0 Q 50 20, 100 0" strokeWidth="1" vectorEffect="non-scaling-stroke" />
       </svg>
-      {Array.from({ length: heads }, (_, i) => {
-        const t = i / (heads - 1);
-        return (
-          <span key={i} className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2" style={{ left: `${r(t * 100)}%`, top: at(t) }}>
-            {flower}
-          </span>
-        );
-      })}
+      {Array.from({ length: heads }, (_, i) => head(i / (heads - 1), `h${i}`))}
+      {/* From sm the gaps fill with a second head between each pair */}
+      {Array.from({ length: heads - 1 }, (_, i) => head((i + 0.5) / (heads - 1), `m${i}`, 'hidden sm:block'))}
       {/* Latkans: strands hanging from the swag, each ending in a bead */}
       {[0.2, 0.35, 0.5, 0.65, 0.8].map((t, i) => (
-        <span key={t} className="absolute w-px -translate-x-1/2" style={{ left: `${t * 100}%`, top: at(t) + 8, height: i === 2 ? 24 : 16, backgroundColor: tone, opacity: 0.75 }}>
+        <span key={t} className="absolute w-px -translate-x-1/2" style={{ left: `${t * 100}%`, top: `calc(${at(t)} + 8px)`, height: i === 2 ? 24 : 16, backgroundColor: tone, opacity: 0.75 }}>
           <span className="absolute -bottom-1.5 left-1/2 h-2.5 w-2.5 -translate-x-1/2 rounded-full" style={{ backgroundColor: tone }} />
         </span>
       ))}
