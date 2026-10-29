@@ -1462,13 +1462,15 @@ export default function GuestPortalView({
                                         : { borderColor: choiceLine, color: theme.text_color }
                                     }
                                   >
-                                    {rsvpCard === 'girih' && (
-                                      // A pointed mihrab arch
-                                      <svg aria-hidden="true" viewBox="0 0 12 16" className="h-4 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round">
-                                        <path d="M1 15.5 V7 C 1 3.6, 4.4 2.4, 6 0.6 C 7.6 2.4, 11 3.6, 11 7 V15.5" />
-                                      </svg>
-                                    )}
-                                    <span>{tr.joyfullyAccept}</span>
+                                    <span className="relative">
+                                      {rsvpCard === 'girih' && gState.rsvp_status === 'attending' && (
+                                        // A pointed mihrab arch frames the chosen answer only; it hangs off the label so the label never moves
+                                        <svg aria-hidden="true" viewBox="0 0 12 16" className="absolute right-full top-1/2 mr-2 h-4 w-3 -translate-y-1/2" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round">
+                                          <path d="M1 15.5 V7 C 1 3.6, 4.4 2.4, 6 0.6 C 7.6 2.4, 11 3.6, 11 7 V15.5" />
+                                        </svg>
+                                      )}
+                                      {tr.joyfullyAccept}
+                                    </span>
                                   </button>
 
                                   <button
@@ -1484,13 +1486,15 @@ export default function GuestPortalView({
                                         : { borderColor: choiceLine, color: theme.text_color }
                                     }
                                   >
-                                    {rsvpCard === 'girih' && (
-                                      // A pointed mihrab arch
-                                      <svg aria-hidden="true" viewBox="0 0 12 16" className="h-4 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round">
-                                        <path d="M1 15.5 V7 C 1 3.6, 4.4 2.4, 6 0.6 C 7.6 2.4, 11 3.6, 11 7 V15.5" />
-                                      </svg>
-                                    )}
-                                    <span>{tr.regretfullyDecline}</span>
+                                    <span className="relative">
+                                      {rsvpCard === 'girih' && gState.rsvp_status === 'declined' && (
+                                        // A pointed mihrab arch frames the chosen answer only; it hangs off the label so the label never moves
+                                        <svg aria-hidden="true" viewBox="0 0 12 16" className="absolute right-full top-1/2 mr-2 h-4 w-3 -translate-y-1/2" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round">
+                                          <path d="M1 15.5 V7 C 1 3.6, 4.4 2.4, 6 0.6 C 7.6 2.4, 11 3.6, 11 7 V15.5" />
+                                        </svg>
+                                      )}
+                                      {tr.regretfullyDecline}
+                                    </span>
                                   </button>
                                 </div>
                               </div>
