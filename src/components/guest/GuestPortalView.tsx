@@ -50,7 +50,7 @@ import { BotanicalCorner, GoldHairlineDivider } from '@/components/MotifDecorati
 import { buildIcs, downloadIcs } from '@/lib/ics';
 import EditableText from '@/components/guest/EditableText';
 import { getMenuOptions } from '@/lib/menu';
-import { fill, PORTAL_LANGUAGES, portalLanguageOf, portalStrings } from '@/lib/portal-i18n';
+import { fill, PORTAL_LANGUAGES, portalLanguageOf, portalStrings, type PortalStrings } from '@/lib/portal-i18n';
 import { hasFeature } from '@/lib/plans';
 import { calendarMonth, contrastRatio, ensureContrast, isDarkBackground, monogram, readableOn, readablePalette } from '@/lib/invite-style';
 import { submitRsvpAction, uploadPhotoAction, contributeToRegistryAction } from '@/app/actions/wedding-actions';
@@ -86,16 +86,29 @@ function countdownUnits(t: { days: number; hours: number; minutes: number }) {
 /** Countdown labels for a single day, hour or minute. */
 const UNIT_SINGULAR = { days: 'day', hours: 'hour', minutes: 'minute' } as const;
 
-const COMMON_DIETARY_TAGS = [
-  'Vegetarian',
-  'Vegan',
-  'Gluten-Free',
-  'Dairy-Free',
-  'Nut Allergy',
-  'Shellfish Allergy',
-  'Halal',
-  'Kosher',
-];
+// Stored in English on the reply; shown in the invitation's language
+const COMMON_DIETARY_TAGS: Record<string, keyof PortalStrings> = {
+  Vegetarian: 'dietVegetarian',
+  Vegan: 'dietVegan',
+  'Gluten-Free': 'dietGlutenFree',
+  'Dairy-Free': 'dietDairyFree',
+  'Nut Allergy': 'dietNutAllergy',
+  'Shellfish Allergy': 'dietShellfishAllergy',
+  Halal: 'dietHalal',
+  Kosher: 'dietKosher',
+};
+
+// A preset's own cover line, translated while the couple hasn't written their own
+const PRESET_COVER_LINES: Record<string, keyof PortalStrings> = {
+  'royal-floral': 'coverRoyalFloral',
+  'modern-minimal': 'coverModernMinimal',
+  'tuscan-wine': 'coverTuscanWine',
+  'celestial-magic': 'coverCelestialMagic',
+  'indian-marigold': 'coverIndianMarigold',
+  'persian-mirror': 'coverPersianMirror',
+  'destination-riviera': 'coverDestinationRiviera',
+  'boho-botanical': 'coverBohoBotanical',
+};
 
 export default function GuestPortalView({
   event,
@@ -120,6 +133,7 @@ export default function GuestPortalView({
     BUILTIN_THEMES['royal-floral'];
 
   const tr = portalStrings(event?.language);
+  const dietLabel = (tag: string) => (COMMON_DIETARY_TAGS[tag] ? tr[COMMON_DIETARY_TAGS[tag]] : tag);
   // Couple-written text: editable in the Editor preview, plain text everywhere else.
   const editable = (path: string, value: string | null | undefined, label: string, multiline = false) =>
     onEditText ? (
@@ -147,6 +161,11 @@ export default function GuestPortalView({
     surface_color: repaired.surface,
     accent_color: repaired.accent,
   };
+  const presetId = event?.theme_id || 'royal-floral';
+  const coverLine =
+    PRESET_COVER_LINES[presetId] && theme.eyebrow_text === BUILTIN_THEMES[presetId]?.eyebrow_text
+      ? tr[PRESET_COVER_LINES[presetId]]
+      : theme.eyebrow_text;
 
   const fallbackGuest: GuestRecord = {
     id: 'preview-guest-id',
@@ -1368,7 +1387,7 @@ export default function GuestPortalView({
                         const gs = partyState[g.id];
                         const st = gs?.rsvp_status;
                         const choices = st === 'attending'
-                          ? [gs?.meal_choice, gs?.dietary_tags?.length ? gs.dietary_tags.join(', ') : '', gs?.dietary_notes].filter(Boolean)
+                          ? [gs?.meal_choice, gs?.dietary_tags?.length ? gs.dietary_tags.map(dietLabel).join(', ') : '', gs?.dietary_notes].filter(Boolean)
                           : [];
                         return (
                           <li key={g.id}>
@@ -1647,7 +1666,7 @@ export default function GuestPortalView({
                                     {tr.dietaryRestrictions}
                                   </label>
                                   <div className="flex flex-wrap gap-1.5">
-                                    {COMMON_DIETARY_TAGS.map((tag) => {
+                                    {Object.keys(COMMON_DIETARY_TAGS).map((tag) => {
                                       const isSelected = (gState.dietary_tags || []).includes(tag);
                                       return (
                                         <button
@@ -1661,7 +1680,7 @@ export default function GuestPortalView({
                                           }`}
                                           style={{ borderColor: isSelected ? 'transparent' : theme.border_color }}
                                         >
-                                          {tag}
+                                          {dietLabel(tag)}
                                         </button>
                                       );
                                     })}
@@ -1907,7 +1926,7 @@ export default function GuestPortalView({
                                 {isAtt && (st.meal_choice || st.dietary_tags?.length > 0 || st.dietary_notes || st.plus_one_name) && (
                                   <div className="text-sm opacity-80 space-y-0.5 pt-1 pl-3 border-l border-[color:var(--line)]">
                                     {st.meal_choice && <p>{tr.entree}: {st.meal_choice}</p>}
-                                    {st.dietary_tags?.length > 0 && <p>{tr.dietaryLabel}: {st.dietary_tags.join(', ')}</p>}
+                                    {st.dietary_tags?.length > 0 && <p>{tr.dietaryLabel}: {st.dietary_tags.map(dietLabel).join(', ')}</p>}
                                     {st.dietary_notes && <p>{tr.allergyNote}: {st.dietary_notes}</p>}
                                     {st.plus_one_name && <p>{tr.accompaniedBy}: {st.plus_one_name} ({st.plus_one_meal || tr.standard})</p>}
                                   </div>
@@ -2238,7 +2257,7 @@ export default function GuestPortalView({
           />
           <div className="absolute inset-x-0 bottom-0 px-6 pb-[calc(5.5rem+4svh)] text-center text-white [text-shadow:0_1px_18px_rgba(0,0,0,0.35)]">
             <p className="font-editorial text-xs sm:text-sm uppercase tracking-[0.22em] sm:tracking-[0.32em] opacity-90 [text-wrap:balance]">
-              {onEditText ? editable('theme.eyebrow_text', theme.eyebrow_text, 'top line') : theme.eyebrow_text || tr.weddingCelebration}
+              {onEditText ? editable('theme.eyebrow_text', theme.eyebrow_text, 'top line') : coverLine || tr.weddingCelebration}
             </p>
             <h1 className={`${nameClass} mt-3 ${scriptNames ? 'text-7xl sm:text-8xl' : 'text-5xl sm:text-6xl'}`}>{coupleNamesStacked}</h1>
             <div className="mt-5 flex items-center justify-center gap-3">
@@ -2308,7 +2327,7 @@ export default function GuestPortalView({
                   {monogram(event.couple_names).split('').join(' & ')}
                 </div>
                 <p className="font-editorial text-xs sm:text-sm uppercase tracking-[0.2em] sm:tracking-[0.3em] [text-wrap:balance]" style={{ color: accent }}>
-                  {onEditText ? editable('theme.eyebrow_text', theme.eyebrow_text, 'top line') : theme.eyebrow_text || tr.weddingCelebration}
+                  {onEditText ? editable('theme.eyebrow_text', theme.eyebrow_text, 'top line') : coverLine || tr.weddingCelebration}
                 </p>
                 <div className="space-y-3">
                   <h1 className={`${nameClass} ${scriptNames ? 'text-6xl sm:text-7xl' : 'text-4xl sm:text-5xl'}`} style={{ color: ink }}>
@@ -2812,10 +2831,14 @@ export function CoverFrame({ flair, accent, postmark }: { flair?: string; accent
  *  never ending on a particle, and dropping a generic leading noun when the full name will not fit. */
 function postmarkPlace(venue: string) {
   const particles = /^(the|of|de|du|des|di|da|del|della|la|le|les|el|y|e|et|and|&)$/i;
-  const generic = /^(hotel|hôtel|villa|château|chateau|castello|palazzo|domaine|masseria|tenuta|the)$/i;
+  const generic = /^(grand|hotel|hôtel|villa|château|chateau|castello|palazzo|domaine|masseria|tenuta|the)$/i;
   let words = venue.trim().split(/\s+/);
   // "Hotel du Cap-Eden-Roc" → "Cap-Eden-Roc": the name that makes the place, not the kind of building
-  while (words.length > 1 && (generic.test(words[0]) || particles.test(words[0])) && words.join(' ').length > 16) words = words.slice(1);
+  while (words.length > 1 && (generic.test(words[0]) || particles.test(words[0])) && words.join(' ').length > 16) {
+    words = words.slice(1);
+    // never open on the particle the dropped word leaves behind ("du Cap-Eden-Roc")
+    while (words.length > 1 && particles.test(words[0])) words = words.slice(1);
+  }
   const kept: string[] = [];
   for (const word of words) {
     if ([...kept, word].join(' ').length > 16) break;
