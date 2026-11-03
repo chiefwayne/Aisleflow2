@@ -53,10 +53,19 @@ export default function CreateEventModal({ open, onClose, initialThemeId }: Crea
   const stepCount = initialThemeId ? 2 : 3;
   const stepNumber = step - firstStep + 1;
 
+  // Today in the couple's own time zone, as the date field writes it
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
   const handleNext = () => {
     if (step === 2) {
       if (!form.couple_names.trim() || !form.wedding_date || !form.venue_name.trim() || !form.venue_address.trim()) {
         setErrorMessage('Please fill in all of the details so your invitation looks right.');
+        return;
+      }
+      // A past date would open the invitation with its RSVP deadline already gone
+      if (form.wedding_date < today) {
+        setErrorMessage('That date has already passed. Choose your wedding date.');
         return;
       }
     }
@@ -197,6 +206,7 @@ export default function CreateEventModal({ open, onClose, initialThemeId }: Crea
                   <input
                     id="wedding_date"
                     type="date"
+                    min={today}
                     value={form.wedding_date}
                     onChange={(e) => setForm({ ...form, wedding_date: e.target.value })}
                     required
