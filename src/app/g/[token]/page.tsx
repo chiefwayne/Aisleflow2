@@ -131,9 +131,8 @@ export default async function GuestPortalPage({ params, searchParams }: PageProp
       if (party && party.length > 0) partyMembers = party as GuestRecord[];
     } catch (err) {}
     if (partyMembers.length === 0 && isUsingMock) {
-      partyMembers = mockData.guests.filter(
-        (g) => g.party_id === partyId && g.id !== primaryGuest?.id
-      );
+      // The whole party, the guest holding the link included, as the database query returns it
+      partyMembers = mockData.guests.filter((g) => g.party_id === partyId);
     }
   }
 
