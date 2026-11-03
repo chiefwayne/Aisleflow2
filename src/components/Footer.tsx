@@ -27,20 +27,19 @@ export default function Footer() {
 
           <div>
             <h4 className="text-xs uppercase tracking-[0.2em] font-semibold text-aisle-charcoal">Product</h4>
-            <ul className="mt-4 space-y-2.5 text-sm text-aisle-muted">
-              <li><Link href="/templates" className="hover:text-aisle-charcoal transition-colors">Designs</Link></li>
-              <li><Link href="/#features" className="hover:text-aisle-charcoal transition-colors">How It Works</Link></li>
-              <li><Link href="/#features" className="hover:text-aisle-charcoal transition-colors">Easy RSVPs</Link></li>
-              <li><Link href="/#features" className="hover:text-aisle-charcoal transition-colors">Shared Photo Album</Link></li>
-              <li><Link href="/admin/admin_sophia_demo_7721" className="hover:text-aisle-charcoal transition-colors">See a Demo Dashboard</Link></li>
+            <ul className="mt-2 md:mt-4 md:space-y-2.5 text-sm text-aisle-muted">
+              <li><Link href="/templates" className="inline-flex min-h-11 items-center md:min-h-0 hover:text-aisle-charcoal transition-colors">Designs</Link></li>
+              <li><Link href="/#compare" className="inline-flex min-h-11 items-center md:min-h-0 hover:text-aisle-charcoal transition-colors">How It Works</Link></li>
+              <li><Link href="/#features" className="inline-flex min-h-11 items-center md:min-h-0 hover:text-aisle-charcoal transition-colors">Easy RSVPs</Link></li>
+              <li><Link href="/#features" className="inline-flex min-h-11 items-center md:min-h-0 hover:text-aisle-charcoal transition-colors">Shared Photo Album</Link></li>
+              <li><Link href="/admin/admin_sophia_demo_7721" className="inline-flex min-h-11 items-center md:min-h-0 hover:text-aisle-charcoal transition-colors">See a Demo Dashboard</Link></li>
             </ul>
           </div>
 
           <div>
             <h4 className="text-xs uppercase tracking-[0.2em] font-semibold text-aisle-charcoal">More</h4>
-            <ul className="mt-4 space-y-2.5 text-sm text-aisle-muted">
-              <li><Link href="/studio" className="hover:text-aisle-charcoal transition-colors">Owner Template Studio</Link></li>
-              <li><Link href="/g/guest_elena_vance" className="hover:text-aisle-charcoal transition-colors">Sample Guest Invitation</Link></li>
+            <ul className="mt-2 md:mt-4 md:space-y-2.5 text-sm text-aisle-muted">
+              <li><Link href="/g/guest_elena_vance" className="inline-flex min-h-11 items-center md:min-h-0 hover:text-aisle-charcoal transition-colors">Sample Guest Invitation</Link></li>
             </ul>
           </div>
         </div>
