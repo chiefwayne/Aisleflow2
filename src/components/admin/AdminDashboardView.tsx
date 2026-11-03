@@ -594,6 +594,27 @@ export default function AdminDashboardView({
   const [activePartyName, setActivePartyName] = useState('');
   const [addGuestToPartySelectedId, setAddGuestToPartySelectedId] = useState('');
 
+  // Escape works as Cancel on whichever dialog is open; every dialog's Cancel only closes it
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setCsvImportModalOpen(false);
+      setNewGuestModalOpen(false);
+      setNewCampaignModalOpen(false);
+      setNewRegistryModalOpen(false);
+      setQrModalGuest(null);
+      setTableCardModal(null);
+      setScheduleModalOpen(false);
+      setQuestionModalOpen(false);
+      setTaskModalOpen(false);
+      setGroupModalOpen(false);
+      setManagePartyModalOpen(false);
+      setTemplateModalOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
   // Extract all unique parties
   const existingParties = React.useMemo(() => {
     const partyMap: Record<string, { id: string; name: string; members: GuestRecord[] }> = {};
@@ -4866,7 +4887,7 @@ export default function AdminDashboardView({
 
       {/* CSV Import Modal */}
       {csvImportModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 text-xs font-sans">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 text-xs font-sans">
           <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl space-y-4">
             <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">
               Import Guests via CSV
@@ -4906,7 +4927,7 @@ export default function AdminDashboardView({
 
       {/* Add Guest Modal (with Has Partner Dual-Guest Creation) */}
       {newGuestModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6 text-xs font-sans">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6 text-xs font-sans">
           <div className="w-full max-w-xl rounded-3xl bg-white p-6 sm:p-8 shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto border border-aisle-border/40">
             <div className="border-b border-aisle-border/60 pb-3">
               <span className="text-xs font-semibold uppercase tracking-[0.2em] text-aisle-terracotta block mb-1">
@@ -5069,7 +5090,7 @@ export default function AdminDashboardView({
 
       {/* New Broadcast Campaign Modal */}
       {newCampaignModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6 text-xs font-sans">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6 text-xs font-sans">
           <div className="w-full max-w-2xl rounded-3xl bg-white p-6 sm:p-8 shadow-2xl space-y-6 max-h-[92vh] overflow-y-auto border border-aisle-border/40">
             {/* Header */}
             <div className="border-b border-aisle-border/60 pb-4">
@@ -5337,7 +5358,7 @@ export default function AdminDashboardView({
 
       {/* New Registry Item Modal */}
       {newRegistryModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6 text-xs font-sans">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6 text-xs font-sans">
           <div className="w-full max-w-lg rounded-3xl bg-white p-6 sm:p-8 shadow-2xl space-y-5 border border-aisle-border/40">
             <div className="border-b border-aisle-border/60 pb-3">
               <span className="text-xs font-semibold uppercase tracking-[0.2em] text-aisle-terracotta block mb-1">
@@ -5433,7 +5454,7 @@ export default function AdminDashboardView({
 
       {/* Guest QR Code Modal */}
       {qrModalGuest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-center space-y-4 shadow-2xl">
             <h4 className="font-serif text-lg font-semibold text-aisle-charcoal">
               {qrModalGuest.guest.first_name}'s Private QR Code
@@ -5454,7 +5475,7 @@ export default function AdminDashboardView({
 
       {/* Printable Reception Table Card Modal */}
       {tableCardModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="w-full max-w-md rounded-3xl bg-[#FAF7F2] border-2 border-aisle-gold/60 p-8 text-center space-y-4 shadow-2xl">
             <span className="text-xs font-semibold uppercase tracking-[0.25em] text-aisle-gold-deep">
               Capture The Love
@@ -5491,7 +5512,7 @@ export default function AdminDashboardView({
 
       {/* Schedule Event Create/Edit Modal */}
       {scheduleModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 text-xs font-sans">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 text-xs font-sans">
           <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">
               {editingScheduleItem ? 'Edit Itinerary Event' : 'Add Itinerary Event'}
@@ -5617,7 +5638,7 @@ export default function AdminDashboardView({
 
       {/* Custom RSVP Question Create/Edit Modal */}
       {questionModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 text-xs font-sans">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 text-xs font-sans">
           <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">
               {editingQuestion ? 'Edit Custom Question' : 'Add Custom RSVP Question'}
@@ -5701,7 +5722,7 @@ export default function AdminDashboardView({
 
       {/* Planning Task Create/Edit Modal */}
       {taskModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 text-xs font-sans">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 text-xs font-sans">
           <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">
               {editingTask ? 'Edit Planning Task' : 'Add Planning Task'}
@@ -5805,7 +5826,7 @@ export default function AdminDashboardView({
 
       {/* GROUP INTO PARTY MODAL */}
       {groupModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 text-xs font-sans">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 text-xs font-sans">
           <div className="w-full max-w-md rounded-3xl border border-aisle-border bg-white p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
             <div className="flex items-start justify-between border-b border-aisle-border/60 pb-3">
               <div>
@@ -5939,7 +5960,7 @@ export default function AdminDashboardView({
 
       {/* MANAGE PARTY MODAL */}
       {managePartyModalOpen && activePartyId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 text-xs font-sans">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 text-xs font-sans">
           <div className="w-full max-w-lg rounded-3xl border border-aisle-border bg-white p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
             <div className="flex items-start justify-between border-b border-aisle-border/60 pb-3">
               <div>
@@ -6104,7 +6125,7 @@ export default function AdminDashboardView({
 
       {/* EDIT / CREATE COMMUNICATION TEMPLATE MODAL */}
       {templateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 text-xs font-sans">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 text-xs font-sans">
           <div className="w-full max-w-lg rounded-3xl border border-aisle-border bg-white p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
             <div className="flex items-start justify-between border-b border-aisle-border/60 pb-3">
               <div>
