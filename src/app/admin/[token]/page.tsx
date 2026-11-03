@@ -1,4 +1,5 @@
 import React from 'react';
+import { notFound } from 'next/navigation';
 // Server-only: row-level security blocks the public key, so read with the service role.
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import AdminDashboardView from '@/components/admin/AdminDashboardView';
@@ -47,16 +48,7 @@ export default async function AdminDashboardPage({ params }: PageProps) {
   }
 
   if (!event) {
-    return (
-      <div className="min-h-screen bg-[#FAF7F2] flex items-center justify-center p-6 text-center">
-        <div className="max-w-md rounded-3xl border border-aisle-border bg-white p-8 shadow-sm space-y-4">
-          <h2 className="font-serif text-2xl font-semibold text-aisle-charcoal">Protected Admin Dashboard</h2>
-          <p className="text-xs text-aisle-muted leading-relaxed">
-            This administration link is invalid or has expired. Please check your secure access email or contact support.
-          </p>
-        </div>
-      </div>
-    );
+    notFound();
   }
 
   const isUsingMock = isDemoToken || event.id === mockData.event.id;
