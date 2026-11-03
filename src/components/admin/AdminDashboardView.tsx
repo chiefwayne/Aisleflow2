@@ -4422,9 +4422,12 @@ export default function AdminDashboardView({
                       Configure your direct payment handles so guests can send honeymoon & cash fund gifts directly to you with zero transaction fees.
                     </p>
                   </div>
-                  <span className="text-xs uppercase font-bold tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
-                    Direct Payouts Active
-                  </span>
+                  {/* Only claim payouts are on once a handle is actually saved */}
+                  {(customSections.registry?.venmo_handle || customSections.registry?.zelle_info || customSections.registry?.cashapp_tag || customSections.registry?.paypal_handle) && (
+                    <span className="text-xs uppercase font-bold tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
+                      Direct Payouts Active
+                    </span>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
@@ -4438,7 +4441,7 @@ export default function AdminDashboardView({
                       <span className="absolute left-3 top-2.5 text-aisle-muted font-mono font-bold">@</span>
                       <input
                         type="text"
-                        placeholder="Sophia-Alexandre"
+                        placeholder="your-venmo-name"
                         value={customSections.registry?.venmo_handle || ''}
                         onChange={(e) =>
                           setCustomSections({
@@ -4462,7 +4465,7 @@ export default function AdminDashboardView({
                     </label>
                     <input
                       type="text"
-                      placeholder="sophia.como26@example.com or +14155550199"
+                      placeholder="you@example.com or +14155550199"
                       value={customSections.registry?.zelle_info || ''}
                       onChange={(e) =>
                         setCustomSections({
@@ -4487,7 +4490,7 @@ export default function AdminDashboardView({
                       <span className="absolute left-3 top-2.5 text-aisle-muted font-mono font-bold">$</span>
                       <input
                         type="text"
-                        placeholder="SophiaComo"
+                        placeholder="YourCashtag"
                         value={customSections.registry?.cashapp_tag || ''}
                         onChange={(e) =>
                           setCustomSections({
@@ -4511,7 +4514,7 @@ export default function AdminDashboardView({
                     </label>
                     <input
                       type="text"
-                      placeholder="sophiaalexandre or https://paypal.me/..."
+                      placeholder="yourname or https://paypal.me/..."
                       value={customSections.registry?.paypal_handle || ''}
                       onChange={(e) =>
                         setCustomSections({
