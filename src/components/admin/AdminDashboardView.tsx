@@ -614,6 +614,12 @@ export default function AdminDashboardView({
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, []);
+  // When a dialog opens, put the keyboard inside it: its first field, or its first button
+  useEffect(() => {
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
+    if (!dialog || dialog.contains(document.activeElement)) return;
+    (dialog.querySelector<HTMLElement>('input:not([type="hidden"]), select, textarea') || dialog.querySelector<HTMLElement>('button'))?.focus();
+  }, [csvImportModalOpen, newGuestModalOpen, newCampaignModalOpen, newRegistryModalOpen, qrModalGuest, tableCardModal, scheduleModalOpen, questionModalOpen, taskModalOpen, groupModalOpen, managePartyModalOpen, templateModalOpen]);
 
   // Extract all unique parties
   const existingParties = React.useMemo(() => {
