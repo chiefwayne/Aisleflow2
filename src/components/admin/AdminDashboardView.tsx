@@ -1935,7 +1935,7 @@ export default function AdminDashboardView({
     setSmsSimulatorLog((prev) => [
       ...prev,
       { sender: 'GUEST', text: smsSimulatorMessage, time: new Date().toLocaleTimeString() },
-      { sender: 'AISLEFLOW (Twilio)', text: replyText, time: new Date().toLocaleTimeString() },
+      { sender: 'AISLEFLOW', text: replyText, time: new Date().toLocaleTimeString() },
     ]);
     setSmsSimulatorMessage('');
   };
@@ -2675,7 +2675,7 @@ export default function AdminDashboardView({
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div>
                     <h3 className="font-serif text-xl font-semibold text-aisle-charcoal">
-                      Communications Center & Twilio SMS
+                      Invitations & messages
                     </h3>
                     <p className="text-xs text-aisle-muted mt-0.5">
                       Send personalized invitations, Save-the-Dates, and reminder campaigns
@@ -6225,7 +6225,7 @@ export default function AdminDashboardView({
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs uppercase font-bold tracking-wider text-aisle-muted">
-                    SMS Text Body (Twilio)
+                    Text message
                   </label>
                   <span className="text-xs font-mono text-aisle-muted">
                     {templateForm.sms_body.length} chars (~{Math.ceil((templateForm.sms_body.length || 1) / 160)} SMS)
