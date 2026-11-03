@@ -16,11 +16,19 @@ export default function TemplatesPage() {
   const [createModal, setCreateModal] = useState<{ open: boolean; themeId?: string }>({ open: false });
 
   const allThemes = Object.values(BUILTIN_THEMES);
-  const categories = ['all', 'Classic Floral', 'Modern Minimal', 'Destination & Countryside', 'Elegant Dark / Gold', 'Cultural Heritage'];
+  // Each filter names its designs outright; matching on taxonomy broke once the taxonomies were renamed
+  const categoryThemes: Record<string, string[]> = {
+    'Classic Floral': ['royal-floral', 'boho-botanical'],
+    'Modern Minimal': ['modern-minimal'],
+    'Destination & Countryside': ['tuscan-wine', 'destination-riviera'],
+    'Elegant Dark / Gold': ['celestial-magic', 'indian-marigold'],
+    'Cultural Heritage': ['indian-marigold', 'persian-mirror'],
+  };
+  const categories = ['all', ...Object.keys(categoryThemes)];
 
   const filteredThemes = selectedCategory === 'all'
     ? allThemes
-    : allThemes.filter((t) => t.taxonomy.toLowerCase().includes(selectedCategory.toLowerCase()));
+    : allThemes.filter((t) => categoryThemes[selectedCategory]?.includes(t.id));
 
   const handleOpenCreateModal = (theme: TemplateDesignRecord) => {
     setCreateModal({ open: true, themeId: theme.id });
