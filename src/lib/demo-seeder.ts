@@ -116,7 +116,7 @@ export const MOCK_DEMO_GUESTS: GuestRecord[] = [
     is_vip: true,
     relationship: 'Honored Guest',
     rsvp_status: 'attending',
-    dietary_notes: 'None',
+    dietary_notes: '',
     plus_one_allowed: false,
     tags: ['vip'],
     created_at: '2026-03-01T00:00:00Z',
