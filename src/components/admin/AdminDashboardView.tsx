@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Papa from 'papaparse';
 import {
@@ -166,6 +166,25 @@ export default function AdminDashboardView({
   const [activeTab, setActiveTab] = useState<
     'dashboard' | 'setup' | 'guests' | 'communications' | 'builder' | 'copy' | 'schedule' | 'questions' | 'registry' | 'photos' | 'seating' | 'planning'
   >('dashboard');
+  // The tab bar scrolls sideways on narrower screens: show when more tabs wait to the right,
+  // and keep the chosen tab in view
+  const tabNavRef = useRef<HTMLElement>(null);
+  const [moreTabsRight, setMoreTabsRight] = useState(false);
+  useEffect(() => {
+    const nav = tabNavRef.current;
+    if (!nav) return;
+    const update = () => setMoreTabsRight(nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 4);
+    update();
+    nav.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      nav.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+  useEffect(() => {
+    tabNavRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [activeTab]);
 
   // State
   const [event, setEvent] = useState<EventRecord>(initialEvent);
@@ -1940,10 +1959,12 @@ export default function AdminDashboardView({
       {/* Main Workspace Layout */}
       <div className="mx-auto max-w-7xl w-full px-4 sm:px-6 lg:px-8 py-6 flex-1 flex flex-col gap-6">
         {/* Top Tab Bar */}
+        <div className="sticky top-[69px] z-20">
         <nav
+          ref={tabNavRef}
           role="tablist"
           aria-label="Admin sections"
-          className="sticky top-[69px] z-20 flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-2xl border border-aisle-border bg-white/95 p-1 shadow-sm backdrop-blur-md select-none"
+          className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-2xl border border-aisle-border bg-white/95 p-1 shadow-sm backdrop-blur-md select-none"
         >
           {[
             { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -1989,6 +2010,15 @@ export default function AdminDashboardView({
             );
           })}
         </nav>
+          {moreTabsRight && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-px right-px flex w-14 items-center justify-end rounded-r-2xl bg-gradient-to-l from-white via-white/90 to-transparent pr-2"
+            >
+              <ChevronRight className="h-4 w-4 text-aisle-muted" />
+            </span>
+          )}
+        </div>
 
         {/* Content Area */}
         <div className="flex-1 min-w-0 space-y-6">
