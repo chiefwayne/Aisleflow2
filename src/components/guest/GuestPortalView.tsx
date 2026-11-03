@@ -191,6 +191,12 @@ export default function GuestPortalView({
   // Opening screen state
   const [hasOpened, setHasOpened] = useState(previewMode && !showOpening);
   const [justOpened, setJustOpened] = useState(false);
+  // A guest reopening their link starts at the envelope, not where the browser last left them
+  useEffect(() => {
+    if (previewMode) return;
+    window.history.scrollRestoration = 'manual';
+    window.scrollTo(0, 0);
+  }, [previewMode]);
   // The floating RSVP pill hides while the RSVP card itself is on screen.
   const [rsvpInView, setRsvpInView] = useState(false);
   const [pastCalendar, setPastCalendar] = useState(false);
