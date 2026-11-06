@@ -14,7 +14,14 @@ import {
   CommunicationTemplateRecord,
   PlanningTaskRecord,
 } from '@/lib/types';
-import { isDemoEvent, updateMockDemoEvent, DEMO_EVENT_ID, DEMO_ADMIN_TOKEN } from '@/lib/demo-seeder';
+import { getEventReadiness, missingRequired } from '@/lib/event-readiness';
+import { assertChannelAllowed, featureError, hasFeature } from '@/lib/plans';
+import { stripStudioLayout } from '@/lib/portal-design';
+import { portalLanguageOf } from '@/lib/portal-i18n';
+import { normalizeCustomSlug } from '@/lib/custom-slug';
+import { getMenuOptions, isMealOnMenu } from '@/lib/menu';
+import { scopeRsvpPayload } from '@/lib/rsvp-scope';
+import { isDemoEvent, isDemoGuestToken, updateMockDemoEvent, DEMO_EVENT_ID, DEMO_ADMIN_TOKEN } from '@/lib/demo-seeder';
 
 const PHOTO_BUCKET = 'wedding-photos';
 const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -49,18 +56,13 @@ export async function submitRsvpAction(input: FormData | Record<string, any>) {
       return { error: 'Missing RSVP submission payload.' };
     }
 
-    if (token.startsWith('guest_') || token.startsWith('gt_')) {
+    if (isDemoGuestToken(token)) {
       revalidatePath(`/g/${token}`);
       revalidatePath(`/admin/${DEMO_ADMIN_TOKEN}`);
       return { success: true };
     }
 
     const payload = JSON.parse(payloadJson);
-    const {
-      guests = [],
-      subEvents = {},
-      customAnswers = {},
-    } = payload;
 
     // 1. Fetch Primary Guest & Event
     const { data: primaryGuest, error: guestErr } = await supabaseAdmin
@@ -74,9 +76,32 @@ export async function submitRsvpAction(input: FormData | Record<string, any>) {
     }
 
     const event = primaryGuest.events as EventRecord;
+    if (event.rsvp_locked) {
+      return { error: 'RSVPs are closed. Please contact the couple directly.' };
+    }
     const isPastDeadline = new Date() > new Date(event.rsvp_deadline);
     if (isPastDeadline && event.allow_late_rsvp === false) {
       return { error: 'The RSVP deadline for this event has passed. Please contact the couple directly.' };
+    }
+
+    // Only the guest's own party, and only this event's schedule items and questions, may be updated.
+    const partyQuery = supabaseAdmin.from('guests').select('id').eq('event_id', event.id);
+    const [{ data: partyRows }, { data: scheduleRows }, { data: questionRows }] = await Promise.all([
+      primaryGuest.party_id ? partyQuery.eq('party_id', primaryGuest.party_id) : partyQuery.eq('id', primaryGuest.id),
+      supabaseAdmin.from('schedule_items').select('id').eq('event_id', event.id),
+      supabaseAdmin.from('custom_rsvp_questions').select('id').eq('event_id', event.id),
+    ]);
+    const scoped = scopeRsvpPayload(payload, {
+      guestIds: [primaryGuest.id, ...(partyRows || []).map((row) => row.id)],
+      scheduleItemIds: (scheduleRows || []).map((row) => row.id),
+      questionIds: (questionRows || []).map((row) => row.id),
+    });
+    if ('error' in scoped) return { error: scoped.error };
+    const { guests, subEvents, customAnswers } = scoped as { guests: any[]; subEvents: Record<string, Record<string, string>>; customAnswers: Record<string, unknown> };
+
+    const menu = getMenuOptions(event);
+    if (guests.some((g: any) => !isMealOnMenu(menu, g.meal_choice) || !isMealOnMenu(menu, g.plus_one_meal))) {
+      return { error: 'Please choose meals from the menu.' };
     }
 
     // 2. Update Guests in Party
@@ -133,7 +158,7 @@ export async function submitRsvpAction(input: FormData | Record<string, any>) {
     return { success: true };
   } catch (err: any) {
     console.error('submitRsvpAction error:', err);
-    if (token?.startsWith('guest_') || token?.startsWith('gt_')) {
+    if (isDemoGuestToken(token)) {
       revalidatePath(`/g/${token}`);
       return { success: true };
     }
@@ -171,7 +196,7 @@ export async function uploadPhotoAction(input: FormData | Record<string, any>) {
       .single();
 
     if (!guest) {
-      if (token.startsWith('guest_') || token.startsWith('gt_')) {
+      if (isDemoGuestToken(token)) {
         return {
           success: true,
           photo: {
@@ -242,7 +267,7 @@ export async function uploadPhotoAction(input: FormData | Record<string, any>) {
     return { success: true, photo: photoRecord };
   } catch (err: any) {
     console.error('uploadPhotoAction error:', err);
-    if (token?.startsWith('guest_') || token?.startsWith('gt_')) {
+    if (isDemoGuestToken(token)) {
       return {
         success: true,
         photo: {
@@ -264,19 +289,20 @@ export async function deletePhotoAction(input: FormData | Record<string, any>) {
   const eventId = formData.get('eventId') as string;
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     const { data: photo } = await supabaseAdmin
       .from('photos')
       .select('*')
       .eq('id', photoId)
+      .eq('event_id', eventId)
       .single();
 
     if (photo?.storage_path) {
       await supabaseAdmin.storage.from(PHOTO_BUCKET).remove([photo.storage_path]);
     }
 
-    await supabaseAdmin.from('photos').delete().eq('id', photoId);
+    await supabaseAdmin.from('photos').delete().eq('id', photoId).eq('event_id', eventId);
 
     revalidatePath(`/admin/${adminToken}`);
     return { success: true };
@@ -306,7 +332,7 @@ export async function sendCommunicationAction(input: FormData | Record<string, a
     const customEmailBody = formData.get('emailBody') as string;
     const customSmsBody = formData.get('smsBody') as string;
 
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     const { data: event } = await supabaseAdmin
       .from('events')
@@ -331,6 +357,12 @@ export async function sendCommunicationAction(input: FormData | Record<string, a
     const lifecycleType = (formData.get('lifecycleType') as string) || (template ? template.lifecycle_type : 'invitation');
 
     const dispatchMode = (formData.get('dispatchMode') as 'send_now' | 'schedule' | 'draft') || (scheduledFor ? 'schedule' : 'send_now');
+    if (dispatchMode === 'send_now' && !event.is_live) {
+      return { error: 'Publish the event before sending messages to guests.' };
+    }
+    // Checked before the campaign is created, so a draft or scheduled SMS can't be saved on a plan without SMS.
+    const channelError = assertChannelAllowed(event, channel);
+    if (channelError) return { error: channelError };
 
     // 1. Fetch Target Guests
     let guestQuery = supabaseAdmin.from('guests').select('*').eq('event_id', eventId);
@@ -482,6 +514,9 @@ export async function dispatchExistingCampaignAction(input: FormData | Record<st
     if (cErr || !campaign) return { error: 'Campaign not found.' };
 
     const event = campaign.events as EventRecord;
+    if (!event.is_live) return { error: 'Publish the event before sending messages to guests.' };
+    const channelError = assertChannelAllowed(event, campaign.channel);
+    if (channelError) return { error: channelError };
     const audience = campaign.target_audience;
     const channel = campaign.channel;
 
@@ -607,7 +642,7 @@ export async function broadcastSmsAction(input: FormData | Record<string, any>) 
   const adminToken = formData.get('adminToken') as string;
   const messageText = formData.get('message') as string;
 
-  requireAdminAccess(eventId, adminToken);
+  await requireAdminAccess(eventId, adminToken);
 
   const fd = new FormData();
   fd.append('eventId', eventId);
@@ -662,7 +697,7 @@ export async function importGuestsCsvAction(input: FormData | Record<string, any
   const csvContent = formData.get('csvContent') as string;
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     if (!csvContent || !csvContent.trim()) {
       return { error: 'CSV data is empty.' };
@@ -761,7 +796,7 @@ export async function addGuestAction(input: FormData | Record<string, any>) {
     const hasPartner = formData.get('has_partner') === 'true';
     const partnerName = (formData.get('partner_name') as string) || '';
 
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     const partyId = partyName || hasPartner ? 'p_' + Math.random().toString(36).substring(2, 10) : null;
     const resolvedPartyName = partyName || (hasPartner ? `${firstName} & ${partnerName} Household` : null);
@@ -820,7 +855,7 @@ export async function updateGuestAction(input: FormData | Record<string, any>) {
   const eventId = formData.get('eventId') as string;
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     const updates: Record<string, any> = {
       first_name: formData.get('first_name'),
@@ -840,6 +875,7 @@ export async function updateGuestAction(input: FormData | Record<string, any>) {
       .from('guests')
       .update(updates)
       .eq('id', guestId)
+      .eq('event_id', eventId)
       .select()
       .single();
 
@@ -876,11 +912,9 @@ export async function deleteGuestAction(
   }
 
   try {
-    if (eventId && adminToken) {
-      requireAdminAccess(eventId, adminToken);
-    }
+    await requireAdminAccess(eventId, adminToken);
 
-    await supabaseAdmin.from('guests').delete().eq('id', guestId);
+    await supabaseAdmin.from('guests').delete().eq('id', guestId).eq('event_id', eventId);
 
     if (adminToken) {
       revalidatePath(`/admin/${adminToken}`);
@@ -916,15 +950,14 @@ export async function rotateGuestAccessTokenAction(
   }
 
   try {
-    if (eventId && adminToken) {
-      requireAdminAccess(eventId, adminToken);
-    }
+    await requireAdminAccess(eventId, adminToken);
 
     const newToken = createGuestAccessToken();
     const { data: updated, error } = await supabaseAdmin
       .from('guests')
       .update({ access_token: newToken, updated_at: new Date().toISOString() })
       .eq('id', guestId)
+      .eq('event_id', eventId)
       .select()
       .single();
 
@@ -955,7 +988,7 @@ export async function managePartyAction(input: FormData | Record<string, any>) {
     const partyName = (formData.get('partyName') as string) || 'Party Group';
     const existingPartyId = formData.get('partyId') as string | null;
 
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
     const guestIds: string[] = typeof guestIdsJson === 'string' ? JSON.parse(guestIdsJson || '[]') : (guestIdsJson || []);
 
     if (action === 'group') {
@@ -1015,10 +1048,10 @@ export async function manageRegistryItemAction(input: FormData | Record<string, 
   const action = formData.get('action') as 'save' | 'delete';
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     if (action === 'delete') {
-      await supabaseAdmin.from('registry_items').delete().eq('id', itemId);
+      await supabaseAdmin.from('registry_items').delete().eq('id', itemId).eq('event_id', eventId);
       revalidatePath(`/admin/${adminToken}`);
       return { success: true };
     }
@@ -1033,7 +1066,8 @@ export async function manageRegistryItemAction(input: FormData | Record<string, 
       await supabaseAdmin
         .from('registry_items')
         .update({ title, description, external_url: externalUrl, is_cash_fund: isCashFund, target_amount: targetAmount })
-        .eq('id', itemId);
+        .eq('id', itemId)
+        .eq('event_id', eventId);
     } else {
       await supabaseAdmin
         .from('registry_items')
@@ -1151,40 +1185,49 @@ export async function contributeToRegistryAction(input: FormData | Record<string
       return { error: 'Please specify a valid contribution amount.' };
     }
 
-    // Lookup guest if token available
-    let guestId: string | null = null;
-    if (token) {
-      const { data: guest } = await supabaseAdmin.from('guests').select('id').eq('access_token', token).single();
-      if (guest) guestId = guest.id;
+    if (amount > 1_000_000) {
+      return { error: 'Please specify a valid contribution amount.' };
     }
+    if (isDemoGuestToken(token)) {
+      return { success: true, newAmount: amount };
+    }
+
+    // A pledge needs a real guest link, and only counts toward that guest's own event.
+    const { data: guest } = token
+      ? await supabaseAdmin.from('guests').select('id, event_id').eq('access_token', token).maybeSingle()
+      : { data: null };
+    if (!guest) return { error: 'Invitation not found.' };
+
+    const { data: item } = await supabaseAdmin
+      .from('registry_items')
+      .select('current_amount')
+      .eq('id', registryItemId)
+      .eq('event_id', guest.event_id)
+      .maybeSingle();
+    if (!item) return { error: 'Gift not found.' };
 
     // Insert Contribution
     await supabaseAdmin.from('registry_contributions').insert({
       registry_item_id: registryItemId,
-      guest_id: guestId,
+      guest_id: guest.id,
       contributor_name: contributorName || 'Anonymous Friend',
       amount,
       message,
     });
 
     // Increment Item Current Amount
-    const { data: item } = await supabaseAdmin
-      .from('registry_items')
-      .select('current_amount')
-      .eq('id', registryItemId)
-      .single();
-
     const newAmount = (Number(item?.current_amount) || 0) + amount;
     await supabaseAdmin
       .from('registry_items')
       .update({ current_amount: newAmount })
-      .eq('id', registryItemId);
+      .eq('id', registryItemId)
+      .eq('event_id', guest.event_id);
 
     if (token) revalidatePath(`/g/${token}`);
     return { success: true, newAmount };
   } catch (err: any) {
     console.error('contributeToRegistryAction error:', err);
-    if (token?.startsWith('guest_') || token?.startsWith('gt_') || !process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    if (isDemoGuestToken(token)) {
       return { success: true, newAmount: amount || 100 };
     }
     return { error: err.message || 'Failed to record contribution.' };
@@ -1202,10 +1245,10 @@ export async function manageCustomQuestionAction(input: FormData | Record<string
   const action = formData.get('action') as 'save' | 'delete';
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     if (action === 'delete') {
-      await supabaseAdmin.from('custom_rsvp_questions').delete().eq('id', questionId);
+      await supabaseAdmin.from('custom_rsvp_questions').delete().eq('id', questionId).eq('event_id', eventId);
       revalidatePath(`/admin/${adminToken}`);
       return { success: true };
     }
@@ -1220,7 +1263,8 @@ export async function manageCustomQuestionAction(input: FormData | Record<string
       await supabaseAdmin
         .from('custom_rsvp_questions')
         .update({ prompt, question_type: questionType, options, is_required: isRequired })
-        .eq('id', questionId);
+        .eq('id', questionId)
+        .eq('event_id', eventId);
     } else {
       await supabaseAdmin
         .from('custom_rsvp_questions')
@@ -1343,39 +1387,37 @@ export async function updateEventSetupAction(input: FormData | Record<string, an
   const adminToken = formData.get('adminToken') as string;
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     const updates = {
       couple_names: formData.get('couple_names') as string,
       wedding_date: formData.get('wedding_date') as string,
       rsvp_deadline: formData.get('rsvp_deadline') as string,
       allow_late_rsvp: formData.get('allow_late_rsvp') === 'true',
+      rsvp_locked: formData.get('rsvp_locked') === 'true',
+      language: portalLanguageOf(formData.get('language') as string),
       venue_name: formData.get('venue_name') as string,
       venue_address: formData.get('venue_address') as string,
-      admin_email: formData.get('admin_email') as string,
-      is_ready_for_testing: formData.get('is_ready_for_testing') === 'true',
       launch_notes: (formData.get('launch_notes') as string) || null,
       updated_at: new Date().toISOString(),
-    };
+    } as Record<string, any>;
+    // Leave the admin email unchanged when the form doesn't send one (it's required on the event).
+    const adminEmail = (formData.get('admin_email') as string | null)?.trim();
+    if (adminEmail) updates.admin_email = adminEmail;
 
+    // Only the in-memory demo event may fall back; a real event reports its error instead of a fake success.
     let updatedEvent: any = null;
-    try {
+    if (isDemoEvent(eventId, adminToken)) {
+      updatedEvent = updateMockDemoEvent(updates);
+    } else {
       const { data: event, error } = await supabaseAdmin
         .from('events')
         .update(updates)
         .eq('id', eventId)
         .select()
         .single();
-
-      if (!error && event) {
-        updatedEvent = event;
-      }
-    } catch (dbErr) {
-      console.warn('Supabase setup update failed, using in-memory demo fallback:', dbErr);
-    }
-
-    if (!updatedEvent || isDemoEvent(eventId, adminToken)) {
-      updatedEvent = updateMockDemoEvent(updates);
+      if (error || !event) throw error || new Error('Failed to update setup.');
+      updatedEvent = event;
     }
 
     revalidatePath(`/admin/${adminToken}`);
@@ -1392,13 +1434,82 @@ export async function updateEventSetupAction(input: FormData | Record<string, an
   }
 }
 
+// Publish / Go live. Publishing re-checks the required readiness items on the server.
+export async function setEventPublishedAction(input: FormData | Record<string, any>) {
+  const formData = toFormData(input);
+  const eventId = formData.get('eventId') as string;
+  const adminToken = formData.get('adminToken') as string;
+  const publish = formData.get('publish') === 'true';
+
+  try {
+    // The in-memory demo event has no database row.
+    if (eventId === DEMO_EVENT_ID) {
+      const event = updateMockDemoEvent({ is_live: publish });
+      return { success: true, event };
+    }
+
+    await requireAdminAccess(eventId, adminToken);
+
+    if (publish) {
+      const { data: current, error: eventErr } = await supabaseAdmin
+        .from('events')
+        .select('*')
+        .eq('id', eventId)
+        .single();
+      if (eventErr || !current) return { error: 'Event not found.' };
+      if (!hasFeature(current, 'publish')) return { error: featureError('publish') };
+
+      const count = async (table: string) => {
+        const { count, error } = await supabaseAdmin
+          .from(table)
+          .select('id', { count: 'exact', head: true })
+          .eq('event_id', eventId);
+        if (error) throw error;
+        return count || 0;
+      };
+      const [guests, schedule, questions, registry] = await Promise.all([
+        count('guests'),
+        count('schedule_items'),
+        count('custom_rsvp_questions'),
+        count('registry_items'),
+      ]);
+
+      const missing = missingRequired(
+        getEventReadiness(current as EventRecord, { guests, schedule, questions, registry })
+      );
+      if (missing.length > 0) {
+        return { error: `Finish before publishing: ${missing.map((item) => item.label).join(', ')}.` };
+      }
+    }
+
+    const now = new Date().toISOString();
+    const { data: event, error } = await supabaseAdmin
+      .from('events')
+      .update({
+        is_live: publish,
+        ...(publish ? { setup_completed: true, setup_completed_at: now } : {}),
+        updated_at: now,
+      })
+      .eq('id', eventId)
+      .select()
+      .single();
+    if (error || !event) throw error || new Error('Failed to update event.');
+
+    revalidatePath(`/admin/${adminToken}`);
+    return { success: true, event };
+  } catch (err: any) {
+    console.error('setEventPublishedAction error:', err);
+    return { error: err.message || 'Failed to change publish status.' };
+  }
+}
+
 export async function updateEventCustomSectionsAction(input: FormData | Record<string, any>) {
   const formData = toFormData(input);
   const eventId = formData.get('eventId') as string;
   const adminToken = formData.get('adminToken') as string;
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     const updatePayload: Record<string, any> = {
       updated_at: new Date().toISOString(),
@@ -1406,7 +1517,12 @@ export async function updateEventCustomSectionsAction(input: FormData | Record<s
 
     if (formData.has('custom_sections')) {
       const sectionsJson = formData.get('custom_sections') as string;
-      updatePayload.custom_sections = typeof sectionsJson === 'string' ? JSON.parse(sectionsJson) : sectionsJson;
+      const sections = typeof sectionsJson === 'string' ? JSON.parse(sectionsJson) : sectionsJson;
+      // Music is managed only by setEventMusicAction (plan-checked); keep whatever is saved.
+      const { data: saved } = await supabaseAdmin.from('events').select('custom_sections').eq('id', eventId).maybeSingle();
+      const savedMusic = (saved?.custom_sections as Record<string, any> | null)?.music;
+      delete sections.music;
+      updatePayload.custom_sections = savedMusic ? { ...sections, music: savedMusic } : sections;
     }
     if (formData.has('welcome_message')) {
       updatePayload.welcome_message = formData.get('welcome_message') as string;
@@ -1416,6 +1532,9 @@ export async function updateEventCustomSectionsAction(input: FormData | Record<s
     }
     if (formData.has('dress_code')) {
       updatePayload.dress_code = formData.get('dress_code') as string;
+    }
+    if (formData.has('travel_info')) {
+      updatePayload.travel_info = formData.get('travel_info') as string;
     }
 
     let updatedEvent: any = null;
@@ -1460,8 +1579,21 @@ export async function updateEventThemeAction(input: FormData | Record<string, an
   const themeConfigJson = formData.get('theme_config') as string;
 
   try {
-    requireAdminAccess(eventId, adminToken);
-    const themeConfig = themeConfigJson ? (typeof themeConfigJson === 'string' ? JSON.parse(themeConfigJson) : themeConfigJson) : {};
+    await requireAdminAccess(eventId, adminToken);
+    let themeConfig = themeConfigJson ? (typeof themeConfigJson === 'string' ? JSON.parse(themeConfigJson) : themeConfigJson) : {};
+
+    // A published catalogue design is copied from the database, never from the browser.
+    // Anything else may carry Studio layout only on a plan with the Design Studio.
+    const [{ data: planRow }, { data: catalogue }] = await Promise.all([
+      supabaseAdmin.from('events').select('plan').eq('id', eventId).maybeSingle(),
+      supabaseAdmin.from('template_designs').select('*').eq('slug', themeId).eq('status', 'published').maybeSingle(),
+    ]);
+    if (catalogue) {
+      const { created_at, updated_at, status, ...snapshot } = catalogue;
+      themeConfig = snapshot;
+    } else if (!hasFeature(planRow || {}, 'design_studio')) {
+      themeConfig = stripStudioLayout(themeConfig);
+    }
 
     let updatedEvent: any = null;
     try {
@@ -1503,7 +1635,7 @@ export async function updateEventDesignAction(input: FormData | Record<string, a
   const adminToken = formData.get('adminToken') as string;
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     const updatePayload: Record<string, any> = {
       updated_at: new Date().toISOString(),
@@ -1527,7 +1659,9 @@ export async function updateEventDesignAction(input: FormData | Record<string, a
       } catch (e) {
         // Fallback to in-memory config if DB is unreachable
       }
-      updatePayload.theme_config = { ...existingConfig, ...parsedConfig };
+      const { data: planRow } = await supabaseAdmin.from('events').select('plan').eq('id', eventId).maybeSingle();
+      const allowedConfig = hasFeature(planRow || {}, 'design_studio') ? parsedConfig : stripStudioLayout(parsedConfig);
+      updatePayload.theme_config = { ...existingConfig, ...allowedConfig };
     }
     if (formData.has('cover_image_url')) {
       updatePayload.cover_image_url = formData.get('cover_image_url') as string;
@@ -1634,20 +1768,7 @@ export async function uploadWebsiteImageAction(input: FormData | Record<string, 
       publicUrl = publicUrlData.publicUrl;
     }
 
-    // Save record to template_media_assets for future reuse
-    try {
-      await supabaseAdmin.from('template_media_assets').insert({
-        title: `${category.toUpperCase()} - ${file.name}`,
-        category: category.toLowerCase(),
-        image_url: publicUrl,
-        storage_path: storagePath,
-        content_type: file.type,
-        file_size: file.size,
-      });
-    } catch (ignoreErr) {
-      // Ignore DB logging error if table not present
-    }
-
+    // Couples' photos stay with their event; they are not added to the owner's shared media library.
     revalidatePath(`/admin/${adminToken}`);
     return { success: true, url: publicUrl };
   } catch (err: any) {
@@ -1675,7 +1796,7 @@ export async function updateCommunicationTemplateAction(input: FormData | Record
   const lifecycleType = (formData.get('lifecycleType') as string) || 'invitation';
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     if (templateId && templateId !== 'new') {
       const { data: updated, error } = await supabaseAdmin
@@ -1733,7 +1854,7 @@ export async function deleteCommunicationTemplateAction(input: FormData | Record
   const templateId = formData.get('templateId') as string;
 
   try {
-    requireAdminAccess(eventId, adminToken);
+    await requireAdminAccess(eventId, adminToken);
 
     const { error } = await supabaseAdmin
       .from('communication_templates')
@@ -1750,5 +1871,191 @@ export async function deleteCommunicationTemplateAction(input: FormData | Record
       return { success: true };
     }
     return { error: err.message || 'Failed to delete template.' };
+  }
+}
+
+
+// ============================================================================
+// ADMIN DATA REFRESH (replaces direct browser reads, which row-level security blocks)
+// ============================================================================
+const LISTABLE_TABLES = {
+  guests: 'created_at',
+  schedule_items: 'start_time',
+  custom_rsvp_questions: 'display_order',
+  planning_tasks: 'created_at',
+} as const;
+
+export async function listEventRowsAction(
+  eventId: string,
+  adminToken: string,
+  table: keyof typeof LISTABLE_TABLES
+): Promise<{ rows: any[] | null }> {
+  try {
+    if (!(table in LISTABLE_TABLES)) return { rows: null };
+    await requireAdminAccess(eventId, adminToken);
+    const { data, error } = await supabaseAdmin
+      .from(table)
+      .select('*')
+      .eq('event_id', eventId)
+      .order(LISTABLE_TABLES[table], { ascending: true });
+    if (error) return { rows: null };
+    return { rows: data || [] };
+  } catch {
+    // Demo events live in memory, so there is nothing to refresh.
+    return { rows: null };
+  }
+}
+
+export async function setGuestRsvpStatusAction(
+  eventId: string,
+  adminToken: string,
+  guestId: string,
+  status: 'pending' | 'attending' | 'declined'
+): Promise<{ success: boolean }> {
+  try {
+    await requireAdminAccess(eventId, adminToken);
+    const { error } = await supabaseAdmin
+      .from('guests')
+      .update({ rsvp_status: status, updated_at: new Date().toISOString() })
+      .eq('id', guestId)
+      .eq('event_id', eventId);
+    return { success: !error };
+  } catch {
+    return { success: false };
+  }
+}
+
+/** Lets the couple allow or remove a guest's plus-one after the guest was added. */
+export async function setGuestPlusOneAction(
+  eventId: string,
+  adminToken: string,
+  guestId: string,
+  allowed: boolean
+): Promise<{ success: boolean }> {
+  try {
+    await requireAdminAccess(eventId, adminToken);
+    const { error } = await supabaseAdmin
+      .from('guests')
+      .update({ plus_one_allowed: allowed, updated_at: new Date().toISOString() })
+      .eq('id', guestId)
+      .eq('event_id', eventId);
+    return { success: !error };
+  } catch {
+    return { success: false };
+  }
+}
+
+const ALLOWED_MUSIC_TYPES = ['audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/x-m4a', 'audio/aac', 'audio/ogg', 'audio/wav', 'audio/x-wav'];
+const MAX_MUSIC_UPLOAD_SIZE_BYTES = 15 * 1024 * 1024; // 15MB
+
+/** Uploads the song that plays when guests open the invitation, or removes it (remove=true). */
+export async function setEventMusicAction(input: FormData | Record<string, any>) {
+  const formData = toFormData(input);
+  const eventId = formData.get('eventId') as string;
+  const adminToken = formData.get('adminToken') as string;
+  const file = formData.get('file') as File | null;
+  const remove = formData.get('remove') === 'true';
+
+  try {
+    await requireAdminAccess(eventId, adminToken);
+
+    let music: { url: string; title: string } | null = null;
+    if (!remove) {
+      const { data: planRow } = await supabaseAdmin.from('events').select('plan').eq('id', eventId).single();
+      if (!hasFeature(planRow || {}, 'music')) return { error: featureError('music') };
+      if (!file) return { error: 'No audio file provided.' };
+      if (!ALLOWED_MUSIC_TYPES.includes(file.type.toLowerCase())) {
+        return { error: 'Please choose an MP3, M4A, AAC, OGG or WAV file.' };
+      }
+      if (file.size > MAX_MUSIC_UPLOAD_SIZE_BYTES) {
+        return { error: 'Audio file exceeds the 15MB limit.' };
+      }
+      const fileExt = (file.name.split('.').pop() || 'mp3').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const storagePath = `music/${eventId}/${Date.now()}.${fileExt}`;
+      const { error: uploadErr } = await supabaseAdmin.storage
+        .from('template-media')
+        .upload(storagePath, Buffer.from(await file.arrayBuffer()), { contentType: file.type, upsert: false });
+      if (uploadErr) throw uploadErr;
+      const { data } = supabaseAdmin.storage.from('template-media').getPublicUrl(storagePath);
+      music = { url: data.publicUrl, title: file.name.replace(/\.[^/.]+$/, '') };
+    }
+
+    const { data: current } = await supabaseAdmin.from('events').select('custom_sections').eq('id', eventId).single();
+    const customSections = { ...((current?.custom_sections as Record<string, any>) || {}) };
+    if (music) customSections.music = music;
+    else delete customSections.music;
+
+    const { data: event, error } = await supabaseAdmin
+      .from('events')
+      .update({ custom_sections: customSections, updated_at: new Date().toISOString() })
+      .eq('id', eventId)
+      .select()
+      .single();
+    if (error) throw error;
+
+    revalidatePath(`/admin/${adminToken}`);
+    revalidatePath('/g/[token]', 'page');
+    return { success: true, event };
+  } catch (err: any) {
+    console.error('setEventMusicAction error:', err);
+    return { error: err.message || 'Failed to update music.' };
+  }
+}
+
+/** Switches the guest link between a save-the-date and the full invitation. */
+export async function setInvitationModeAction(
+  eventId: string,
+  adminToken: string,
+  mode: 'save_the_date' | 'invitation'
+): Promise<{ success: true } | { error: string }> {
+  try {
+    await requireAdminAccess(eventId, adminToken);
+    if (mode === 'save_the_date') {
+      const { data: planRow } = await supabaseAdmin.from('events').select('plan').eq('id', eventId).single();
+      if (!hasFeature(planRow || {}, 'save_the_date')) return { error: featureError('save_the_date') };
+    }
+    const { error } = await supabaseAdmin
+      .from('events')
+      .update({ invitation_mode: mode, updated_at: new Date().toISOString() })
+      .eq('id', eventId);
+    if (error) throw error;
+    revalidatePath(`/admin/${adminToken}`);
+    revalidatePath('/g/[token]', 'page');
+    return { success: true };
+  } catch (err: any) {
+    console.error('setInvitationModeAction error:', err);
+    return { error: 'Could not change the invitation mode.' };
+  }
+}
+
+/** Sets (or clears, with an empty value) the couple's public short link /i/<slug>. */
+export async function setCustomSlugAction(
+  eventId: string,
+  adminToken: string,
+  input: string
+): Promise<{ slug: string | null } | { error: string }> {
+  try {
+    await requireAdminAccess(eventId, adminToken);
+    const { data: planRow } = await supabaseAdmin.from('events').select('plan').eq('id', eventId).single();
+    if (!hasFeature(planRow || {}, 'custom_url')) return { error: featureError('custom_url') };
+
+    let slug: string | null = null;
+    if (input.trim()) {
+      const normalized = normalizeCustomSlug(input);
+      if ('error' in normalized) return normalized;
+      slug = normalized.slug;
+    }
+
+    const { error } = await supabaseAdmin.from('events').update({ custom_slug: slug }).eq('id', eventId);
+    if (error) {
+      // 23505: unique violation, another event already uses this link.
+      if (error.code === '23505') return { error: 'That link is already taken. Please try another.' };
+      throw error;
+    }
+    revalidatePath(`/admin/${adminToken}`);
+    return { slug };
+  } catch (err: any) {
+    console.error('setCustomSlugAction error:', err);
+    return { error: 'Could not save the link.' };
   }
 }

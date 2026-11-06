@@ -19,10 +19,10 @@ export function renderTemplateVariables(
     .replace(/{link}/g, guestLink)
     .replace(/{qrLink}/g, qrLink)
     .replace(/{coupleNames}/g, event.couple_names)
-    .replace(/{eventDate}/g, new Date(event.wedding_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }))
+    .replace(/{eventDate}/g, new Date(event.wedding_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }))
     .replace(/{venueName}/g, event.venue_name)
     .replace(/{venueAddress}/g, event.venue_address)
-    .replace(/{rsvpDeadline}/g, new Date(event.rsvp_deadline).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }));
+    .replace(/{rsvpDeadline}/g, new Date(event.rsvp_deadline).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }));
 }
 
 export function generateTrackingToken(): string {

@@ -1,6 +1,9 @@
 import React from 'react';
-import { supabase } from '@/lib/supabase';
+import { notFound } from 'next/navigation';
+// Server-only: row-level security blocks the public key, so read with the service role.
+import { supabaseAdmin as supabase } from '@/lib/supabase';
 import AdminDashboardView from '@/components/admin/AdminDashboardView';
+import { fetchTemplateDesignRows } from '@/app/actions/template-design-actions';
 import {
   EventRecord,
   GuestRecord,
@@ -45,16 +48,7 @@ export default async function AdminDashboardPage({ params }: PageProps) {
   }
 
   if (!event) {
-    return (
-      <div className="min-h-screen bg-[#FAF7F2] flex items-center justify-center p-6 text-center">
-        <div className="max-w-md rounded-3xl border border-aisle-border bg-white p-8 shadow-sm space-y-4">
-          <h2 className="font-serif text-2xl font-semibold text-aisle-charcoal">Protected Admin Dashboard</h2>
-          <p className="text-xs text-aisle-muted leading-relaxed">
-            This administration link is invalid or has expired. Please check your secure access email or contact support.
-          </p>
-        </div>
-      </div>
-    );
+    notFound();
   }
 
   const isUsingMock = isDemoToken || event.id === mockData.event.id;
@@ -106,7 +100,8 @@ export default async function AdminDashboardPage({ params }: PageProps) {
   try {
     const { data } = await supabase
       .from('custom_rsvp_responses')
-      .select('*');
+      .select('*')
+      .in('question_id', questions.map((q) => q.id));
     if (data && data.length > 0) responses = data as CustomRsvpResponseRecord[];
   } catch (err) {}
   if (responses.length === 0 && isUsingMock) {
@@ -132,7 +127,8 @@ export default async function AdminDashboardPage({ params }: PageProps) {
   try {
     const { data } = await supabase
       .from('registry_contributions')
-      .select('*');
+      .select('*')
+      .in('registry_item_id', registry.map((r) => r.id));
     if (data && data.length > 0) contributions = data as RegistryContributionRecord[];
   } catch (err) {}
   if (contributions.length === 0 && isUsingMock) {
@@ -194,6 +190,9 @@ export default async function AdminDashboardPage({ params }: PageProps) {
     campaigns = mockData.campaigns;
   }
 
+  // Published Studio designs, offered in the Builder next to the built-in themes.
+  const studioDesigns = await fetchTemplateDesignRows();
+
   return (
     <AdminDashboardView
       initialEvent={event as EventRecord}
@@ -207,6 +206,7 @@ export default async function AdminDashboardPage({ params }: PageProps) {
       initialTasks={tasks}
       initialTemplates={templates}
       initialCampaigns={campaigns}
+      studioDesigns={studioDesigns}
     />
   );
 }

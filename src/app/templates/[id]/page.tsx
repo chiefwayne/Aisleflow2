@@ -2,100 +2,43 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { notFound, useParams, useRouter } from 'next/navigation';
+import { notFound, useParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import CreateEventModal from '@/components/CreateEventModal';
 import { BUILTIN_THEMES } from '@/lib/theme-presets';
-import PhoneMockup from '@/components/PhoneMockup';
-import GuestPortalView from '@/components/guest/GuestPortalView';
-import { ArrowLeft, Check, Sparkles, ArrowRight } from 'lucide-react';
+import TemplatePreviewOverlay from '@/components/TemplatePreviewOverlay';
+import { ArrowLeft, Check, Sparkles, ArrowRight, Eye } from 'lucide-react';
 
 export default function SingleTemplatePage() {
   const params = useParams();
-  const router = useRouter();
   const id = params?.id as string;
   const theme = BUILTIN_THEMES[id];
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [isProvisioning, setIsProvisioning] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [form, setForm] = useState({
-    couple_names: '',
-    admin_email: '',
-    wedding_date: '',
-    venue_name: '',
-    venue_address: '',
-    theme_id: id || 'royal-floral',
-  });
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   if (!theme) {
     notFound();
   }
 
-  const handleCreateEvent = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsProvisioning(true);
-    setErrorMessage('');
-
-    try {
-      const res = await fetch('/api/events/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      });
-
-      const data = await res.json();
-      if (data.admin_url) {
-        router.push(data.admin_url);
-      } else {
-        setErrorMessage(data.error || 'Unable to create event. Please try again.');
-        setIsProvisioning(false);
-      }
-    } catch (err) {
-      console.error(err);
-      setErrorMessage('Connection error. Please try again.');
-      setIsProvisioning(false);
-    }
-  };
-
-  const mockEvent: any = {
-    id: 'single-tpl-event',
-    couple_names: 'Sophia & Alexandre',
-    wedding_date: '2026-09-18',
-    rsvp_deadline: '2026-08-18',
-    venue_name: 'Villa del Balbianello',
-    venue_address: 'Lenno, Lake Como, Italy',
-    theme_id: theme.id,
-    cover_image_url: theme.sample_image_url,
-    welcome_message: 'We request the pleasure of your company on Lake Como.',
-    our_story: 'From our first meeting in Bellagio to forever.',
-  };
-
-  const mockGuest: any = {
-    id: 'single-tpl-guest',
-    first_name: 'Elena',
-    access_token: 'demo_token',
-    is_vip: true,
-    rsvp_status: 'pending',
-  };
-
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-aisle-ink flex flex-col selection:bg-aisle-terracotta selection:text-white">
-      <Navbar />
+      <Navbar onCreateClick={() => setCreateModalOpen(true)} />
 
       <main className="mx-auto max-w-7xl w-full px-6 sm:px-8 lg:px-12 py-12 flex-1">
         <Link
           href="/templates"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-aisle-muted hover:text-aisle-charcoal mb-8"
+          className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wider text-aisle-muted hover:text-aisle-charcoal mb-8"
         >
-          <ArrowLeft className="h-3.5 w-3.5" /> Back to Catalogue
+          <ArrowLeft className="h-3.5 w-3.5" /> Back to all designs
         </Link>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
           {/* Details Column */}
           <div className="lg:col-span-6 space-y-6">
             <div>
-              <span className="text-xs uppercase tracking-[0.2em] font-semibold text-aisle-gold-deep block mb-1">
+              <span className="text-sm uppercase tracking-[0.2em] font-semibold text-aisle-gold-deep block mb-1">
                 {theme.taxonomy}
               </span>
               <h1 className="font-serif text-4xl sm:text-5xl font-semibold text-aisle-charcoal">
@@ -103,28 +46,28 @@ export default function SingleTemplatePage() {
               </h1>
             </div>
 
-            <p className="text-sm leading-relaxed text-aisle-muted">
+            <p className="text-base leading-relaxed text-aisle-muted">
               {theme.description}
             </p>
 
-            <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-4 text-xs">
-              <h3 className="font-serif text-base font-semibold text-aisle-charcoal">Design Highlights</h3>
+            <div className="rounded-3xl border border-aisle-border bg-white p-6 shadow-sm space-y-4 text-sm">
+              <h3 className="font-serif text-base font-semibold text-aisle-charcoal">Design highlights</h3>
               <ul className="space-y-2.5 text-aisle-warm">
                 <li className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-emerald-600 shrink-0" />
-                  <span><strong>Opening Style:</strong> {theme.opening_style} (Tactile reveal)</span>
+                  <span><strong>Opening moment:</strong> {theme.opening_style.replace(/-/g, ' ')}</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-emerald-600 shrink-0" />
-                  <span><strong>Typography:</strong> {theme.font_family} with bespoke hierarchy</span>
+                  <span><strong>Typography:</strong> {theme.font_family.replace(/-/g, ' ')}</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-emerald-600 shrink-0" />
-                  <span><strong>Best Suited For:</strong> {theme.best_for}</span>
+                  <span><strong>Best for:</strong> {theme.best_for}</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-emerald-600 shrink-0" />
-                  <span><strong>Zero-Login Ready:</strong> Personalized tokenized party RSVP</span>
+                  <span><strong>Easy for guests:</strong> One personal link, RSVP in a few taps</span>
                 </li>
               </ul>
             </div>
@@ -132,143 +75,61 @@ export default function SingleTemplatePage() {
             <div className="pt-2 flex flex-col sm:flex-row items-center gap-3">
               <button
                 onClick={() => setCreateModalOpen(true)}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full bg-aisle-charcoal px-8 py-3.5 text-xs font-semibold uppercase tracking-wider text-white shadow-sm hover:bg-aisle-terracotta transition-colors cursor-pointer"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full bg-aisle-charcoal px-8 py-3.5 text-sm font-semibold tracking-wide text-white shadow-sm hover:bg-aisle-terracotta transition-colors cursor-pointer"
               >
                 <Sparkles className="h-3.5 w-3.5 text-aisle-gold-light" />
-                <span>Use This Design</span>
+                <span>Use this design</span>
                 <ArrowRight className="h-3.5 w-3.5 ml-0.5" />
               </button>
 
               <Link
                 href="/admin/admin_sophia_demo_7721"
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full border border-aisle-border bg-white px-6 py-3.5 text-xs font-semibold text-aisle-charcoal hover:bg-aisle-sand shadow-sm transition-all"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full border border-aisle-border bg-white px-6 py-3.5 text-sm font-semibold text-aisle-charcoal hover:bg-aisle-sand shadow-sm transition-all"
               >
-                <span>Live Demo Admin</span>
+                <span>See the couple's dashboard</span>
               </Link>
             </div>
           </div>
 
-          {/* Interactive Phone Mockup */}
-          <div className="lg:col-span-6 flex justify-center sticky top-24">
-            <PhoneMockup badgeText={`${theme.name} · Live Phone View`}>
-              <GuestPortalView
-                event={mockEvent}
-                primaryGuest={mockGuest}
-                partyMembers={[mockGuest]}
-                scheduleItems={[]}
-                customQuestions={[]}
-                registryItems={[]}
-                initialPhotos={[]}
-                customTheme={theme}
-                previewMode={true}
+          {/* Full-screen preview entry */}
+          <div className="lg:col-span-6 lg:sticky lg:top-24">
+            <button
+              type="button"
+              onClick={() => setPreviewOpen(true)}
+              className="group relative block w-full overflow-hidden rounded-3xl border border-aisle-border shadow-wedding-lg cursor-pointer text-left"
+              style={{ backgroundColor: theme.bg_color }}
+            >
+              <img
+                src={theme.sample_image_url || ''}
+                alt={`${theme.name} sample`}
+                className="aspect-[4/3] w-full object-cover transition-transform duration-500 group-hover:scale-105"
               />
-            </PhoneMockup>
+              <span className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+              <span className="absolute bottom-5 left-5 right-5 flex items-center justify-between gap-3 text-white">
+                <span className="font-serif text-xl font-semibold">{theme.name}</span>
+                <span className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-aisle-charcoal shadow-sm">
+                  <Eye className="h-4 w-4" />
+                  Preview full screen
+                </span>
+              </span>
+            </button>
+            <p className="mt-3 text-center text-sm text-aisle-muted">
+              See the whole invitation, exactly as your guests will.
+            </p>
           </div>
         </div>
       </main>
 
-      {/* CREATE EVENT MODAL WITH PRESELECTED THEME */}
-      {createModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg rounded-3xl bg-white p-6 sm:p-8 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-aisle-border pb-4">
-              <div>
-                <h3 className="font-serif text-2xl font-semibold text-aisle-charcoal">
-                  Create with {theme.name}
-                </h3>
-                <p className="text-xs text-aisle-muted mt-0.5">
-                  Provisions your private admin portal with {theme.name} aesthetic
-                </p>
-              </div>
-              <button
-                onClick={() => setCreateModalOpen(false)}
-                className="text-aisle-muted hover:text-aisle-charcoal text-lg"
-              >
-                ✕
-              </button>
-            </div>
+      <TemplatePreviewOverlay
+        theme={previewOpen ? theme : null}
+        onClose={() => setPreviewOpen(false)}
+        onUse={() => {
+          setPreviewOpen(false);
+          setCreateModalOpen(true);
+        }}
+      />
 
-            {errorMessage && (
-              <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-xs text-rose-800">
-                {errorMessage}
-              </div>
-            )}
-
-            <form onSubmit={handleCreateEvent} className="space-y-4 text-xs">
-              <div>
-                <label className="block font-medium text-aisle-warm mb-1">Couple Display Names</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Charlotte & William"
-                  value={form.couple_names}
-                  onChange={(e) => setForm({ ...form, couple_names: e.target.value })}
-                  required
-                  className="w-full rounded-xl border border-aisle-border px-3 py-2.5 text-xs focus:outline-none focus:border-aisle-terracotta"
-                />
-              </div>
-
-              <div>
-                <label className="block font-medium text-aisle-warm mb-1">Admin Email (for access recovery)</label>
-                <input
-                  type="email"
-                  placeholder="charlotte.william@example.com"
-                  value={form.admin_email}
-                  onChange={(e) => setForm({ ...form, admin_email: e.target.value })}
-                  required
-                  className="w-full rounded-xl border border-aisle-border px-3 py-2.5 text-xs focus:outline-none focus:border-aisle-terracotta"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-medium text-aisle-warm mb-1">Wedding Date</label>
-                  <input
-                    type="date"
-                    value={form.wedding_date}
-                    onChange={(e) => setForm({ ...form, wedding_date: e.target.value })}
-                    required
-                    className="w-full rounded-xl border border-aisle-border px-3 py-2.5 text-xs focus:outline-none focus:border-aisle-terracotta"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-medium text-aisle-warm mb-1">Venue Name</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Château de Varennes"
-                    value={form.venue_name}
-                    onChange={(e) => setForm({ ...form, venue_name: e.target.value })}
-                    required
-                    className="w-full rounded-xl border border-aisle-border px-3 py-2.5 text-xs focus:outline-none focus:border-aisle-terracotta"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-medium text-aisle-warm mb-1">Venue Address / Location</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Bourgogne, France"
-                  value={form.venue_address}
-                  onChange={(e) => setForm({ ...form, venue_address: e.target.value })}
-                  required
-                  className="w-full rounded-xl border border-aisle-border px-3 py-2.5 text-xs focus:outline-none focus:border-aisle-terracotta"
-                />
-              </div>
-
-              <div className="pt-3">
-                <button
-                  type="submit"
-                  disabled={isProvisioning}
-                  className="w-full rounded-full bg-aisle-charcoal py-3.5 text-xs font-semibold uppercase tracking-wider text-white shadow-sm hover:bg-aisle-terracotta transition-colors disabled:opacity-50 cursor-pointer"
-                >
-                  {isProvisioning ? 'Provisioning Event...' : 'Provision Event & Open Admin'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <CreateEventModal open={createModalOpen} onClose={() => setCreateModalOpen(false)} initialThemeId={theme.id} />
 
       <Footer />
     </div>

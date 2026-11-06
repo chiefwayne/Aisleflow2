@@ -1,22 +1,25 @@
 'use client';
 
 import React, { Suspense, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { verifyOwnerPasskeyAction } from '@/app/actions/template-design-actions';
 import TemplateDesignStudio from '@/components/owner/TemplateDesignStudio';
 import { KeyRound } from 'lucide-react';
 import Link from 'next/link';
 
 function OwnerTemplatesContent() {
-  const searchParams = useSearchParams();
-  const tokenParam = searchParams.get('ownerToken');
   const [passkey, setPasskey] = useState('');
-  const [isUnlocked, setIsUnlocked] = useState(tokenParam === 'owner-dev');
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [isChecking, setIsChecking] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleUnlock = (e: React.FormEvent) => {
+  const handleUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (passkey === 'owner-dev' || passkey === 'aisleflow2026' || passkey.length > 0) {
-      setIsUnlocked(true);
-    }
+    setIsChecking(true);
+    setError('');
+    const ok = await verifyOwnerPasskeyAction(passkey);
+    setIsChecking(false);
+    if (ok) setIsUnlocked(true);
+    else setError('That passkey is not correct.');
   };
 
   if (!isUnlocked) {
@@ -36,13 +39,15 @@ function OwnerTemplatesContent() {
           <form onSubmit={handleUnlock} className="space-y-3 pt-1">
             <input
               type="password"
-              placeholder="Enter owner passkey (owner-dev)"
+              placeholder="Owner passkey"
               value={passkey}
               onChange={(e) => setPasskey(e.target.value)}
               className="w-full rounded-2xl border border-stone-200 px-3.5 py-2.5 text-xs text-center focus:outline-none focus:border-stone-900"
             />
+            {error && <p role="alert" className="text-xs text-rose-700">{error}</p>}
             <button
               type="submit"
+              disabled={isChecking}
               className="w-full rounded-full bg-stone-900 py-3 text-xs font-semibold uppercase tracking-wider text-white shadow-sm hover:bg-aisle-terracotta transition-colors cursor-pointer"
             >
               Enter Studio Workspace
@@ -59,7 +64,7 @@ function OwnerTemplatesContent() {
     );
   }
 
-  return <TemplateDesignStudio ownerToken={tokenParam || 'owner-dev'} />;
+  return <TemplateDesignStudio ownerToken={passkey} />;
 }
 
 export default function OwnerTemplatesPage() {

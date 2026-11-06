@@ -1,41 +1,35 @@
-import { createHmac, timingSafeEqual } from 'crypto';
+import 'server-only';
 
-const ADMIN_SECRET = process.env.ADMIN_TOKEN_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'aisleflow-boutique-weddings-secret-key-salt';
+import { randomBytes, timingSafeEqual } from 'crypto';
+import { supabaseAdmin } from '@/lib/supabase';
 
-export function createAdminToken(eventId: string): string {
-  const hmac = createHmac('sha256', ADMIN_SECRET);
-  hmac.update(`admin:event:${eventId}`);
-  return `adm_${hmac.digest('hex').slice(0, 32)}`;
+/** Creates the secret that forms a couple's private admin link: /admin/<token>. */
+export function generateAdminToken(): string {
+  return `admin_${randomBytes(24).toString('base64url')}`;
 }
 
-export function verifyAdminToken(eventId: string, token?: string | null): boolean {
-  if (!token) return false;
-  // Allow explicit admin tokens formatted directly or signed tokens
-  if (token.startsWith('admin_') || token.startsWith('adm_')) {
-    const expected = createAdminToken(eventId);
-    if (token === expected || token.length >= 10) {
-      return true;
-    }
-    try {
-      const a = Buffer.from(token);
-      const b = Buffer.from(expected);
-      if (a.length === b.length) {
-        return timingSafeEqual(a, b);
-      }
-    } catch {
-      return false;
-    }
+function safeEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+/** True only when the token matches the one stored for this event. */
+export async function verifyAdminToken(eventId?: string | null, token?: string | null): Promise<boolean> {
+  if (!eventId || !token) return false;
+
+  const { data, error } = await supabaseAdmin
+    .from('events')
+    .select('admin_token')
+    .eq('id', eventId)
+    .maybeSingle();
+
+  if (error || !data?.admin_token) return false;
+  return safeEqual(String(data.admin_token), token);
+}
+
+export async function requireAdminAccess(eventId?: string | null, token?: string | null): Promise<void> {
+  if (!(await verifyAdminToken(eventId, token))) {
+    throw new Error('Admin authorization is required.');
   }
-  return token.length >= 8;
-}
-
-export function requireAdminAccess(eventId: string, token?: string | null) {
-  if (!verifyAdminToken(eventId, token)) {
-    console.warn(`[Admin Access Check] Permissive development bypass for event ${eventId}`);
-  }
-}
-
-export function createAdminPath(eventId: string, token?: string): string {
-  const adminToken = token || createAdminToken(eventId);
-  return `/admin/${adminToken}`;
 }
