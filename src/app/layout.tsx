@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Cinzel, Corinthia, Cormorant_Garamond, Playfair_Display, Plus_Jakarta_Sans } from "next/font/google";
 import localFont from "next/font/local";
+import CookieConsent from "@/components/CookieConsent";
 import "./globals.css";
 
 const playfair = Playfair_Display({ subsets: ["latin"], style: ["normal", "italic"], variable: "--font-playfair", display: "swap" });
@@ -37,6 +38,8 @@ export default function RootLayout({
     <html lang="en" className={`scroll-smooth ${playfair.variable} ${cormorant.variable} ${cinzel.variable} ${jakarta.variable} ${corinthia.variable} ${bodoni.variable} ${rozha.variable} ${belleAurore.variable} ${italiana.variable} ${marcellus.variable}`} data-scroll-behavior="smooth">
       <body className="bg-aisle-cream text-aisle-ink antialiased min-h-screen selection:bg-aisle-terracotta selection:text-white">
         {children}
+        {/* Cookie banner on the public pages; Clarity loads after "Accept", on the live site only */}
+        <CookieConsent analyticsEnabled={process.env.VERCEL_ENV === 'production'} />
       </body>
     </html>
   );

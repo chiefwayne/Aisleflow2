@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Check } from 'lucide-react';
 import { BUILTIN_THEMES } from '@/lib/theme-presets';
 
@@ -24,7 +23,6 @@ const emptyForm = {
 };
 
 export default function CreateEventModal({ open, onClose, initialThemeId }: CreateEventModalProps) {
-  const router = useRouter();
   const firstStep = initialThemeId ? 2 : 1;
   const [step, setStep] = useState(firstStep);
   const [themeId, setThemeId] = useState(initialThemeId || 'royal-floral');
@@ -87,7 +85,8 @@ export default function CreateEventModal({ open, onClose, initialThemeId }: Crea
 
       const data = await res.json();
       if (data.admin_url) {
-        router.push(data.admin_url);
+        // A full page load, so analytics running on this marketing page never sees the private admin link
+        window.location.assign(data.admin_url);
       } else {
         setErrorMessage(data.error || 'Unable to create event. Please try again.');
         setIsProvisioning(false);

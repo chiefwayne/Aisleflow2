@@ -255,6 +255,11 @@ body {
   to { opacity: 0; }
 }
 
+/* Cookie banner rising in on the public pages */
+@keyframes cookie-in {
+  from { opacity: 0; transform: translateY(16px); }
+}
+
 /* The invitation rising in after the envelope opens. Content is visible without it. */
 .invite-rise {
   animation: invite-rise 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;

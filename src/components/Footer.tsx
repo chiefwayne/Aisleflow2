@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Heart } from 'lucide-react';
+import { CookieSettingsButton } from '@/components/CookieConsent';
 
 export default function Footer() {
   return (
@@ -40,6 +41,7 @@ export default function Footer() {
             <h4 className="text-xs uppercase tracking-[0.2em] font-semibold text-aisle-charcoal">More</h4>
             <ul className="mt-2 md:mt-4 md:space-y-2.5 text-sm text-aisle-muted">
               <li><Link href="/g/guest_elena_vance" className="inline-flex min-h-11 items-center md:min-h-0 hover:text-aisle-charcoal transition-colors">Sample Guest Invitation</Link></li>
+              <li><CookieSettingsButton className="inline-flex min-h-11 items-center md:min-h-0 hover:text-aisle-charcoal transition-colors cursor-pointer" /></li>
             </ul>
           </div>
         </div>
