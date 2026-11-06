@@ -255,6 +255,17 @@ body {
   to { opacity: 0; }
 }
 
+/* Landing banner: the photo settles, then the envelope and reply card are laid on it */
+@keyframes hero-settle {
+  from { opacity: 0; transform: scale(0.97); }
+}
+@keyframes hero-envelope-in {
+  from { opacity: 0; transform: translate(-24px, 40px) rotate(-9deg); }
+}
+@keyframes hero-rsvp-in {
+  from { opacity: 0; transform: translate(20px, 50px) rotate(8deg); }
+}
+
 /* Cookie banner rising in on the public pages */
 @keyframes cookie-in {
   from { opacity: 0; transform: translateY(16px); }

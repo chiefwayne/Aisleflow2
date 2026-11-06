@@ -2,11 +2,10 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import CreateEventModal from '@/components/CreateEventModal';
-import PhoneMockup from '@/components/PhoneMockup';
-import GuestPortalView from '@/components/guest/GuestPortalView';
 import { BUILTIN_THEMES } from '@/lib/theme-presets';
 import {
   ArrowRight,
@@ -18,30 +17,6 @@ import {
 
 export default function LandingPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
-
-  // Mock Event & Guest for Hero Phone Demo
-  const heroDemoEvent: any = {
-    id: 'hero-demo-event',
-    couple_names: 'Sophia & Alexandre',
-    wedding_date: '2027-09-18',
-    rsvp_deadline: '2027-08-18',
-    venue_name: 'Villa del Balbianello',
-    venue_address: 'Lake Como, Italy',
-    theme_id: 'royal-floral',
-    cover_image_url: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=1200&q=80',
-    welcome_message: 'We are overjoyed to celebrate our wedding with you.',
-    our_story: 'From our first meeting at the Bellagio ferry to forever.',
-  };
-
-  const heroDemoGuest: any = {
-    id: 'hero-guest',
-    first_name: 'Elena',
-    last_name: 'Vance',
-    access_token: 'guest_elena_vance',
-    is_vip: true,
-    rsvp_status: 'attending',
-    meal_choice: 'Seared Branzino with Citrus Emulsion',
-  };
 
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-aisle-ink flex flex-col selection:bg-aisle-terracotta selection:text-white">
@@ -97,77 +72,54 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* Right Phone Showcase */}
-            <div className="lg:col-span-5 flex justify-center">
-              <PhoneMockup badgeText="Live Interactive Guest Portal">
-                <GuestPortalView
-                  event={heroDemoEvent}
-                  primaryGuest={heroDemoGuest}
-                  partyMembers={[heroDemoGuest]}
-                  scheduleItems={[
-                    {
-                      id: 's1',
-                      event_id: 'e1',
-                      title: 'Sunset Welcome Aperitivo',
-                      location_name: 'Grand Hotel Tremezzo Terrace',
-                      start_time: '2027-09-17T17:30:00Z',
-                      description: 'Aperol spritzes & wood-fired focaccia by the water.',
-                      is_vip_only: false,
-                      requires_rsvp: true,
-                      display_order: 1,
-                      created_at: new Date().toISOString(),
-                    },
-                    {
-                      id: 's2',
-                      event_id: 'e1',
-                      title: 'The Wedding Ceremony',
-                      location_name: 'Loggia Durini, Villa Balbianello',
-                      start_time: '2027-09-18T16:00:00Z',
-                      description: 'Vows overlooking Lake Como.',
-                      is_vip_only: false,
-                      requires_rsvp: true,
-                      display_order: 2,
-                      created_at: new Date().toISOString(),
-                    },
-                  ]}
-                  customQuestions={[
-                    {
-                      id: 'q1',
-                      event_id: 'e1',
-                      prompt: 'Welcome drink on arrival?',
-                      question_type: 'single_choice',
-                      options: ['Franciacorta Sparkling', 'Aperol Spritz', 'Botanical Fizz'],
-                      is_required: true,
-                      display_order: 1,
-                      created_at: new Date().toISOString(),
-                    },
-                  ]}
-                  registryItems={[
-                    {
-                      id: 'r1',
-                      event_id: 'e1',
-                      title: 'Lake Como Honeymoon Boat Charter',
-                      description: 'Explore historic villas along the lake.',
-                      is_cash_fund: true,
-                      target_amount: 4500,
-                      current_amount: 2750,
-                      display_order: 1,
-                      created_at: new Date().toISOString(),
-                    },
-                  ]}
-                  initialPhotos={[
-                    {
-                      id: 'p1',
-                      event_id: 'e1',
-                      image_url: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80',
-                      caption: 'Sunset over Villa Balbianello',
-                      is_approved: true,
-                      created_at: new Date().toISOString(),
-                    },
-                  ]}
-                  previewMode={true}
-                />
-              </PhoneMockup>
+            {/* Right: the invitation as guests receive it, sealed and then answered */}
+            <div className="lg:col-span-5 flex justify-center lg:justify-end">
+              <Link
+                href="/g/guest_elena_vance"
+                aria-label="Open a sample invitation"
+                className="group block w-full max-w-[540px] rounded-[28px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-8 focus-visible:outline-aisle-terracotta"
+              >
+                <div className="relative aspect-square w-full">
+                  <div className="absolute right-0 top-0 h-[84%] w-[80%] overflow-hidden rounded-[28px] shadow-[0_30px_60px_-30px_rgba(44,37,35,0.45)] motion-safe:animate-[hero-settle_1.2s_cubic-bezier(0.16,1,0.3,1)_backwards]">
+                    <Image
+                      src="/images/hero/couple-bouquet.jpg"
+                      alt="A couple holding a bouquet of white tulips and garden roses in late sunlight"
+                      fill
+                      priority
+                      sizes="(min-width: 1024px) 440px, 80vw"
+                      className="object-cover object-[60%_40%] transition-transform duration-[1.2s] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.03]"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-b from-transparent from-55% to-aisle-charcoal/25" />
+                  </div>
+
+                  <div className="absolute bottom-[6%] left-0 w-[46%] -rotate-[4deg] overflow-hidden rounded-[22px] border border-white/70 bg-aisle-cream shadow-[0_28px_50px_-22px_rgba(44,37,35,0.5),0_2px_6px_rgba(44,37,35,0.06)] transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:-translate-y-2 group-hover:-rotate-[2deg] motion-safe:animate-[hero-envelope-in_1s_0.25s_cubic-bezier(0.16,1,0.3,1)_backwards]">
+                    <Image
+                      src="/images/hero/invite-envelope.jpg"
+                      alt="The invitation arrives as a sealed envelope addressed to the guest by name"
+                      width={780}
+                      height={860}
+                      sizes="(min-width: 1024px) 250px, 46vw"
+                      className="h-auto w-full"
+                    />
+                  </div>
+
+                  <div className="absolute bottom-0 right-[4%] w-[38%] rotate-[3deg] overflow-hidden rounded-[22px] border-[6px] border-white bg-aisle-cream shadow-[0_30px_60px_-24px_rgba(44,37,35,0.55)] transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:-translate-y-3 group-hover:rotate-[1deg] motion-safe:animate-[hero-rsvp-in_1s_0.45s_cubic-bezier(0.16,1,0.3,1)_backwards]">
+                    <Image
+                      src="/images/hero/invite-rsvp.jpg"
+                      alt="The reply card asking the guest whether they will be celebrating with the couple"
+                      width={780}
+                      height={1000}
+                      sizes="(min-width: 1024px) 210px, 38vw"
+                      className="h-auto w-full"
+                    />
+                  </div>
+                </div>
+
+                <span className="mt-6 flex items-center justify-center gap-2 font-editorial text-lg italic text-aisle-warm transition-colors group-hover:text-aisle-terracotta lg:justify-end lg:pr-[4%]">
+                  Open a sample invitation
+                  <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
+                </span>
+              </Link>
             </div>
           </div>
         </div>
