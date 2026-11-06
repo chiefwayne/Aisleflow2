@@ -104,7 +104,7 @@ function EnvelopeOpening({
     // Paper a shade warmer than the card colour, so the envelope sits in the page rather than on it
     '--env-paper': palette.paper || `color-mix(in srgb, ${palette.surface} 62%, ${palette.bg})`,
     '--env-accent': palette.accent,
-    // Folds are shaded toward the ink; light paper on a dark theme (Marigold's cream) needs a dark ink
+    // Folds are shaded toward the ink; light paper on a dark theme (Garnet & Gold's cream) needs a dark ink
     '--env-ink': palette.paper && !isDarkBackground(palette.paper) && isDarkBackground(palette.bg) ? '#2B2118' : palette.text,
     // Shadows stay dark even when the theme's text colour is light (night themes)
     '--env-shadow': isDarkBackground(palette.bg) ? '#000000' : palette.text,
@@ -148,7 +148,7 @@ function EnvelopeOpening({
             )}
             <span className="env-layer env-flap">
               {palette.detail === 'foil-stars' && <FoilStars accent={palette.accent} viewBox="0 0 145 72" stars={FLAP_STARS} />}
-              {/* Edges drawn along the flap: a gilt edge, a running stitch, or a row of marigold beads */}
+              {/* Edges drawn along the flap: a gilt edge, a running stitch, or a row of gilt beads */}
               {(palette.detail === 'gilt-edge' || palette.detail === 'stitch' || palette.detail === 'bead-edge') && (
                 <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full" fill="none">
                   {palette.detail === 'gilt-edge' && (

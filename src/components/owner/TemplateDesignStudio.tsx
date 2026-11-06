@@ -138,7 +138,7 @@ export interface TemplateDesignRow {
   font_family: 'classic-serif' | 'modern-sans' | 'vintage-editorial';
   opening_style: GuestPortalOpeningStyle;
   hero_treatment: 'photo-card' | 'paper-frame' | 'dark-card' | 'minimal-type' | 'botanical-frame' | 'coastal-postcard' | 'editorial-split' | 'postcard';
-  motif: 'floral' | 'minimal' | 'gilded' | 'botanical' | 'blush' | 'coastal' | 'vineyard' | 'marigold' | 'black-tie' | 'editorial';
+  motif: 'floral' | 'minimal' | 'gilded' | 'botanical' | 'blush' | 'coastal' | 'vineyard' | 'black-tie' | 'editorial';
   needs_photo: boolean;
   sample_image_url: string;
   eyebrow_text?: string;
@@ -1666,7 +1666,7 @@ function SelectedElementControls({
             label="Decorative Theme Motif"
             value={draft.motif || 'floral'}
             onChange={(val) => setField('motif', val)}
-            options={['floral', 'minimal', 'gilded', 'botanical', 'blush', 'coastal', 'vineyard', 'marigold', 'black-tie', 'editorial']}
+            options={['floral', 'minimal', 'gilded', 'botanical', 'blush', 'coastal', 'vineyard', 'black-tie', 'editorial']}
           />
           <ColorField label="Accent Color" value={draft.accent_color || '#9E5A44'} onChange={(val) => setField('accent_color', val)} />
           <ColorField label="Surface Color" value={draft.surface_color || '#FFFFFF'} onChange={(val) => setField('surface_color', val)} />

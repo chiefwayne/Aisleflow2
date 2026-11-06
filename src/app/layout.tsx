@@ -10,12 +10,12 @@ const cinzel = Cinzel({ subsets: ["latin"], weight: ["400", "500", "600", "700"]
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-jakarta", display: "swap" });
 // Script face for couples' names on the invitation
 const corinthia = Corinthia({ subsets: ["latin"], weight: ["400", "700"], variable: "--font-script", display: "swap" });
-// Name faces owned by single presets: Modern Minimal (Bodoni), Indian Marigold (Rozha), Boho Botanical (La Belle Aurore),
+// Name faces owned by single presets: Modern Minimal (Bodoni), Garnet & Gold (Rozha), Boho Botanical (La Belle Aurore),
 // Bundled (latin, SIL Open Font Licence from Google Fonts) so they load wherever the app runs.
 const bodoni = localFont({ src: "./fonts/BodoniModa-latin.woff2", weight: "400 500", variable: "--font-bodoni", display: "swap" });
 const rozha = localFont({ src: "./fonts/RozhaOne-latin.woff2", weight: "400", variable: "--font-rozha", display: "swap" });
 const belleAurore = localFont({ src: "./fonts/LaBelleAurore-latin.woff2", weight: "400", variable: "--font-belle-aurore", display: "swap" });
-// Celestial Magic (Italiana) and Persian Mirror (Marcellus)
+// Celestial Magic (Italiana) and Gilded Turquoise (Marcellus)
 const italiana = localFont({ src: "./fonts/Italiana-latin.woff2", weight: "400", variable: "--font-italiana", display: "swap" });
 const marcellus = localFont({ src: "./fonts/Marcellus-latin.woff2", weight: "400", variable: "--font-marcellus", display: "swap" });
 

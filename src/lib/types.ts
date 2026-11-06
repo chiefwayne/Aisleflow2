@@ -389,7 +389,7 @@ export interface TemplateDesignRecord {
   best_for?: string | null;
   opening_style: GuestPortalOpeningStyle;
   hero_treatment: 'photo-card' | 'paper-frame' | 'dark-card' | 'minimal-type' | 'botanical-frame' | 'coastal-postcard' | 'editorial-split' | 'postcard';
-  motif: 'floral' | 'minimal' | 'gilded' | 'botanical' | 'blush' | 'coastal' | 'vineyard' | 'marigold' | 'black-tie' | 'editorial';
+  motif: 'floral' | 'minimal' | 'gilded' | 'botanical' | 'blush' | 'coastal' | 'vineyard' | 'black-tie' | 'editorial';
   font_family: 'classic-serif' | 'modern-sans' | 'vintage-editorial';
   canvas_width: GuestPortalCanvasWidth;
   bg_color: string;
@@ -420,7 +420,7 @@ export interface TemplateDesignRecord {
   poetic_line?: string;
   invitation_phrase?: string;
   floron?: string;
-  border_flair?: 'double-line' | 'hairline-gold' | 'arch' | 'clean' | 'arabesque' | 'botanical-crest' | 'stars' | 'deboss' | 'airmail' | 'clay';
+  border_flair?: 'double-line' | 'hairline-gold' | 'arch' | 'clean' | 'swag' | 'botanical-crest' | 'stars' | 'deboss' | 'airmail' | 'clay';
   /** The RSVP band: the accent colour, or a deeper shade of the page (default on dark themes). */
   rsvp_band?: 'accent' | 'deep';
   /** Envelope paper colour; defaults to a mix of the card and page colours. */
@@ -432,12 +432,12 @@ export interface TemplateDesignRecord {
   /** A name face of the preset's own; otherwise script (Corinthia) or the theme serif. */
   name_font?: 'bodoni' | 'rozha' | 'belle-aurore' | 'italiana' | 'marcellus';
   /** The RSVP letter's own shape and corner mark, so the one screen every guest uses belongs to the preset. */
-  rsvp_card?: 'gilt-corners' | 'square' | 'stitch' | 'stars' | 'beads' | 'girih' | 'stamp' | 'deckle';
+  rsvp_card?: 'gilt-corners' | 'square' | 'stitch' | 'stars' | 'beads' | 'lozenge' | 'stamp' | 'deckle';
   /** The itinerary as a timeline (default), a menu card, a harbour timetable, an order of service, a ledger,
    *  a constellation, garlanded ceremonies, gilt panels or handwritten times. */
   schedule_style?: 'menu' | 'timetable' | 'programme' | 'ledger' | 'constellation' | 'garland' | 'panels' | 'handwritten';
   /** The mark drawn round the wedding day in the calendar: a heart (default) or the preset's own. */
-  date_mark?: 'square' | 'star' | 'beads' | 'girih' | 'ring' | 'wreath' | 'postmark';
+  date_mark?: 'square' | 'star' | 'beads' | 'lozenge' | 'ring' | 'wreath' | 'postmark';
   /** Colour of the stationery frame and monogram ring (e.g. gilt); defaults to the accent. */
   frame_color?: string;
   is_dark?: boolean;

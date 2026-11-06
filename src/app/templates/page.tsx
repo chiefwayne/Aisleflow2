@@ -21,8 +21,7 @@ export default function TemplatesPage() {
     'Classic Floral': ['royal-floral', 'boho-botanical'],
     'Modern Minimal': ['modern-minimal'],
     'Destination & Countryside': ['tuscan-wine', 'destination-riviera'],
-    'Elegant Dark / Gold': ['celestial-magic', 'indian-marigold'],
-    'Cultural Heritage': ['indian-marigold', 'persian-mirror'],
+    'Elegant & Gilded': ['celestial-magic', 'garnet-gold', 'gilded-turquoise'],
   };
   const categories = ['all', ...Object.keys(categoryThemes)];
 

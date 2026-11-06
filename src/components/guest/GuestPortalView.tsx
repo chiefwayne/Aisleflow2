@@ -104,8 +104,8 @@ const PRESET_COVER_LINES: Record<string, keyof PortalStrings> = {
   'modern-minimal': 'coverModernMinimal',
   'tuscan-wine': 'coverTuscanWine',
   'celestial-magic': 'coverCelestialMagic',
-  'indian-marigold': 'coverIndianMarigold',
-  'persian-mirror': 'coverPersianMirror',
+  'garnet-gold': 'coverGarnetGold',
+  'gilded-turquoise': 'coverGildedTurquoise',
   'destination-riviera': 'coverDestinationRiviera',
   'boho-botanical': 'coverBohoBotanical',
 };
@@ -609,7 +609,7 @@ export default function GuestPortalView({
     rsvpCard === 'square' ? 'rounded-none'
     : rsvpCard === 'stitch' ? 'rounded-md'
     : rsvpCard === 'stamp' ? 'rounded-sm'
-    : rsvpCard === 'girih' ? 'rounded-[3px]' // a tile, carrying a mihrab arch beside its label
+    : rsvpCard === 'lozenge' ? 'rounded-[3px]' // a tile, carrying a small gilt lozenge beside its label
     : rsvpCard === 'deckle' ? 'rounded-[2.4rem_1rem_2rem_0.8rem/1.6rem_1.9rem_0.9rem_1.7rem]' // a river pebble
     : 'rounded-full';
   const doubleRule = (c: string) =>
@@ -623,7 +623,7 @@ export default function GuestPortalView({
           ? { backgroundColor: theme.surface_color || '#FFFFFF', clipPath: DECKLE, borderRadius: 0 }
           : rsvpCard === 'gilt-corners'
             ? {}
-            : rsvpCard === 'girih'
+            : rsvpCard === 'lozenge'
             ? { boxShadow: `inset 0 0 0 1px ${frameColor}` }
             : { boxShadow: doubleRule(accent) };
   const heroLayout = theme.hero_layout || (event.cover_image_url ? 'photo' : 'stationery');
@@ -897,14 +897,14 @@ export default function GuestPortalView({
                     ))}
                   </div>
                 ) : theme.schedule_style === 'garland' ? (
-                  // Marigold: each ceremony under its own small garland, named in the festive face
+                  // Garnet & Gold: each part of the day under a short string of gilt beads, named in the festive face
                   <div className="mx-auto max-w-sm space-y-9 text-center">
                     {visibleSchedule.map((item) => (
                       <div key={item.id}>
                         <span aria-hidden="true" className="mx-auto flex w-fit items-center gap-1">
-                          <span className="h-3 w-3 opacity-70"><MarigoldHead tone={accent} /></span>
-                          <span className="h-4 w-4"><MarigoldHead tone={accent} /></span>
-                          <span className="h-3 w-3 opacity-70"><MarigoldHead tone={accent} /></span>
+                          <span className="h-3 w-3 opacity-70"><Bead tone={accent} /></span>
+                          <span className="h-4 w-4"><Bead tone={accent} /></span>
+                          <span className="h-3 w-3 opacity-70"><Bead tone={accent} /></span>
                         </span>
                         <p className="mt-3 couple-names text-2xl leading-tight">{item.title}</p>
                         <p className="mt-1 font-editorial text-base italic" style={{ color: accent }}>{new Date(item.start_time).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}</p>
@@ -915,7 +915,7 @@ export default function GuestPortalView({
                     ))}
                   </div>
                 ) : theme.schedule_style === 'panels' ? (
-                  // Persian: the whole day in one hairline cartouche, its parts divided by finer rules
+                  // Gilded Turquoise: the whole day in one hairline cartouche, its parts divided by finer rules
                   <div>
                     <div className="px-5" style={{ border: `1px solid color-mix(in srgb, ${frameColor} 70%, transparent)` }}>
                     {visibleSchedule.map((item, idx) => (
@@ -1351,7 +1351,7 @@ export default function GuestPortalView({
               {/* Physical Response Card Frame */}
               <div
                 ref={rsvpCardRef}
-                className={`relative overflow-hidden rounded-[2px] p-7 sm:p-11 scroll-mt-20 ${rsvpCard === 'girih' ? 'pt-14 sm:pt-16' : rsvpCard === 'beads' ? 'py-14 sm:py-16' : ''}`}
+                className={`relative overflow-hidden rounded-[2px] p-7 sm:p-11 scroll-mt-20 ${rsvpCard === 'lozenge' ? 'pt-14 sm:pt-16' : rsvpCard === 'beads' ? 'py-14 sm:py-16' : ''}`}
                 style={{ color: ink, ...rsvpCardStyle }}
               >
                 <RsvpCardMark variant={theme.rsvp_card} accent={accent} frameColor={frameColor} pageBg={pageBg} />
@@ -1469,10 +1469,10 @@ export default function GuestPortalView({
                                     }
                                   >
                                     <span className="relative">
-                                      {rsvpCard === 'girih' && gState.rsvp_status === 'attending' && (
-                                        // A pointed mihrab arch frames the chosen answer only; it hangs off the label so the label never moves
+                                      {rsvpCard === 'lozenge' && gState.rsvp_status === 'attending' && (
+                                        // A small gilt lozenge marks the chosen answer only; it hangs off the label so the label never moves
                                         <svg aria-hidden="true" viewBox="0 0 12 16" className="absolute right-full top-1/2 mr-2 h-4 w-3 -translate-y-1/2" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round">
-                                          <path d="M1 15.5 V7 C 1 3.6, 4.4 2.4, 6 0.6 C 7.6 2.4, 11 3.6, 11 7 V15.5" />
+                                          <path d="M6 2 L11 8 L6 14 L1 8 Z" />
                                         </svg>
                                       )}
                                       {tr.joyfullyAccept}
@@ -1493,10 +1493,10 @@ export default function GuestPortalView({
                                     }
                                   >
                                     <span className="relative">
-                                      {rsvpCard === 'girih' && gState.rsvp_status === 'declined' && (
-                                        // A pointed mihrab arch frames the chosen answer only; it hangs off the label so the label never moves
+                                      {rsvpCard === 'lozenge' && gState.rsvp_status === 'declined' && (
+                                        // A small gilt lozenge marks the chosen answer only; it hangs off the label so the label never moves
                                         <svg aria-hidden="true" viewBox="0 0 12 16" className="absolute right-full top-1/2 mr-2 h-4 w-3 -translate-y-1/2" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round">
-                                          <path d="M1 15.5 V7 C 1 3.6, 4.4 2.4, 6 0.6 C 7.6 2.4, 11 3.6, 11 7 V15.5" />
+                                          <path d="M6 2 L11 8 L6 14 L1 8 Z" />
                                         </svg>
                                       )}
                                       {tr.regretfullyDecline}
@@ -2319,10 +2319,10 @@ export default function GuestPortalView({
               // A preset's own gilt is drawn at full strength; the accent frame stays a soft hairline
               style={heroStyle ? containerInlineStyle(heroStyle) : { border: `1px solid ${theme.frame_color || `color-mix(in srgb, ${frameColor} 55%, transparent)`}` }}
             >
-              {!heroStyle && theme.rsvp_card === 'girih' && (
-                // An eight-point girih star set on the frame's head rule
+              {!heroStyle && theme.rsvp_card === 'lozenge' && (
+                // A gilt lozenge set on the frame's head rule
                 <svg aria-hidden="true" viewBox="-12 -12 24 24" className="absolute left-1/2 top-0 h-10 w-10 -translate-x-1/2 -translate-y-1/2" fill={pageBg} stroke={frameColor} strokeWidth="0.9" strokeLinejoin="round">
-                  <path d={GIRIH} />
+                  <path d={LOZENGE} />
                   <circle r="2.4" />
                 </svg>
               )}
@@ -2699,7 +2699,7 @@ export default function GuestPortalView({
 /** One hand-drawn signature detail over the photo cover, chosen by the preset's border_flair. */
 export function CoverFrame({ flair, accent, postmark }: { flair?: string; accent: string; postmark?: { place: string; day: string; year: string } }) {
   const line = 'rgba(255,255,255,0.6)';
-  // Light accents (champagne, marigold) read on a photo; deep ones fall back to white
+  // Light accents (champagne, gold) read on a photo; deep ones fall back to white
   const tone = contrastRatio(accent, '#000000') > 7 ? accent : line;
   switch (flair) {
     case 'botanical-crest': {
@@ -2771,14 +2771,14 @@ export function CoverFrame({ flair, accent, postmark }: { flair?: string; accent
           </svg>
         </div>
       );
-    case 'arabesque':
-      // A double rule with a marigold toran swagged across its head
+    case 'swag':
+      // A double rule with a string of gilt beads swagged across its head
       return (
         <div aria-hidden="true" className="pointer-events-none absolute inset-x-4 top-4 bottom-[5.5rem] border p-1.5" style={{ borderColor: tone }}>
           <div className="h-full w-full border" style={{ borderColor: tone, opacity: 0.6 }} />
-          {/* A marigold toran hung from corner to corner of the frame: the string sags across the full width,
-              the flower heads stay round (placed along the curve, never stretched), and strands hang below */}
-          <Toran tone={tone} />
+          {/* The beads are draped from corner to corner of the frame: the string sags across the full width
+              and the beads stay round (placed along the curve, never stretched) */}
+          <BeadSwag tone={tone} />
         </div>
       );
     case 'clay':
@@ -2860,30 +2860,26 @@ function postmarkPlace(venue: string) {
   return kept.join(' ') || venue.slice(0, 16);
 }
 
-/** One marigold head: eight round petals about a seed. */
-function MarigoldHead({ tone }: { tone: string }) {
-  const r = (n: number) => Math.round(n * 100) / 100;
+/** One gilt bead: a round body with a soft highlight. */
+function Bead({ tone }: { tone: string }) {
   return (
-    <svg viewBox="-8 -8 16 16" className="h-full w-full" fill={tone}>
-      {Array.from({ length: 8 }, (_, k) => (
-        <circle key={k} cx={r(Math.cos((k / 8) * 2 * Math.PI) * 4.4)} cy={r(Math.sin((k / 8) * 2 * Math.PI) * 4.4)} r="3" />
-      ))}
-      <circle r="3.4" />
-      <circle r="1.6" fill="#000" opacity="0.25" />
+    <svg viewBox="-8 -8 16 16" className="h-full w-full">
+      <circle r="6.4" fill={tone} />
+      <circle cx="-2.2" cy="-2.4" r="2" fill="#FFFFFF" opacity="0.35" />
     </svg>
   );
 }
 
-/** Marigold's toran: a swag strung from corner to corner, round flower heads along it and strands hanging below.
- *  On wider screens the swag sags deeper (34px up to 80px) and the heads close up, so it stays a garland rather than a string of lights. */
-function Toran({ tone }: { tone: string }) {
+/** Garnet & Gold's swag: a string of gilt beads draped from corner to corner.
+ *  On wider screens the swag sags deeper (34px up to 80px) and the beads close up, so it stays one continuous string. */
+function BeadSwag({ tone }: { tone: string }) {
   const heads = 21;
   const r = (n: number) => Math.round(n * 100) / 100;
   // Depth along the swag as a share of --sag
   const at = (t: number) => `calc(var(--sag) * ${r(4 * t * (1 - t))})`;
   const head = (t: number, key: string, extra = '') => (
     <span key={key} className={`absolute h-4 w-4 sm:h-5 sm:w-5 -translate-x-1/2 -translate-y-1/2 ${extra}`} style={{ left: `${r(t * 100)}%`, top: at(t) }}>
-      <MarigoldHead tone={tone} />
+      <Bead tone={tone} />
     </span>
   );
   return (
@@ -2895,14 +2891,6 @@ function Toran({ tone }: { tone: string }) {
       {/* From sm the gaps close: two more heads between each pair, so the strand stays continuous */}
       {Array.from({ length: heads - 1 }, (_, i) => head((i + 1 / 3) / (heads - 1), `a${i}`, 'hidden sm:block'))}
       {Array.from({ length: heads - 1 }, (_, i) => head((i + 2 / 3) / (heads - 1), `b${i}`, 'hidden sm:block'))}
-      {/* Latkans: strands of varied length hanging from the swag, each ending in a small head */}
-      {[0.2, 0.35, 0.5, 0.65, 0.8].map((t, i) => (
-        <span key={t} className="absolute w-[1.5px] -translate-x-1/2" style={{ left: `${t * 100}%`, top: `calc(${at(t)} + 8px)`, height: [20, 30, 40, 30, 20][i], backgroundColor: tone, opacity: 0.8 }}>
-          <span className="absolute -bottom-2 left-1/2 h-3 w-3 -translate-x-1/2">
-            <MarigoldHead tone={tone} />
-          </span>
-        </span>
-      ))}
     </div>
   );
 }
@@ -2944,16 +2932,16 @@ function DateMark({ variant, accent, ink, frameColor }: { variant?: string; acce
           <circle r="9" strokeDasharray="1.2 1" />
         </svg>
       );
-    case 'girih':
-      // Two interlaced squares (a khatam): the open centre leaves the date clear
+    case 'lozenge':
+      // Gilded Turquoise: a gilt lozenge, a finer one inside; the open centre leaves the date clear
       return (
         <svg viewBox="-12 -12 24 24" className="pointer-events-none absolute left-1/2 top-1/2 h-16 w-16 -translate-x-1/2 -translate-y-1/2" fill="none" stroke={frameColor} strokeWidth="0.5" strokeLinejoin="round">
-          <rect x="-7.5" y="-7.5" width="15" height="15" />
-          <rect x="-7.5" y="-7.5" width="15" height="15" transform="rotate(45)" />
+          <path d="M0 -11 L11 0 L0 11 L-11 0 Z" />
+          <path d="M0 -9.4 L9.4 0 L0 9.4 L-9.4 0 Z" strokeWidth="0.3" />
         </svg>
       );
     case 'beads':
-      // Marigold: a garland of small marigold heads round the day
+      // Garnet & Gold: a ring of gilt beads round the day
       return (
         <span className={box}>
           {Array.from({ length: 12 }, (_, i) => (
@@ -2962,7 +2950,7 @@ function DateMark({ variant, accent, ink, frameColor }: { variant?: string; acce
               className="absolute h-[18%] w-[18%] -translate-x-1/2 -translate-y-1/2"
               style={{ left: `${Math.round((50 + Math.cos((i / 12) * 2 * Math.PI) * 42) * 100) / 100}%`, top: `${Math.round((50 + Math.sin((i / 12) * 2 * Math.PI) * 42) * 100) / 100}%` }}
             >
-              <MarigoldHead tone={accent} />
+              <Bead tone={accent} />
             </span>
           ))}
         </span>
@@ -2994,10 +2982,10 @@ const DECKLE = (() => {
   return `polygon(${pts.join(', ')})`;
 })();
 
-/** An eight-point girih star, centred on 0,0 within a 24-unit box. */
-const GIRIH = 'M0 -11 L2.07 -4.99 L7.78 -7.78 L4.99 -2.07 L11 0 L4.99 2.07 L7.78 7.78 L2.07 4.99 L0 11 L-2.07 4.99 L-7.78 7.78 L-4.99 2.07 L-11 0 L-4.99 -2.07 L-7.78 -7.78 L-2.07 -4.99 Z';
+/** A tall gilt lozenge, centred on 0,0 within a 24-unit box. */
+const LOZENGE = 'M0 -11 L7 0 L0 11 L-7 0 Z';
 
-/** The small mark a preset leaves on its RSVP letter: gilt corners, foil stars, beads, a girih star or a stamp. */
+/** The small mark a preset leaves on its RSVP letter: gilt corners, foil stars, beads, a lozenge or a stamp. */
 function RsvpCardMark({ variant, accent, frameColor, pageBg }: { variant?: string; accent: string; frameColor: string; pageBg: string }) {
   const corner = 'pointer-events-none absolute h-5 w-5';
   switch (variant) {
@@ -3027,25 +3015,25 @@ function RsvpCardMark({ variant, accent, frameColor, pageBg }: { variant?: strin
         </span>
       );
     case 'beads':
-      // A short garland of marigold heads at the head and foot of the letter
+      // A short string of gilt beads at the head and foot of the letter
       return (
         <span aria-hidden="true">
           {['top-5', 'bottom-5'].map((pos) => (
             <span key={pos} className={`pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center gap-0.5 ${pos}`}>
               {[3, 3.5, 4, 3.5, 3].map((size, i) => (
                 <span key={i} style={{ width: size * 4, height: size * 4 }}>
-                  <MarigoldHead tone={accent} />
+                  <Bead tone={accent} />
                 </span>
               ))}
             </span>
           ))}
         </span>
       );
-    case 'girih':
-      // An eight-point girih star set on the head rule, in gilt
+    case 'lozenge':
+      // A gilt lozenge set on the head rule
       return (
         <svg aria-hidden="true" viewBox="-12 -12 24 24" className="pointer-events-none absolute left-1/2 top-1 h-9 w-9 -translate-x-1/2" fill={pageBg} stroke={frameColor} strokeWidth="0.9" strokeLinejoin="round">
-          <path d={GIRIH} />
+          <path d={LOZENGE} />
           <circle r="2.4" />
         </svg>
       );
