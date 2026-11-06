@@ -11,6 +11,10 @@ const OPEN_SETTINGS_EVENT = 'aisleflow:cookie-settings';
 
 type ClarityFn = (...args: unknown[]) => void;
 
+// The page this browser tab first loaded. A tab that began on a private couple or guest link keeps that
+// address in its history, and Back returns to it without a reload, so Clarity must never start in that tab.
+const firstPath = typeof window === 'undefined' ? null : window.location.pathname;
+
 function readChoice(): Choice | null {
   try {
     const v = window.localStorage.getItem(STORAGE_KEY);
@@ -52,7 +56,7 @@ export default function CookieConsent({ analyticsEnabled }: { analyticsEnabled: 
 
   return (
     <>
-      {analyticsEnabled && choice === 'granted' && <ClarityTag />}
+      {analyticsEnabled && choice === 'granted' && firstPath !== null && isMarketingPage(firstPath) && <ClarityTag />}
 
       {choice === null && (
         <section
