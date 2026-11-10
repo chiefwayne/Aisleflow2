@@ -69,7 +69,7 @@ import {
   GuestPortalSectionId,
   EventCustomSections
 } from '@/lib/types';
-import { BUILTIN_THEMES } from '@/lib/theme-presets';
+import { BUILTIN_THEMES, palettesFor } from '@/lib/theme-presets';
 import { generateQrDataUrl } from '@/lib/qrcode';
 import PortalPreviewPane from '@/components/admin/PortalPreviewPane';
 import GuestPortalView from '@/components/guest/GuestPortalView';
@@ -1194,7 +1194,7 @@ export default function AdminDashboardView({
   const handleChoosePreset = (thm: TemplateDesignRecord) => {
     if (isStudioDesign(customTheme)) return handleApplyTheme(thm.id, {});
     const config = event.theme_config && typeof event.theme_config === 'object' ? (event.theme_config as Record<string, any>) : {};
-    const colourKeys = ['bg_color', 'text_color', 'accent_color', 'muted_color', 'surface_color', 'border_color', 'shadow_color'];
+    const colourKeys = ['bg_color', 'text_color', 'accent_color', 'muted_color', 'surface_color', 'border_color', 'shadow_color', 'envelope_paper', 'frame_color'];
     const customColours = colourKeys.filter((k) => k in config);
     if (
       customColours.length > 0 &&
@@ -1252,11 +1252,14 @@ export default function AdminDashboardView({
   };
 
   // Update specific theme config key (color, font, opening style, floron, phrases, etc.)
-  const handleUpdateThemeConfig = async (key: string, val: any) => {
+  const handleUpdateThemeConfig = (key: string, val: any) => handleUpdateThemeConfigs({ [key]: val }, key.replace(/_/g, ' '));
+
+  // Several theme keys in one save, e.g. a whole colour palette.
+  const handleUpdateThemeConfigs = async (patch: Record<string, any>, label: string) => {
     // 1. Optimistically update local React state
     const updatedThemeConfig = {
       ...(event.theme_config && typeof event.theme_config === 'object' ? event.theme_config : {}),
-      [key]: val,
+      ...patch,
     };
     setEvent((prev) => ({
       ...prev,
@@ -1264,17 +1267,17 @@ export default function AdminDashboardView({
     }));
     setCustomTheme((prev) => ({
       ...prev,
-      [key]: val,
+      ...patch,
     }));
 
     // 2. Persist to Supabase
     setIsProcessingAction(true);
-    setStatusMessage(`Updating ${key.replace(/_/g, ' ')}...`);
+    setStatusMessage(`Updating ${label}...`);
     try {
       const result = await updateEventDesignAction({
         eventId: event.id,
         adminToken: event.admin_token,
-        theme_config: { [key]: val },
+        theme_config: patch,
       });
 
       if (result.success && result.event) {
@@ -3290,8 +3293,45 @@ export default function AdminDashboardView({
                   {/* SUB-TAB 2: COLOR PALETTE */}
                   {builderSubTab === 'palette' && (
                     <div className="space-y-5 text-xs">
+                      {/* Ready-made colourways for the chosen design, applied in one click */}
+                      {!isStudioDesign(customTheme) && palettesFor(event.theme_id).length > 0 && (
+                        <div className="space-y-2">
+                          <label className="font-semibold text-aisle-charcoal block">{customTheme.name} colourways</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            {palettesFor(event.theme_id).map((palette) => {
+                              const c = palette.colours;
+                              const selected = (Object.keys(c) as (keyof typeof c)[]).every((k) => customTheme[k] === c[k]);
+                              return (
+                                <button
+                                  key={palette.name}
+                                  type="button"
+                                  aria-pressed={selected}
+                                  onClick={() => handleUpdateThemeConfigs(c, `${palette.name} colours`)}
+                                  className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                                    selected ? 'border-aisle-terracotta bg-aisle-sand/50 shadow-xs' : 'border-aisle-border bg-white hover:border-aisle-charcoal/40'
+                                  }`}
+                                >
+                                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-black/10" style={{ backgroundColor: c.bg_color }}>
+                                    <span className="h-4 w-4 rounded-full" style={{ backgroundColor: c.accent_color, boxShadow: `0 0 0 3px ${c.surface_color}` }} />
+                                  </span>
+                                  <span className="min-w-0">
+                                    <span className="block font-semibold text-aisle-charcoal truncate">{palette.name}</span>
+                                    <span className="mt-1 flex gap-1">
+                                      {[c.text_color, c.accent_color, c.frame_color || c.border_color].map((hex, i) => (
+                                        <span key={i} className="h-2.5 w-2.5 rounded-full border border-black/10" style={{ backgroundColor: hex }} />
+                                      ))}
+                                    </span>
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <p className="text-aisle-muted">Or fine-tune any colour below.</p>
+                        </div>
+                      )}
+
                       {/* Accent Color */}
-                      <div className="space-y-2">
+                      <div className="space-y-2 pt-3 border-t border-aisle-border/60">
                         <div className="flex items-center justify-between">
                           <label className="font-semibold text-aisle-charcoal">Primary Accent & Wax Tint</label>
                           <span className="font-mono text-xs text-aisle-muted">{customTheme.accent_color || '#9E5A44'}</span>

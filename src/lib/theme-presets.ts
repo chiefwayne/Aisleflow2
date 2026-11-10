@@ -311,3 +311,65 @@ export const BUILTIN_THEMES: Record<string, TemplateDesignRecord> = {
     updated_at: new Date().toISOString(),
   },
 };
+
+/** The colours a palette sets. A design's own envelope and frame colours are included where it has them. */
+const PALETTE_KEYS = ['bg_color', 'text_color', 'accent_color', 'muted_color', 'surface_color', 'border_color', 'shadow_color', 'envelope_paper', 'frame_color'] as const;
+export type PaletteColours = Partial<Pick<TemplateDesignRecord, (typeof PALETTE_KEYS)[number]>>;
+export interface DesignPalette {
+  name: string;
+  colours: PaletteColours;
+}
+
+// Alternative colourways a couple can apply in one click. Each keeps its design's light or dark character,
+// so the design's ornaments, RSVP band and envelope still read as intended.
+const ALTERNATE_PALETTES: Record<string, DesignPalette[]> = {
+  'royal-floral': [
+    { name: 'Sage & Gold', colours: { bg_color: '#F6F6EF', text_color: '#23281F', accent_color: '#4E5F3A', muted_color: '#646A5C', surface_color: '#FCFCF7', border_color: '#DCE0CC', shadow_color: 'rgba(35, 40, 31, 0.07)', envelope_paper: '#E6E8D6', frame_color: '#B08F45' } },
+    { name: 'Blush & Gold', colours: { bg_color: '#FBF4F1', text_color: '#2E2224', accent_color: '#8A4A55', muted_color: '#73625F', surface_color: '#FFFBF9', border_color: '#EBD9D3', shadow_color: 'rgba(46, 34, 36, 0.07)', envelope_paper: '#F1E0DA', frame_color: '#B89452' } },
+    { name: 'Dusk Blue & Silver', colours: { bg_color: '#F5F6F7', text_color: '#1E2633', accent_color: '#34507A', muted_color: '#5E6673', surface_color: '#FCFDFD', border_color: '#D9DEE6', shadow_color: 'rgba(30, 38, 51, 0.07)', envelope_paper: '#E3E7EC', frame_color: '#A3A7AE' } },
+  ],
+  'modern-minimal': [
+    { name: 'Stone & Clay', colours: { bg_color: '#EFEDE8', text_color: '#1C1A18', accent_color: '#8A4B33', muted_color: '#5F5A54', surface_color: '#F8F7F4', border_color: '#DBD7D0', shadow_color: 'rgba(28, 26, 24, 0.06)' } },
+    { name: 'Cool Grey', colours: { bg_color: '#EEF0F1', text_color: '#121619', accent_color: '#2F3A44', muted_color: '#575F66', surface_color: '#F8F9FA', border_color: '#D8DCDF', shadow_color: 'rgba(18, 22, 25, 0.06)' } },
+    { name: 'Olive', colours: { bg_color: '#F0EFE8', text_color: '#1A1C16', accent_color: '#4D5536', muted_color: '#5D5F55', surface_color: '#F9F8F3', border_color: '#DAD9CE', shadow_color: 'rgba(26, 28, 22, 0.06)' } },
+  ],
+  'tuscan-wine': [
+    { name: 'Olive Grove', colours: { bg_color: '#F4F2E6', text_color: '#262A1C', accent_color: '#545C2E', muted_color: '#66675A', surface_color: '#FBFAF2', border_color: '#DDDBC6', shadow_color: 'rgba(38, 42, 28, 0.07)', envelope_paper: '#E5E1C8' } },
+    { name: 'Terracotta', colours: { bg_color: '#F8EFE6', text_color: '#2E2119', accent_color: '#9A4A2E', muted_color: '#705E52', surface_color: '#FDF8F2', border_color: '#E7D4C3', shadow_color: 'rgba(46, 33, 25, 0.07)', envelope_paper: '#EFDCC8' } },
+    { name: 'Plum', colours: { bg_color: '#F6F0F0', text_color: '#2A1E24', accent_color: '#5C2A48', muted_color: '#6C5E63', surface_color: '#FCF8F8', border_color: '#E2D3D6', shadow_color: 'rgba(42, 30, 36, 0.07)', envelope_paper: '#EBDDDF' } },
+  ],
+  'celestial-magic': [
+    { name: 'Midnight Silver', colours: { bg_color: '#111318', text_color: '#EEF0F3', accent_color: '#C4CAD4', muted_color: '#A3A9B4', surface_color: '#1A1D24', border_color: '#2F343F', shadow_color: 'rgba(0, 0, 0, 0.35)', envelope_paper: '#20242D' } },
+    { name: 'Deep Emerald', colours: { bg_color: '#0C1A16', text_color: '#F1EEE4', accent_color: '#D0B474', muted_color: '#A9B8AF', surface_color: '#12251F', border_color: '#284239', shadow_color: 'rgba(0, 0, 0, 0.35)', envelope_paper: '#183029' } },
+    { name: 'Aubergine & Rose Gold', colours: { bg_color: '#1A1020', text_color: '#F4EDE8', accent_color: '#D9AE8A', muted_color: '#BBA9B9', surface_color: '#24182C', border_color: '#3E2D47', shadow_color: 'rgba(0, 0, 0, 0.35)', envelope_paper: '#2C1F35' } },
+  ],
+  'garnet-gold': [
+    { name: 'Emerald & Gold', colours: { bg_color: '#0E2A20', text_color: '#F6EEDC', accent_color: '#E3B04B', muted_color: '#BCC7B4', surface_color: '#143528', border_color: '#3D5A3E', shadow_color: 'rgba(0, 0, 0, 0.35)', envelope_paper: '#F3E6CF' } },
+    { name: 'Sapphire & Gold', colours: { bg_color: '#0F1E3D', text_color: '#F5EEDF', accent_color: '#E8B04A', muted_color: '#B4BCCC', surface_color: '#16284B', border_color: '#3A4C70', shadow_color: 'rgba(0, 0, 0, 0.35)', envelope_paper: '#F3E6CF' } },
+    { name: 'Black & Gold', colours: { bg_color: '#141210', text_color: '#F5EEDF', accent_color: '#D9A53F', muted_color: '#BDB2A2', surface_color: '#1F1C18', border_color: '#4A4030', shadow_color: 'rgba(0, 0, 0, 0.35)', envelope_paper: '#F1E6D2' } },
+  ],
+  'gilded-turquoise': [
+    { name: 'Ivory & Emerald', colours: { bg_color: '#F9F7EF', text_color: '#172A22', accent_color: '#1D5E45', muted_color: '#5A6A62', surface_color: '#FFFEF8', border_color: '#D9CC9F', shadow_color: 'rgba(23, 42, 34, 0.07)', envelope_paper: '#E3DCC6', frame_color: '#A88838' } },
+    { name: 'Ivory & Lapis', colours: { bg_color: '#F8F7F2', text_color: '#16213A', accent_color: '#23407A', muted_color: '#5A6275', surface_color: '#FFFEFA', border_color: '#D6CCA6', shadow_color: 'rgba(22, 33, 58, 0.07)', envelope_paper: '#E2DCCB', frame_color: '#A88838' } },
+    { name: 'Ivory & Ruby', colours: { bg_color: '#FAF6F0', text_color: '#2A1A1C', accent_color: '#8A2333', muted_color: '#6E5E5F', surface_color: '#FFFDF9', border_color: '#DDCB9F', shadow_color: 'rgba(42, 26, 28, 0.07)', envelope_paper: '#E8DCC8', frame_color: '#A88838' } },
+  ],
+  'destination-riviera': [
+    { name: 'Lemon & Leaf', colours: { bg_color: '#FCFAF2', text_color: '#1F2A1E', accent_color: '#3E6B3A', muted_color: '#5F6A5C', surface_color: '#FFFFFF', border_color: '#E4E5CE', shadow_color: 'rgba(31, 42, 30, 0.07)', envelope_paper: '#F3EDCF' } },
+    { name: 'Coral Coast', colours: { bg_color: '#FCF8F5', text_color: '#2A1F1E', accent_color: '#A84A3A', muted_color: '#6F625F', surface_color: '#FFFFFF', border_color: '#EED8D0', shadow_color: 'rgba(42, 31, 30, 0.07)', envelope_paper: '#F4E6DC' } },
+    { name: 'Aegean', colours: { bg_color: '#F7FAFB', text_color: '#0E2A33', accent_color: '#0F6577', muted_color: '#50686F', surface_color: '#FFFFFF', border_color: '#D2E2E6', shadow_color: 'rgba(14, 42, 51, 0.07)', envelope_paper: '#E8EEE9' } },
+  ],
+  'boho-botanical': [
+    { name: 'Desert Rose', colours: { bg_color: '#F6EDE8', text_color: '#2C2221', accent_color: '#8E524D', muted_color: '#6F605C', surface_color: '#FBF6F2', border_color: '#D3A99A', shadow_color: 'rgba(44, 34, 33, 0.07)', envelope_paper: '#ECDCD2' } },
+    { name: 'Rust & Sand', colours: { bg_color: '#F5EDE2', text_color: '#2B2219', accent_color: '#8F4824', muted_color: '#6E6052', surface_color: '#FBF6EE', border_color: '#CFA27D', shadow_color: 'rgba(43, 34, 25, 0.07)', envelope_paper: '#EADBC4' } },
+    { name: 'Eucalyptus', colours: { bg_color: '#F1F1EB', text_color: '#222823', accent_color: '#46655C', muted_color: '#616862', surface_color: '#F9F9F4', border_color: '#B9BFA9', shadow_color: 'rgba(34, 40, 35, 0.07)', envelope_paper: '#E1E2D4' } },
+  ],
+};
+
+/** A built-in design's own colours first, then its alternatives. Empty for designs without alternatives. */
+export function palettesFor(themeId: string): DesignPalette[] {
+  const theme = BUILTIN_THEMES[themeId];
+  const alternates = ALTERNATE_PALETTES[themeId];
+  if (!theme || !alternates) return [];
+  const original = Object.fromEntries(PALETTE_KEYS.filter((k) => theme[k] !== undefined).map((k) => [k, theme[k]])) as PaletteColours;
+  return [{ name: 'Original', colours: original }, ...alternates];
+}
