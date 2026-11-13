@@ -210,6 +210,12 @@ export async function uploadPhotoAction(input: FormData | Record<string, any>) {
       return { error: 'Invalid guest token.' };
     }
 
+    // Guest photos come with the paid plans; the demo invitations always allow them.
+    if (!isDemoGuestToken(token)) {
+      const { data: planRow } = await supabaseAdmin.from('events').select('plan').eq('id', guest.event_id).maybeSingle();
+      if (!hasFeature(planRow || {}, 'publish')) return { error: 'Photo sharing opens once the couple publishes their invitation.' };
+    }
+
     const fileExt = file.name.split('.').pop() || 'jpg';
     const storagePath = `${guest.event_id}/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
     const arrayBuffer = await file.arrayBuffer();
@@ -223,25 +229,10 @@ export async function uploadPhotoAction(input: FormData | Record<string, any>) {
         upsert: false,
       });
 
+    // Never fall back to storing the image in the database: a failed upload is reported to the guest.
     if (uploadErr) {
       console.error('Storage upload error:', uploadErr);
-      // Fallback: If bucket policy or local env restricts, generate base64 data URL
-      const base64Url = `data:${file.type};base64,${buffer.toString('base64')}`;
-      const { data: fallbackPhoto, error: fallbackErr } = await supabaseAdmin
-        .from('photos')
-        .insert({
-          event_id: guest.event_id,
-          guest_id: guest.id,
-          image_url: base64Url,
-          caption: caption || `Shared by ${guest.first_name}`,
-          is_approved: true,
-        })
-        .select()
-        .single();
-
-      if (fallbackErr) throw fallbackErr;
-      revalidatePath(`/g/${token}`);
-      return { success: true, photo: fallbackPhoto };
+      return { error: 'Your photo could not be uploaded. Please try again.' };
     }
 
     const { data: publicUrlData } = supabaseAdmin.storage

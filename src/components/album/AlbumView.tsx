@@ -4,6 +4,7 @@ import React, { useRef, useState } from 'react';
 import { Camera, Mic, Square, Trash2 } from 'lucide-react';
 import type { GuestbookEntryRecord, PhotoRecord } from '@/lib/types';
 import { addGuestbookEntryAction, listAlbumAction, uploadAlbumPhotoAction } from '@/app/actions/album-actions';
+import { shrinkPhoto } from '@/lib/shrink-photo';
 
 interface AlbumViewProps {
   albumToken: string;
@@ -37,7 +38,7 @@ export default function AlbumView({ albumToken, initial }: AlbumViewProps) {
       const formData = new FormData();
       formData.append('albumToken', albumToken);
       formData.append('name', name);
-      formData.append('file', file);
+      formData.append('file', await shrinkPhoto(file));
       const result = await uploadAlbumPhotoAction(formData);
       if ('error' in result) failed++;
     }

@@ -52,6 +52,7 @@ import EditableText from '@/components/guest/EditableText';
 import { getMenuOptions } from '@/lib/menu';
 import { fill, PORTAL_LANGUAGES, portalLanguageOf, portalStrings, type PortalStrings } from '@/lib/portal-i18n';
 import { hasFeature } from '@/lib/plans';
+import { shrinkPhoto } from '@/lib/shrink-photo';
 import { calendarMonth, contrastRatio, ensureContrast, isDarkBackground, monogram, readableOn, readablePalette } from '@/lib/invite-style';
 import { submitRsvpAction, uploadPhotoAction, contributeToRegistryAction } from '@/app/actions/wedding-actions';
 
@@ -490,18 +491,19 @@ export default function GuestPortalView({
 
   // Handle Photo Upload with Server Action and Storage
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 10 * 1024 * 1024) {
-      setUploadMessage(tr.photoTooLarge);
-      return;
-    }
+    const picked = e.target.files?.[0];
+    e.target.value = '';
+    if (!picked) return;
 
     setIsUploadingPhoto(true);
     setUploadMessage('Uploading photo to stream...');
 
     try {
+      const file = await shrinkPhoto(picked);
+      if (file.size > 10 * 1024 * 1024) {
+        setUploadMessage(tr.photoTooLarge);
+        return;
+      }
       const formData = new FormData();
       formData.append('token', activeGuest.access_token);
       formData.append('file', file);
